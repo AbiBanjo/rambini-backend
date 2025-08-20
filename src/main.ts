@@ -1,0 +1,68 @@
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+import { ConfigService } from '@nestjs/config';
+import { 
+  DatabaseExceptionFilter, 
+  HttpExceptionFilter, 
+  ValidationExceptionFilter 
+} from './common/filters';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  
+  // Get configuration service
+  const configService = app.get(ConfigService);
+  
+  // Global prefix
+  app.setGlobalPrefix(configService.get('API_PREFIX') || 'api/v1');
+  
+  // Global exception filters (order matters - most specific first)
+  app.useGlobalFilters(
+    new DatabaseExceptionFilter(),
+    new ValidationExceptionFilter(),
+    new HttpExceptionFilter(),
+  );
+  
+  // Global validation pipe
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }));
+  
+  // CORS configuration
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
+  
+  // Swagger documentation
+  const config = new DocumentBuilder()
+    .setTitle('Rambini Food Ordering API')
+    .setDescription('Backend API for Rambini Food Ordering Platform')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .addTag('auth', 'Authentication endpoints')
+    .addTag('users', 'User management endpoints')
+    .addTag('vendors', 'Vendor management endpoints')
+    .addTag('menu', 'Menu and food item endpoints')
+    .addTag('orders', 'Order management endpoints')
+    .addTag('payments', 'Payment and wallet endpoints')
+    .addTag('notifications', 'Notification endpoints')
+    .addTag('admin', 'Admin dashboard endpoints')
+    .build();
+    
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
+  
+  // Start application
+  const port = configService.get('PORT') || 3000;
+  await app.listen(port);
+  
+  console.log(`🚀 Rambini Backend API is running on: http://localhost:${port}`);
+  console.log(`📚 API Documentation available at: http://localhost:${port}/api/docs`);
+}
+
+bootstrap(); 

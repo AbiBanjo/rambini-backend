@@ -1,0 +1,116 @@
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean, IsNumber, Min, Max } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+
+export class AddressDto {
+  @ApiProperty({
+    description: 'Primary address line',
+    example: '123 Main Street'
+  })
+  @IsString()
+  @IsNotEmpty()
+  address_line_1: string;
+
+  @ApiProperty({
+    description: 'Secondary address line (optional)',
+    example: 'Apt 4B',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  address_line_2?: string;
+
+  @ApiProperty({
+    description: 'City name',
+    example: 'New York'
+  })
+  @IsString()
+  @IsNotEmpty()
+  city: string;
+
+  @ApiProperty({
+    description: 'State or province',
+    example: 'NY'
+  })
+  @IsString()
+  @IsNotEmpty()
+  state: string;
+
+  @ApiProperty({
+    description: 'Postal code',
+    example: '10001'
+  })
+  @IsString()
+  @IsNotEmpty()
+  postal_code: string;
+
+  @ApiProperty({
+    description: 'Latitude coordinate (optional)',
+    example: 40.7128,
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @Type(() => Number)
+  latitude?: number;
+
+  @ApiProperty({
+    description: 'Longitude coordinate (optional)',
+    example: -74.0060,
+    required: false
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @Type(() => Number)
+  longitude?: number;
+
+  @ApiProperty({
+    description: 'Whether this is the default address',
+    example: true,
+    required: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  is_default?: boolean;
+}
+
+export class CompleteProfileDto {
+  @ApiProperty({
+    description: 'User first name',
+    example: 'John'
+  })
+  @IsString()
+  @IsNotEmpty()
+  firstName: string;
+
+  @ApiProperty({
+    description: 'User last name',
+    example: 'Doe'
+  })
+  @IsString()
+  @IsNotEmpty()
+  lastName: string;
+
+  @ApiProperty({
+    description: 'User email address (optional)',
+    example: 'john.doe@example.com',
+    required: false
+  })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiProperty({
+    description: 'User address information (optional)',
+    type: AddressDto,
+    required: false
+  })
+  @IsOptional()
+  @Type(() => AddressDto)
+  address?: AddressDto;
+} 

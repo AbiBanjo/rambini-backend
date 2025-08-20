@@ -1,0 +1,422 @@
+{
+  "info": {
+    "name": "Rambini - Vendor API Collection",
+    "description": "Complete API collection for vendor management and operations in the Rambini Food Ordering System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    },
+    {
+      "key": "vendor_id",
+      "value": "vendor_id_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Vendor Profile Management",
+      "item": [
+        {
+          "name": "Create Vendor Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "business_name",
+                  "value": "Sample Restaurant",
+                  "type": "text"
+                },
+                {
+                  "key": "address_line_1",
+                  "value": "123 Main Street",
+                  "type": "text"
+                },
+                {
+                  "key": "address_line_2",
+                  "value": "Suite 100",
+                  "type": "text"
+                },
+                {
+                  "key": "city",
+                  "value": "Lagos",
+                  "type": "text"
+                },
+                {
+                  "key": "state",
+                  "value": "Lagos State",
+                  "type": "text"
+                },
+                {
+                  "key": "postal_code",
+                  "value": "100001",
+                  "type": "text"
+                },
+                {
+                  "key": "country",
+                  "value": "NG",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "6.5244",
+                  "type": "text"
+                },
+                {
+                  "key": "longitude",
+                  "value": "3.3792",
+                  "type": "text"
+                },
+                {
+                  "key": "landmark",
+                  "value": "Near City Mall",
+                  "type": "text"
+                },
+                {
+                  "key": "documents",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/vendor",
+              "host": ["{{base_url}}"],
+              "path": ["vendor"]
+            },
+            "description": "Create a new vendor profile with business information and required documents"
+          }
+        },
+        {
+          "name": "Get Vendor Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/profile",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "profile"]
+            },
+            "description": "Retrieve the current user's vendor profile"
+          }
+        },
+        {
+          "name": "Update Vendor Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"Updated Restaurant Name\",\n  \"address_line_1\": \"456 Updated Street\",\n  \"city\": \"Updated City\",\n  \"state\": \"Updated State\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/vendor/profile",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "profile"]
+            },
+            "description": "Update vendor profile information"
+          }
+        },
+        {
+          "name": "Activate Vendor Profile",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/activate",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "activate"]
+            },
+            "description": "Activate the vendor profile"
+          }
+        },
+        {
+          "name": "Deactivate Vendor Profile",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/deactivate",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "deactivate"]
+            },
+            "description": "Deactivate the vendor profile"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Document Management",
+      "item": [
+        {
+          "name": "Get Vendor Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/documents",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "documents"]
+            },
+            "description": "Retrieve all documents associated with the current vendor profile"
+          }
+        },
+        {
+          "name": "Upload Additional Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documents",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/vendor/documents",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "documents"]
+            },
+            "description": "Upload additional documents to the vendor profile (up to 5 files)"
+          }
+        },
+        {
+          "name": "Remove Document",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/documents/{{filename}}",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "documents", "{{filename}}"]
+            },
+            "description": "Remove a specific document from the vendor profile"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Operations",
+      "item": [
+        {
+          "name": "Get All Vendors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/all",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "all"]
+            },
+            "description": "Admin endpoint to retrieve all vendors in the system"
+          }
+        },
+        {
+          "name": "Get Pending Verifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/pending",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "pending"]
+            },
+            "description": "Admin endpoint to get vendors pending verification"
+          }
+        },
+        {
+          "name": "Get Under Review Vendors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/under-review",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "under-review"]
+            },
+            "description": "Admin endpoint to get vendors currently under review"
+          }
+        },
+        {
+          "name": "Get Verification Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/stats",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "stats"]
+            },
+            "description": "Admin endpoint to get verification statistics"
+          }
+        },
+        {
+          "name": "Mark Vendor Under Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Documents need further review\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/{{vendor_id}}/under-review",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "{{vendor_id}}", "under-review"]
+            },
+            "description": "Admin endpoint to mark a vendor as under review"
+          }
+        },
+        {
+          "name": "Approve Vendor Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"All documents verified and approved\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/{{vendor_id}}/approve",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "{{vendor_id}}", "approve"]
+            },
+            "description": "Admin endpoint to approve vendor documents"
+          }
+        },
+        {
+          "name": "Reject Vendor Documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Incomplete documentation\",\n  \"notes\": \"Please provide additional business license documents\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/{{vendor_id}}/reject",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "{{vendor_id}}", "reject"]
+            },
+            "description": "Admin endpoint to reject vendor documents with reason"
+          }
+        },
+        {
+          "name": "Reset Vendor Verification",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/vendor/admin/{{vendor_id}}/reset-verification",
+              "host": ["{{base_url}}"],
+              "path": ["vendor", "admin", "{{vendor_id}}", "reset-verification"]
+            },
+            "description": "Admin endpoint to reset vendor verification status"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set common headers",
+          "pm.request.headers.add({",
+          "    key: 'Accept',",
+          "    value: 'application/json'",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Common test script for vendor endpoints",
+          "pm.test('Response time is less than 2000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+          "});",
+          "",
+          "pm.test('Status code is valid', function () {",
+          "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 401, 403, 404, 409, 500]);",
+          "});",
+          "",
+          "// Test for successful responses",
+          "if (pm.response.code === 200 || pm.response.code === 201) {",
+          "    pm.test('Response has valid structure', function () {",
+          "        const responseJson = pm.response.json();",
+          "        pm.expect(responseJson).to.be.an('object');",
+          "    });",
+          "}",
+          "",
+          "// Test for error responses",
+          "if (pm.response.code >= 400) {",
+          "    pm.test('Error response has message', function () {",
+          "        const responseJson = pm.response.json();",
+          "        pm.expect(responseJson).to.have.property('message');",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ]
+} 
