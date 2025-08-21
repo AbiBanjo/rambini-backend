@@ -58,11 +58,11 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
   
   // Start application
-  const port = configService.get('PORT') || 3000;
-  await app.listen(port);
+  const port = configService.get('PORT') || 3500;
+  await app.listen(port, '0.0.0.0');
   
-  console.log(`🚀 Rambini Backend API is running on: http://localhost:${port}`);
-  console.log(`📚 API Documentation available at: http://localhost:${port}/api/docs`);
+  console.log(`🚀 Rambini Backend API is running on: http://0.0.0.0:${port}`);
+  console.log(`📚 API Documentation available at: http://0.0.0.0:${port}/api/docs`);
 }
 
 bootstrap(); 

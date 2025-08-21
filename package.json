@@ -34,6 +34,7 @@
     "@nestjs/swagger": "^7.0.0",
     "@nestjs/throttler": "^5.0.0",
     "@nestjs/typeorm": "^10.0.0",
+    "@nestjs/cli": "^10.0.0",
     "@types/aws-sdk": "^0.0.42",
     "@types/multer": "^2.0.0",
     "aws-sdk": "^2.1692.0",
