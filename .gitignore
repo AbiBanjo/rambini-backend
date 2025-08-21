@@ -126,3 +126,7 @@ docker-compose.override.yml
 # Backup files
 *.bak
 *.backup 
+
+Dockerfile
+docker-compose.yml
+.dockerignore
