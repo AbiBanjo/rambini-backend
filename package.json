@@ -5,7 +5,7 @@
   "author": "Rambini Team",
   "license": "MIT",
   "scripts": {
-    "build": "nest build",
+    "build": "npx @nestjs/cli build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -58,7 +58,6 @@
     "winston": "^3.10.0"
   },
   "devDependencies": {
-    "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
     "@nestjs/testing": "^10.0.0",
     "@types/bcryptjs": "^2.4.2",
