@@ -4,7 +4,6 @@ import { Transform } from 'class-transformer';
 
 export enum BulkOperationType {
   TOGGLE_AVAILABILITY = 'TOGGLE_AVAILABILITY',
-  TOGGLE_FEATURED = 'TOGGLE_FEATURED',
   UPDATE_CATEGORY = 'UPDATE_CATEGORY',
   DELETE_ITEMS = 'DELETE_ITEMS',
 }
@@ -19,7 +18,7 @@ export class BulkMenuOperationDto {
   @IsString({ each: true })
   menu_item_ids: string[];
 
-  @ApiPropertyOptional({ description: 'New value for boolean operations (availability, featured)' })
+  @ApiPropertyOptional({ description: 'New value for availability operations' })
   @IsOptional()
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)

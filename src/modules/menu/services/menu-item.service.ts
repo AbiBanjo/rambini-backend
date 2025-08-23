@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenEx
 import { MenuItemRepository } from '../repositories/menu-item.repository';
 import { CategoryRepository } from '../repositories/category.repository';
 import { CreateMenuItemDto, UpdateMenuItemDto, SearchMenuItemsDto, BulkMenuOperationDto } from 'src/modules/menu/dto';
-import { MenuItem, Vendor, UserType } from 'src/entities';
+import { MenuItem } from 'src/entities';
 
 @Injectable()
 export class MenuItemService {
@@ -49,11 +49,6 @@ export class MenuItemService {
   async getCategoryMenu(categoryId: string): Promise<MenuItem[]> {
     this.logger.log(`Fetching menu items for category ${categoryId}`);
     return await this.menuItemRepository.findByCategoryId(categoryId);
-  }
-
-  async getFeaturedItems(): Promise<MenuItem[]> {
-    this.logger.log('Fetching featured menu items');
-    return await this.menuItemRepository.findFeatured();
   }
 
   async searchMenuItems(searchDto: SearchMenuItemsDto): Promise<{ items: MenuItem[]; total: number }> {
@@ -125,25 +120,6 @@ export class MenuItemService {
     return updatedMenuItem;
   }
 
-  async toggleItemFeatured(id: string, vendorId: string): Promise<MenuItem> {
-    this.logger.log(`Toggling featured status for menu item ${id}`);
-
-    const menuItem = await this.getMenuItemById(id);
-    
-    // Verify ownership
-    if (menuItem.vendor_id !== vendorId) {
-      throw new ForbiddenException('You can only modify your own menu items');
-    }
-
-    const updatedMenuItem = await this.menuItemRepository.toggleFeatured(id);
-    if (!updatedMenuItem) {
-      throw new NotFoundException(`Failed to toggle featured status for menu item ${id}`);
-    }
-
-    this.logger.log(`Menu item ${id} featured status toggled to: ${updatedMenuItem.is_featured}`);
-    return updatedMenuItem;
-  }
-
   async bulkMenuOperations(
     vendorId: string,
     bulkDto: BulkMenuOperationDto,
@@ -168,14 +144,6 @@ export class MenuItemService {
           bulkDto.boolean_value || false,
         );
         message = `Availability toggled for ${affected} menu items`;
-        break;
-
-      case 'TOGGLE_FEATURED':
-        affected = await this.menuItemRepository.bulkToggleFeatured(
-          bulkDto.menu_item_ids,
-          bulkDto.boolean_value || false,
-        );
-        message = `Featured status toggled for ${affected} menu items`;
         break;
 
       case 'UPDATE_CATEGORY':
@@ -207,20 +175,6 @@ export class MenuItemService {
 
     this.logger.log(`Bulk operation completed: ${message}`);
     return { affected, message };
-  }
-
-  async updateMenuItemRating(id: string, newRating: number): Promise<void> {
-    if (newRating < 1 || newRating > 5) {
-      throw new BadRequestException('Rating must be between 1 and 5');
-    }
-
-    await this.menuItemRepository.updateRating(id, newRating);
-    this.logger.log(`Rating updated for menu item ${id}: ${newRating}`);
-  }
-
-  async incrementMenuItemOrderCount(id: string): Promise<void> {
-    await this.menuItemRepository.incrementOrderCount(id);
-    this.logger.log(`Order count incremented for menu item ${id}`);
   }
 
   async validateMenuItemOwnership(menuItemId: string, vendorId: string): Promise<boolean> {

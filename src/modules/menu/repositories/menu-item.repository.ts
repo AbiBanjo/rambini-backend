@@ -31,7 +31,7 @@ export class MenuItemRepository {
     return await this.menuItemRepository.find({
       where: { vendor_id: vendorId },
       relations: ['category'],
-      order: { sort_order: 'ASC', name: 'ASC' },
+      order: { name: 'ASC' },
     });
   }
 
@@ -39,15 +39,7 @@ export class MenuItemRepository {
     return await this.menuItemRepository.find({
       where: { category_id: categoryId, is_available: true },
       relations: ['vendor'],
-      order: { sort_order: 'ASC', name: 'ASC' },
-    });
-  }
-
-  async findFeatured(): Promise<MenuItem[]> {
-    return await this.menuItemRepository.find({
-      where: { is_featured: true, is_available: true },
-      relations: ['vendor', 'category'],
-      order: { sort_order: 'ASC', name: 'ASC' },
+      order: { name: 'ASC' },
     });
   }
 
@@ -94,21 +86,8 @@ export class MenuItemRepository {
     return await this.menuItemRepository.save(menuItem);
   }
 
-  async toggleFeatured(id: string): Promise<MenuItem | null> {
-    const menuItem = await this.findById(id);
-    if (!menuItem) return null;
-    
-    menuItem.is_featured = !menuItem.is_featured;
-    return await this.menuItemRepository.save(menuItem);
-  }
-
   async bulkToggleAvailability(ids: string[], value: boolean): Promise<number> {
     const result = await this.menuItemRepository.update(ids, { is_available: value });
-    return result.affected || 0;
-  }
-
-  async bulkToggleFeatured(ids: string[], value: boolean): Promise<number> {
-    const result = await this.menuItemRepository.update(ids, { is_featured: value });
     return result.affected || 0;
   }
 
@@ -120,22 +99,6 @@ export class MenuItemRepository {
   async bulkDelete(ids: string[]): Promise<number> {
     const result = await this.menuItemRepository.softDelete(ids);
     return result.affected || 0;
-  }
-
-  async updateRating(id: string, newRating: number): Promise<void> {
-    const menuItem = await this.findById(id);
-    if (!menuItem) return;
-    
-    menuItem.updateRating(newRating);
-    await this.menuItemRepository.save(menuItem);
-  }
-
-  async incrementOrderCount(id: string): Promise<void> {
-    const menuItem = await this.findById(id);
-    if (!menuItem) return;
-    
-    menuItem.incrementOrderCount();
-    await this.menuItemRepository.save(menuItem);
   }
 
   private createSearchQueryBuilder(searchDto: SearchMenuItemsDto): SelectQueryBuilder<MenuItem> {
@@ -174,18 +137,6 @@ export class MenuItemRepository {
     // Apply availability filter
     if (searchDto.is_available !== undefined) {
       queryBuilder.andWhere('menu_item.is_available = :isAvailable', { isAvailable: searchDto.is_available });
-    }
-
-    // Apply featured filter
-    if (searchDto.is_featured !== undefined) {
-      queryBuilder.andWhere('menu_item.is_featured = :isFeatured', { isFeatured: searchDto.is_featured });
-    }
-
-    // Apply dietary info filter
-    if (searchDto.dietary_info && searchDto.dietary_info.length > 0) {
-      queryBuilder.andWhere('menu_item.dietary_info @> :dietaryInfo', { 
-        dietaryInfo: JSON.stringify(searchDto.dietary_info) 
-      });
     }
 
     // Apply proximity sorting if coordinates provided

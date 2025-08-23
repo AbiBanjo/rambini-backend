@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsNumber, IsBoolean, IsArray, IsEnum, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsBoolean, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { DietaryInfo } from 'src/entities';
 
 export class SearchMenuItemsDto {
   @ApiPropertyOptional({ description: 'Search query for menu item name or description' })
@@ -39,22 +38,10 @@ export class SearchMenuItemsDto {
   @Transform(({ value }) => value === 'true' || value === true)
   is_available?: boolean;
 
-  @ApiPropertyOptional({ description: 'Filter featured items only' })
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true' || value === true)
-  is_featured?: boolean;
-
-  @ApiPropertyOptional({ description: 'Filter by dietary preferences' })
-  @IsOptional()
-  @IsArray()
-  @IsEnum(DietaryInfo, { each: true })
-  dietary_info?: DietaryInfo[];
-
-  @ApiPropertyOptional({ description: 'Sort by field', enum: ['name', 'price', 'rating_average', 'total_orders', 'created_at'] })
+  @ApiPropertyOptional({ description: 'Sort by field', enum: ['name', 'price', 'created_at'] })
   @IsOptional()
   @IsString()
-  sort_by?: 'name' | 'price' | 'rating_average' | 'total_orders' | 'created_at';
+  sort_by?: 'name' | 'price' | 'created_at';
 
   @ApiPropertyOptional({ description: 'Sort order', enum: ['ASC', 'DESC'], default: 'DESC' })
   @IsOptional()
