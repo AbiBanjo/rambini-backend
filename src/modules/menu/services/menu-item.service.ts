@@ -3,6 +3,7 @@ import { MenuItemRepository } from '../repositories/menu-item.repository';
 import { CategoryRepository } from '../repositories/category.repository';
 import { CreateMenuItemDto, UpdateMenuItemDto, SearchMenuItemsDto, BulkMenuOperationDto } from 'src/modules/menu/dto';
 import { MenuItem } from 'src/entities';
+import { VendorService } from 'src/modules/vendor/services/vendor.service';
 
 @Injectable()
 export class MenuItemService {
@@ -11,10 +12,17 @@ export class MenuItemService {
   constructor(
     private readonly menuItemRepository: MenuItemRepository,
     private readonly categoryRepository: CategoryRepository,
+    private readonly vendorService: VendorService,
   ) {}
 
-  async createMenuItem(vendorId: string, createDto: CreateMenuItemDto): Promise<MenuItem> {
-    this.logger.log(`Creating menu item for vendor ${vendorId}: ${createDto.name}`);
+  async createMenuItem(userId: string, createDto: CreateMenuItemDto): Promise<MenuItem> {
+    this.logger.log(`Creating menu item for vendor ${userId}: ${createDto.name}`);
+
+    // get vendor id from user id
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
 
     // Validate category exists
     const category = await this.categoryRepository.findById(createDto.category_id);
@@ -25,7 +33,7 @@ export class MenuItemService {
     // Create menu item
     const menuItem = await this.menuItemRepository.create({
       ...createDto,
-      vendor_id: vendorId,
+      vendor_id: vendor.id,
       category_id: createDto.category_id,
     });
 
@@ -53,7 +61,33 @@ export class MenuItemService {
 
   async searchMenuItems(searchDto: SearchMenuItemsDto): Promise<{ items: MenuItem[]; total: number }> {
     this.logger.log(`Searching menu items with query: ${searchDto.query || 'all'}`);
-    return await this.menuItemRepository.search(searchDto);
+    
+    // Log distance-based search parameters if provided
+    if (searchDto.latitude && searchDto.longitude) {
+      this.logger.log(`Distance-based search enabled - Location: (${searchDto.latitude}, ${searchDto.longitude}), Max distance: ${searchDto.max_distance || 'unlimited'} km`);
+      if (searchDto.prioritize_distance !== false) {
+        this.logger.log('Distance-based sorting will take priority over other sort criteria');
+      }
+    }
+    
+    const result = await this.menuItemRepository.search(searchDto);
+    
+    // Log search results summary
+    if (searchDto.latitude && searchDto.longitude) {
+      const itemsWithDistance = result.items.filter(item => (item as any).distance !== undefined);
+      this.logger.log(`Found ${result.total} menu items, ${itemsWithDistance.length} with distance information`);
+      
+      if (itemsWithDistance.length > 0) {
+        const distances = itemsWithDistance.map(item => (item as any).distance);
+        const minDistance = Math.min(...distances);
+        const maxDistance = Math.max(...distances);
+        this.logger.log(`Distance range: ${minDistance} km to ${maxDistance} km`);
+      }
+    } else {
+      this.logger.log(`Found ${result.total} menu items`);
+    }
+    
+    return result;
   }
 
   async updateMenuItem(

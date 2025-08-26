@@ -15,10 +15,14 @@ import { CategoryService } from './services/category.service';
 import { MenuItemRepository } from './repositories/menu-item.repository';
 import { CategoryRepository } from './repositories/category.repository';
 
+// modules
+import { VendorModule } from '../vendor/vendor.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([MenuItem, Category, Vendor]),
     FileStorageModule,
+    VendorModule
   ],
   controllers: [
     MenuItemController,

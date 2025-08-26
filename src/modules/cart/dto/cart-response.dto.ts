@@ -16,14 +16,6 @@ export class CartItemResponseDto {
   @ApiProperty({ description: 'Total price for this item' })
   total_price: number;
 
-  @ApiPropertyOptional({ description: 'Special instructions' })
-  special_instructions?: string;
-
-  @ApiPropertyOptional({ description: 'Customizations' })
-  customizations?: Record<string, any>;
-
-  @ApiProperty({ description: 'Whether item is active in cart' })
-  is_active: boolean;
 
   @ApiProperty({ description: 'When added to cart' })
   created_at: Date;

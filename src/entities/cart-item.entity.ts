@@ -4,13 +4,16 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  BeforeInsert,
+  BeforeUpdate,
 } from 'typeorm';
-import { IsString, IsNumber, IsOptional, Min, Max, IsJSON } from 'class-validator';
+import { IsString, IsNumber, Min, Max } from 'class-validator';
 import { BaseEntity } from './base.entity';
 import { MenuItem } from './menu-item.entity';
+import { Vendor } from './vendor.entity';
 
 @Entity('cart_items')
-@Index(['user_id', 'menu_item_id'], { unique: true })
+@Index(['user_id', 'menu_item_id', 'vendor_id'], { unique: true })
 export class CartItem extends BaseEntity {
   @Column({ type: 'varchar' })
   @IsString()
@@ -19,6 +22,10 @@ export class CartItem extends BaseEntity {
   @Column({ type: 'varchar' })
   @IsString()
   menu_item_id: string;
+
+  @Column({ type: 'varchar' })
+  @IsString()
+  vendor_id: string;
 
   @Column({ type: 'int' })
   @IsNumber()
@@ -36,16 +43,6 @@ export class CartItem extends BaseEntity {
   @Min(0)
   total_price: number;
 
-  @Column({ type: 'text', nullable: true })
-  @IsOptional()
-  @IsString()
-  special_instructions?: string;
-
-  @Column({ type: 'json', nullable: true })
-  @IsOptional()
-  @IsJSON()
-  customizations?: Record<string, any>;
-
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
@@ -54,9 +51,24 @@ export class CartItem extends BaseEntity {
   @JoinColumn({ name: 'menu_item_id' })
   menu_item: MenuItem;
 
+  @ManyToOne('Vendor', { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'vendor_id' })
+  vendor: Vendor;
+
+  // total price can be calculated automatically 
+  @BeforeInsert()
+  calculateTotalPrice() {
+    this.total_price = this.unit_price * this.quantity;
+  }
+
+  @BeforeUpdate()
+  calculateTotalPriceOnUpdate() {
+    this.total_price = this.unit_price * this.quantity;
+  }
+
   // Computed properties
   get canUpdateQuantity(): boolean {
-    return this.is_active && this.quantity > 0;
+    return this.quantity > 0;
   }
 
   get isOutOfStock(): boolean {
@@ -73,30 +85,5 @@ export class CartItem extends BaseEntity {
 
   calculateTotal(): void {
     this.total_price = this.unit_price * this.quantity;
-  }
-
-  addSpecialInstructions(instructions: string): void {
-    this.special_instructions = instructions;
-  }
-
-  addCustomization(key: string, value: any): void {
-    if (!this.customizations) {
-      this.customizations = {};
-    }
-    this.customizations[key] = value;
-  }
-
-  removeCustomization(key: string): void {
-    if (this.customizations) {
-      delete this.customizations[key];
-    }
-  }
-
-  deactivate(): void {
-    this.is_active = false;
-  }
-
-  activate(): void {
-    this.is_active = true;
   }
 } 

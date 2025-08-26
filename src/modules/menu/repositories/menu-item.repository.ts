@@ -3,6 +3,7 @@ import { Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MenuItem, Vendor, Category } from 'src/entities';
 import { SearchMenuItemsDto } from '../dto/search-menu-items.dto';
+import { calculateDistance } from 'src/utils/helpers';
 
 @Injectable()
 export class MenuItemRepository {
@@ -56,8 +57,21 @@ export class MenuItemRepository {
     
     queryBuilder.skip(offset).take(limit);
     
-    // Apply sorting
-    if (searchDto.sort_by) {
+    // Apply sorting - prioritize distance-based sorting when coordinates are provided
+    if (searchDto.latitude && searchDto.longitude && searchDto.prioritize_distance !== false) {
+      // When coordinates are provided and distance prioritization is enabled, always sort by distance first
+      queryBuilder.orderBy(
+        'ST_Distance(vendor_address.location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326))',
+        'ASC'
+      );
+      
+      // If additional sorting is specified, apply it as secondary sort
+      if (searchDto.sort_by && searchDto.sort_by !== 'distance') {
+        const sortOrder = searchDto.sort_order || 'ASC';
+        queryBuilder.addOrderBy(`menu_item.${searchDto.sort_by}`, sortOrder as 'ASC' | 'DESC');
+      }
+    } else if (searchDto.sort_by) {
+      // Fall back to regular sorting when no coordinates or distance prioritization is disabled
       const sortOrder = searchDto.sort_order || 'DESC';
       queryBuilder.orderBy(`menu_item.${searchDto.sort_by}`, sortOrder as 'ASC' | 'DESC');
     } else {
@@ -65,6 +79,22 @@ export class MenuItemRepository {
     }
     
     const items = await queryBuilder.getMany();
+    
+    // If coordinates are provided, calculate and add distance to each item
+    if (searchDto.latitude && searchDto.longitude) {
+      items.forEach(item => {
+        if (item.vendor?.address?.latitude && item.vendor?.address?.longitude) {
+          const distance = calculateDistance(
+            searchDto.latitude!,
+            searchDto.longitude!,
+            item.vendor.address.latitude,
+            item.vendor.address.longitude
+          );
+          // Add distance as a virtual property
+          (item as any).distance = Math.round(distance * 100) / 100; // Round to 2 decimal places
+        }
+      });
+    }
     
     return { items, total };
   }
@@ -106,6 +136,7 @@ export class MenuItemRepository {
       .createQueryBuilder('menu_item')
       .leftJoinAndSelect('menu_item.vendor', 'vendor')
       .leftJoinAndSelect('menu_item.category', 'category')
+      .leftJoinAndSelect('vendor.address', 'vendor_address')
       .where('menu_item.is_available = :isAvailable', { isAvailable: true });
 
     // Apply search query
@@ -139,22 +170,22 @@ export class MenuItemRepository {
       queryBuilder.andWhere('menu_item.is_available = :isAvailable', { isAvailable: searchDto.is_available });
     }
 
-    // Apply proximity sorting if coordinates provided
+    // Apply proximity filtering if coordinates and max distance provided
     if (searchDto.latitude && searchDto.longitude && searchDto.max_distance) {
-      queryBuilder
-        .leftJoin('vendor.addresses', 'address')
-        .andWhere(
-          'ST_DWithin(ST_MakePoint(address.longitude, address.latitude), ST_MakePoint(:lon, :lat), :maxDistance)',
-          {
-            lon: searchDto.longitude,
-            lat: searchDto.latitude,
-            maxDistance: searchDto.max_distance * 1000, // Convert km to meters
-          }
-        )
-        .orderBy(
-          'ST_Distance(ST_MakePoint(address.longitude, address.latitude), ST_MakePoint(:lon, :lat))',
-          'ASC'
-        );
+      // Filter vendors within the specified distance using spatial column
+      queryBuilder.andWhere(
+        'vendor_address.location IS NOT NULL'
+      );
+      
+      // Use PostGIS ST_DWithin with spatial column for efficient proximity filtering
+      queryBuilder.andWhere(
+        'ST_DWithin(vendor_address.location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :maxDistance)',
+        {
+          lon: searchDto.longitude,
+          lat: searchDto.latitude,
+          maxDistance: searchDto.max_distance * 1000, // Convert km to meters
+        }
+      );
     }
 
     return queryBuilder;

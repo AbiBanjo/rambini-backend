@@ -24,6 +24,8 @@ import {
   CartResponseDto,
   CartItemResponseDto,
 } from '../dto';
+import { GetUser } from '@/common/decorators/get-user.decorator';
+import { User } from '@/entities';
 
 @ApiTags('cart')
 @Controller('cart')
@@ -39,10 +41,10 @@ export class CartController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
   async addToCart(
-    @Request() req,
+    @GetUser() user: User,
     @Body() addToCartDto: AddToCartDto,
   ): Promise<CartItemResponseDto> {
-    return await this.cartService.addToCart(req.user.id, addToCartDto);
+    return await this.cartService.addToCart(user.id, addToCartDto);
   }
 
   @Get()

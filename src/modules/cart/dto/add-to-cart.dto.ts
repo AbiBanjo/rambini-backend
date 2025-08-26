@@ -14,13 +14,4 @@ export class AddToCartDto {
   @Transform(({ value }) => parseInt(value))
   quantity: number;
 
-  @ApiPropertyOptional({ description: 'Special instructions for this item' })
-  @IsOptional()
-  @IsString()
-  special_instructions?: string;
-
-  @ApiPropertyOptional({ description: 'Customizations as JSON object' })
-  @IsOptional()
-  @IsJSON()
-  customizations?: Record<string, any>;
 } 

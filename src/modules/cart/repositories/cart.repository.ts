@@ -26,14 +26,14 @@ export class CartRepository {
 
   async findByUserAndMenuItem(userId: string, menuItemId: string): Promise<CartItem | null> {
     return await this.cartItemRepository.findOne({
-      where: { user_id: userId, menu_item_id: menuItemId, is_active: true },
+      where: { user_id: userId, menu_item_id: menuItemId},
       relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
     });
   }
 
   async findByUserId(userId: string): Promise<CartItem[]> {
     return await this.cartItemRepository.find({
-      where: { user_id: userId, is_active: true },
+      where: { user_id: userId },
       relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
       order: { created_at: 'ASC' },
     });
@@ -52,28 +52,26 @@ export class CartRepository {
     return await this.findById(id);
   }
 
-  async delete(id: string): Promise<void> {
-    await this.cartItemRepository.softDelete(id);
+  async delete(id: string): Promise<boolean> {
+    const result = await this.cartItemRepository.delete(id);
+    return (result.affected || 0) > 0;
   }
 
-  async deactivate(id: string): Promise<CartItem | null> {
-    await this.cartItemRepository.update(id, { is_active: false });
-    return await this.findById(id);
+  async deactivate(id: string): Promise<boolean> {
+    const result = await this.cartItemRepository.delete(id);
+    return (result.affected || 0) > 0;
   }
 
   async clearUserCart(userId: string): Promise<number> {
-    const result = await this.cartItemRepository.update(
-      { user_id: userId, is_active: true },
-      { is_active: false }
-    );
+    const result = await this.cartItemRepository.delete({ user_id: userId });
     return result.affected || 0;
   }
 
   async removeItem(userId: string, menuItemId: string): Promise<boolean> {
-    const result = await this.cartItemRepository.update(
-      { user_id: userId, menu_item_id: menuItemId, is_active: true },
-      { is_active: false }
-    );
+    const result = await this.cartItemRepository.delete({
+      user_id: userId,
+      menu_item_id: menuItemId
+    });
     return (result.affected || 0) > 0;
   }
 

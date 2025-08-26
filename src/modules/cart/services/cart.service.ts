@@ -3,6 +3,7 @@ import { CartRepository } from '../repositories/cart.repository';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
 import { AddToCartDto, UpdateCartItemDto, CartResponseDto, CartItemResponseDto } from '../dto';
 import { CartItem, MenuItem } from 'src/entities';
+import { MenuItemService } from '@/modules/menu/services/menu-item.service';
 
 @Injectable()
 export class CartService {
@@ -10,14 +11,14 @@ export class CartService {
 
   constructor(
     private readonly cartRepository: CartRepository,
-    private readonly menuItemRepository: MenuItemRepository,
+    private readonly menuItemService: MenuItemService,
   ) {}
 
   async addToCart(userId: string, addToCartDto: AddToCartDto): Promise<CartItemResponseDto> {
     this.logger.log(`Adding item ${addToCartDto.menu_item_id} to cart for user ${userId}`);
 
     // Validate menu item exists and is available
-    const menuItem = await this.menuItemRepository.findById(addToCartDto.menu_item_id);
+    const menuItem = await this.menuItemService.getMenuItemById(addToCartDto.menu_item_id);
     if (!menuItem) {
       throw new NotFoundException(`Menu item with ID ${addToCartDto.menu_item_id} not found`);
     }
@@ -38,21 +39,9 @@ export class CartService {
 
       existingCartItem.updateQuantity(newQuantity);
       
-      if (addToCartDto.special_instructions) {
-        existingCartItem.addSpecialInstructions(addToCartDto.special_instructions);
-      }
-
-      if (addToCartDto.customizations) {
-        Object.entries(addToCartDto.customizations).forEach(([key, value]) => {
-          existingCartItem.addCustomization(key, value);
-        });
-      }
 
       const updatedCartItem = await this.cartRepository.update(existingCartItem.id, {
-        quantity: existingCartItem.quantity,
-        total_price: existingCartItem.total_price,
-        special_instructions: existingCartItem.special_instructions,
-        customizations: existingCartItem.customizations,
+        quantity: existingCartItem.quantity
       });
       this.logger.log(`Updated existing cart item ${updatedCartItem.id} with quantity ${newQuantity}`);
       
@@ -63,12 +52,10 @@ export class CartService {
     const cartItem = await this.cartRepository.create({
       user_id: userId,
       menu_item_id: addToCartDto.menu_item_id,
+      vendor_id: menuItem.vendor_id,
       quantity: addToCartDto.quantity,
       unit_price: menuItem.price,
       total_price: menuItem.price * addToCartDto.quantity,
-      special_instructions: addToCartDto.special_instructions,
-      customizations: addToCartDto.customizations,
-      is_active: true,
     });
 
     this.logger.log(`Added new item to cart: ${cartItem.id}`);
@@ -106,30 +93,13 @@ export class CartService {
       throw new BadRequestException('You can only update your own cart items');
     }
 
-    if (!cartItem.is_active) {
-      throw new BadRequestException('Cart item is not active');
-    }
-
     // Update quantity if provided
     if (updateDto.quantity !== undefined) {
       cartItem.updateQuantity(updateDto.quantity);
     }
 
-    // Update special instructions if provided
-    if (updateDto.special_instructions !== undefined) {
-      cartItem.special_instructions = updateDto.special_instructions;
-    }
-
-    // Update customizations if provided
-    if (updateDto.customizations !== undefined) {
-      cartItem.customizations = updateDto.customizations;
-    }
-
     const updatedCartItem = await this.cartRepository.update(cartItem.id, {
-      quantity: cartItem.quantity,
-      total_price: cartItem.total_price,
-      special_instructions: cartItem.special_instructions,
-      customizations: cartItem.customizations,
+      quantity: cartItem.quantity
     });
     this.logger.log(`Cart item ${cartItemId} updated successfully`);
 
@@ -215,9 +185,6 @@ export class CartService {
       quantity: cartItem.quantity,
       unit_price: cartItem.unit_price,
       total_price: cartItem.total_price,
-      special_instructions: cartItem.special_instructions,
-      customizations: cartItem.customizations,
-      is_active: cartItem.is_active,
       created_at: cartItem.created_at,
       updated_at: cartItem.updated_at,
       menu_item_name: cartItem.menu_item?.name || 'Unknown',

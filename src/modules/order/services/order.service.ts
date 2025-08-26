@@ -62,8 +62,6 @@ export class OrderService {
         quantity: item.quantity,
         unit_price: item.unit_price,
         total_price: item.total_price,
-        special_instructions: item.special_instructions,
-        customizations: item.customizations,
       }));
 
       subtotal = cart.subtotal;

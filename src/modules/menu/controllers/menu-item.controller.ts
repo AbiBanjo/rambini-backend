@@ -37,7 +37,8 @@ import {
   MenuItemResponseDto,
 } from 'src/modules/menu/dto';
 import { VendorOnly, AdminOrVendor, AccessControl } from 'src/common/guards';
-import { UserType } from 'src/entities';
+import { User, UserType } from 'src/entities';
+import { GetUser } from '@/common/decorators/get-user.decorator';
 
 @ApiTags('menu-items')
 @Controller('menu-items')
@@ -57,10 +58,10 @@ export class MenuItemController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only vendors can create menu items' })
   async createMenuItem(
-    @Request() req,
+    @GetUser() user: User,
     @Body() createDto: CreateMenuItemDto,
   ): Promise<MenuItemResponseDto> {
-    const menuItem = await this.menuItemService.createMenuItem(req.user.vendor_id, createDto);
+    const menuItem = await this.menuItemService.createMenuItem(user.id, createDto);
     return this.mapToResponseDto(menuItem);
   }
 
@@ -240,6 +241,8 @@ export class MenuItemController {
       vendor_name: menuItem.vendor?.business_name,
       vendor_logo: menuItem.vendor?.business_logo_url,
       category_name: menuItem.category?.name,
+      category: menuItem.category,
+      vendor: menuItem.vendor,
     };
   }
 } 
