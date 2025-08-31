@@ -53,7 +53,28 @@ export class MenuItemController {
 
   @Post()
   @VendorOnly()
-  @ApiOperation({ summary: 'Create a new menu item' })
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiOperation({ summary: 'Create a new menu item with optional image upload' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        category_id: { type: 'string', description: 'Category ID this item belongs to' },
+        name: { type: 'string', description: 'Name of the menu item' },
+        description: { type: 'string', description: 'Description of the menu item' },
+        price: { type: 'number', description: 'Price of the menu item' },
+        preparation_time_minutes: { type: 'number', description: 'Preparation time in minutes' },
+        is_available: { type: 'boolean', description: 'Whether the item is available for ordering' },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Image file for the menu item'
+        },
+      },
+      required: ['category_id', 'name', 'price']
+    },
+  })
   @ApiResponse({ status: 201, description: 'Menu item created successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -61,8 +82,18 @@ export class MenuItemController {
   async createMenuItem(
     @GetUser() user: User,
     @Body() createDto: CreateMenuItemDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+          new FileTypeValidator({ fileType: '.(jpg|jpeg|png|webp)' }),
+        ],
+        fileIsRequired: false, // Make file optional
+      }),
+    )
+    file?: Express.Multer.File,
   ): Promise<MenuItemWithDistanceDto> {
-    const menuItem = await this.menuItemService.createMenuItem(user.id, createDto);
+    const menuItem = await this.menuItemService.createMenuItemWithFile(user.id, createDto, file);
     return this.mapToResponseDto(menuItem);
   }
 

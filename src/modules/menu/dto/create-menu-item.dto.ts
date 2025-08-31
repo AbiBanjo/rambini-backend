@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsOptional, IsBoolean, IsUrl, Min, Max } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsBoolean, Min, Max } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateMenuItemDto {
@@ -29,11 +29,6 @@ export class CreateMenuItemDto {
   @Max(480)
   @Transform(({ value }) => parseInt(value))
   preparation_time_minutes?: number;
-
-  @ApiPropertyOptional({ description: 'Image URL for the menu item' })
-  @IsOptional()
-  @IsUrl()
-  image_url?: string;
 
   @ApiPropertyOptional({ description: 'Whether the item is available for ordering', default: true })
   @IsOptional()

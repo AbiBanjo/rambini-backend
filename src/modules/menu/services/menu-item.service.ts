@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MenuItemRepository } from '../repositories/menu-item.repository';
 import { CategoryRepository } from '../repositories/category.repository';
 import { CreateMenuItemDto, UpdateMenuItemDto, SearchMenuItemsDto, BulkMenuOperationDto, SearchMenuItemsResponseDto, MenuItemWithDistanceDto } from 'src/modules/menu/dto';
@@ -15,6 +16,7 @@ export class MenuItemService {
     private readonly categoryRepository: CategoryRepository,
     private readonly vendorService: VendorService,
     private readonly addressService: AddressService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createMenuItem(userId: string, createDto: CreateMenuItemDto): Promise<MenuItem> {
@@ -48,6 +50,61 @@ export class MenuItemService {
     return menuItem;
   }
 
+  async createMenuItemWithFile(
+    userId: string, 
+    createDto: CreateMenuItemDto, 
+    file?: Express.Multer.File
+  ): Promise<MenuItem> {
+    this.logger.log(`Creating menu item with file for vendor ${userId}: ${createDto.name}`);
+
+    // get vendor id from user id
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
+
+    // check if vendor is active
+    if (!vendor.is_active) {
+      throw new BadRequestException('Vendor is not active');
+    }
+
+    // Validate category exists
+    const category = await this.categoryRepository.findById(createDto.category_id);
+    if (!category) {
+      throw new NotFoundException(`Category with ID ${createDto.category_id} not found`);
+    }
+
+    // Create menu item data
+    const menuItemData: any = {
+      ...createDto,
+      vendor_id: vendor.id,
+      category_id: createDto.category_id,
+    };
+
+    // If file is provided, process it and add image_url
+    if (file) {
+      // Import FileStorageService dynamically to avoid circular dependency
+      const { FileStorageService } = await import('src/modules/file-storage/services/file-storage.service');
+      const fileStorageService = new FileStorageService(this.configService);
+      
+      // Upload image to cloud storage
+      const uploadedFile = await fileStorageService.uploadImage(file, {
+        quality: 85,
+        createThumbnail: true,
+        thumbnailSize: 300,
+      });
+      
+      menuItemData.image_url = uploadedFile.url;
+      this.logger.log(`Image uploaded successfully: ${uploadedFile.url}`);
+    }
+
+    // Create menu item
+    const menuItem = await this.menuItemRepository.create(menuItemData);
+
+    this.logger.log(`Menu item created successfully: ${menuItem.id}`);
+    return menuItem;
+  }
+  
   async getMenuItemById(id: string): Promise<MenuItem> {
     const menuItem = await this.menuItemRepository.findById(id);
     if (!menuItem) {
