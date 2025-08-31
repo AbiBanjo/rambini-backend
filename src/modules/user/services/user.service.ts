@@ -100,4 +100,5 @@ export class UserService {
   async findUsersByType(userType: UserType): Promise<User[]> {
     return await this.userRepository.find({ where: { user_type: userType } });
   }
+
 } 

@@ -17,12 +17,14 @@ import { CategoryRepository } from './repositories/category.repository';
 
 // modules
 import { VendorModule } from '../vendor/vendor.module';
+import { UserModule } from '../user/user.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([MenuItem, Category, Vendor]),
     FileStorageModule,
-    VendorModule
+    VendorModule,
+    UserModule
   ],
   controllers: [
     MenuItemController,

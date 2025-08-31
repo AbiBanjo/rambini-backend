@@ -26,6 +26,8 @@ import {
   OrderResponseDto,
   OrderFilterDto,
 } from '../dto';
+import { GetUser } from '@/common/decorators/get-user.decorator';
+import { User } from '@/entities';
 
 @ApiTags('orders')
 @Controller('orders')
@@ -41,10 +43,10 @@ export class OrderController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Delivery address or menu items not found' })
   async createOrder(
-    @Request() req,
+    @GetUser() user: User,
     @Body() createOrderDto: CreateOrderDto,
   ): Promise<OrderResponseDto> {
-    return await this.orderService.createOrder(req.user.id, createOrderDto);
+    return await this.orderService.createOrder(user.id, createOrderDto);
   }
 
   @Get()

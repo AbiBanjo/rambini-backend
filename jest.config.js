@@ -8,7 +8,7 @@ module.exports = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^@common/(.*)$': '<rootDir>/common/$1',
     '^@modules/(.*)$': '<rootDir>/modules/$1',
@@ -16,5 +16,6 @@ module.exports = {
     '^@database/(.*)$': '<rootDir>/database/$1',
     '^@auth/(.*)$': '<rootDir>/auth/$1',
     '^@utils/(.*)$': '<rootDir>/utils/$1',
+    '^src/(.*)$': '<rootDir>/$1',
   },
 }; 

@@ -1,9 +1,10 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { MenuItemRepository } from '../repositories/menu-item.repository';
 import { CategoryRepository } from '../repositories/category.repository';
-import { CreateMenuItemDto, UpdateMenuItemDto, SearchMenuItemsDto, BulkMenuOperationDto } from 'src/modules/menu/dto';
+import { CreateMenuItemDto, UpdateMenuItemDto, SearchMenuItemsDto, BulkMenuOperationDto, SearchMenuItemsResponseDto, MenuItemWithDistanceDto } from 'src/modules/menu/dto';
 import { MenuItem } from 'src/entities';
 import { VendorService } from 'src/modules/vendor/services/vendor.service';
+import { AddressService } from 'src/modules/user/services/address.service';
 
 @Injectable()
 export class MenuItemService {
@@ -13,6 +14,7 @@ export class MenuItemService {
     private readonly menuItemRepository: MenuItemRepository,
     private readonly categoryRepository: CategoryRepository,
     private readonly vendorService: VendorService,
+    private readonly addressService: AddressService,
   ) {}
 
   async createMenuItem(userId: string, createDto: CreateMenuItemDto): Promise<MenuItem> {
@@ -22,6 +24,11 @@ export class MenuItemService {
     const vendor = await this.vendorService.getVendorByUserId(userId);
     if (!vendor) {
       throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
+
+    // check if vendor is active
+    if (!vendor.is_active) {
+      throw new BadRequestException('Vendor is not active');
     }
 
     // Validate category exists
@@ -59,32 +66,108 @@ export class MenuItemService {
     return await this.menuItemRepository.findByCategoryId(categoryId);
   }
 
-  async searchMenuItems(searchDto: SearchMenuItemsDto): Promise<{ items: MenuItem[]; total: number }> {
+  async searchMenuItems(searchDto: SearchMenuItemsDto): Promise<SearchMenuItemsResponseDto> {
     this.logger.log(`Searching menu items with query: ${searchDto.query || 'all'}`);
     
-    // Log distance-based search parameters if provided
-    if (searchDto.latitude && searchDto.longitude) {
-      this.logger.log(`Distance-based search enabled - Location: (${searchDto.latitude}, ${searchDto.longitude}), Max distance: ${searchDto.max_distance || 'unlimited'} km`);
+    let searchLatitude = searchDto.latitude;
+    let searchLongitude = searchDto.longitude;
+    let maxDistance = searchDto.max_distance || 10; // Default to 10km if not specified
+    
+    // Handle address_id if provided - fetch coordinates from saved address
+    if (searchDto.address_id) {
+      this.logger.log(`Address ID provided: ${searchDto.address_id} - fetching coordinates`);
+      
+      const address = await this.addressService.getAddressByIdWithoutValidation(searchDto.address_id);
+      if (!address) {
+        throw new BadRequestException(`Address with ID ${searchDto.address_id} not found`);
+      }
+      
+      if (!address.latitude || !address.longitude) {
+        throw new BadRequestException(`Address ${searchDto.address_id} does not have valid coordinates`);
+      }
+      
+      searchLatitude = address.latitude;
+      searchLongitude = address.longitude;
+      
+      this.logger.log(`Resolved coordinates from address ${searchDto.address_id}: (${searchLatitude}, ${searchLongitude})`);
+    }
+    
+    // Validate coordinates if provided (either directly or via address_id)
+    if (searchLatitude || searchLongitude) {
+      if (!searchLatitude || !searchLongitude) {
+        throw new BadRequestException('Both latitude and longitude must be provided for location-based search');
+      }
+      
+      // Validate coordinate ranges
+      if (searchLatitude < -90 || searchLatitude > 90) {
+        throw new BadRequestException('Latitude must be between -90 and 90 degrees');
+      }
+      if (searchLongitude < -180 || searchLongitude > 180) {
+        throw new BadRequestException('Longitude must be between -180 and 180 degrees');
+      }
+      
+      this.logger.log(`Address-based proximity search enabled - Location: (${searchLatitude}, ${searchLongitude})`);
+      this.logger.log(`Max delivery distance: ${maxDistance} km`);
+      
       if (searchDto.prioritize_distance !== false) {
-        this.logger.log('Distance-based sorting will take priority over other sort criteria');
+        this.logger.log('Proximity-based sorting will take priority - results sorted from closest to farthest');
+      } else {
+        this.logger.log('Proximity-based sorting disabled - using specified sort criteria');
       }
     }
     
-    const result = await this.menuItemRepository.search(searchDto);
+    // Create search DTO with resolved coordinates and default max_distance
+    const resolvedSearchDto = {
+      ...searchDto,
+      latitude: searchLatitude,
+      longitude: searchLongitude,
+      max_distance: maxDistance
+    };
     
-    // Log search results summary
-    if (searchDto.latitude && searchDto.longitude) {
-      const itemsWithDistance = result.items.filter(item => (item as any).distance !== undefined);
-      this.logger.log(`Found ${result.total} menu items, ${itemsWithDistance.length} with distance information`);
+    const result = await this.menuItemRepository.search(resolvedSearchDto);
+    
+    // Enhanced logging for proximity search results
+    if (searchLatitude && searchLongitude) {
+      const itemsWithDistance = result.items.filter(item => (item as MenuItemWithDistanceDto).distance !== undefined && (item as MenuItemWithDistanceDto).distance !== null);
+      const itemsWithoutDistance = result.items.filter(item => (item as MenuItemWithDistanceDto).distance === undefined || (item as MenuItemWithDistanceDto).distance === null);
+      
+      this.logger.log(`Found ${result.total} menu items total`);
+      this.logger.log(`Items with distance info: ${itemsWithDistance.length}`);
+      this.logger.log(`Items without distance info: ${itemsWithoutDistance.length}`);
       
       if (itemsWithDistance.length > 0) {
-        const distances = itemsWithDistance.map(item => (item as any).distance);
+        const distances = itemsWithDistance.map(item => (item as MenuItemWithDistanceDto).distance!);
         const minDistance = Math.min(...distances);
         const maxDistance = Math.max(...distances);
+        const avgDistance = distances.reduce((sum, dist) => sum + dist, 0) / distances.length;
+        
         this.logger.log(`Distance range: ${minDistance} km to ${maxDistance} km`);
+        this.logger.log(`Average distance: ${Math.round(avgDistance * 100) / 100} km`);
+        
+        // Log proximity distribution
+        const nearby = itemsWithDistance.filter(item => (item as MenuItemWithDistanceDto).distance! <= 2).length;
+        const medium = itemsWithDistance.filter(item => (item as MenuItemWithDistanceDto).distance! > 2 && (item as MenuItemWithDistanceDto).distance! <= 5).length;
+        const far = itemsWithDistance.filter(item => (item as MenuItemWithDistanceDto).distance! > 5).length;
+        
+        this.logger.log(`Proximity distribution: ${nearby} nearby (≤2km), ${medium} medium (2-5km), ${far} far (>5km)`);
+      }
+      
+      if (itemsWithoutDistance.length > 0) {
+        this.logger.warn(`${itemsWithoutDistance.length} items lack distance information - vendor address data may be incomplete`);
+        
+        // Log specific vendors without address information for debugging
+        const vendorsWithoutAddress = itemsWithoutDistance.map(item => ({
+          menuItemId: item.id,
+          vendorId: item.vendor_id,
+          vendorName: item.vendor?.business_name || 'Unknown',
+          hasAddress: !!item.vendor?.address,
+          hasCoordinates: !!(item.vendor?.address?.latitude && item.vendor?.address?.longitude)
+        }));
+        
+        this.logger.warn('Vendors missing address information:', vendorsWithoutAddress);
       }
     } else {
-      this.logger.log(`Found ${result.total} menu items`);
+      this.logger.log(`Found ${result.total} menu items (no proximity sorting applied)`);
     }
     
     return result;

@@ -83,7 +83,7 @@ export class SearchMenuItemsDto {
   limit?: number;
 
   @ApiPropertyOptional({ 
-    description: 'Customer latitude for proximity-based sorting and filtering. When provided with longitude, results will be sorted by distance from this location.',
+    description: 'Customer latitude for proximity-based sorting and filtering. When provided with longitude, results will be sorted by distance from this location. This can be from a saved address or newly entered address.',
     example: 6.5244
   })
   @IsOptional()
@@ -92,7 +92,7 @@ export class SearchMenuItemsDto {
   latitude?: number;
 
   @ApiPropertyOptional({ 
-    description: 'Customer longitude for proximity-based sorting and filtering. When provided with latitude, results will be sorted by distance from this location.',
+    description: 'Customer longitude for proximity-based sorting and filtering. When provided with latitude, results will be sorted by distance from this location. This can be from a saved address or newly entered address.',
     example: 3.3792
   })
   @IsOptional()
@@ -101,21 +101,29 @@ export class SearchMenuItemsDto {
   longitude?: number;
 
   @ApiPropertyOptional({ 
-    description: 'Maximum delivery distance in kilometers. Only vendors within this distance will be included in results.',
+    description: 'Address ID to use for proximity-based search. When provided, the coordinates from this saved address will be used for distance calculation. Alternative to providing latitude/longitude directly.',
+    example: 'address-123'
+  })
+  @IsOptional()
+  @IsString()
+  address_id?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Maximum delivery distance in kilometers. Only vendors within this distance will be included in results. Default is 10km for most food delivery scenarios.',
     default: 10,
-    minimum: 0,
+    minimum: 0.5,
     maximum: 50,
     example: 5
   })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(0.5)
   @Max(50)
   @Transform(({ value }) => parseFloat(value))
   max_distance?: number;
 
   @ApiPropertyOptional({ 
-    description: 'Whether to prioritize distance-based sorting over other sort criteria when coordinates are provided',
+    description: 'Whether to prioritize distance-based sorting over other sort criteria when coordinates are provided. When true, results are always sorted from closest to farthest.',
     default: true,
     example: true
   })
@@ -123,4 +131,14 @@ export class SearchMenuItemsDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   prioritize_distance?: boolean;
+
+  @ApiPropertyOptional({ 
+    description: 'Include only vendors that offer delivery to the specified location. When true, filters out vendors that may be too far or don\'t deliver to the area.',
+    default: true,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  delivery_only?: boolean;
 } 

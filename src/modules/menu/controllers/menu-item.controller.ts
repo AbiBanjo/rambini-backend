@@ -34,7 +34,8 @@ import {
   UpdateMenuItemDto,
   SearchMenuItemsDto,
   BulkMenuOperationDto,
-  MenuItemResponseDto,
+  MenuItemWithDistanceDto,
+  SearchMenuItemsResponseDto,
 } from 'src/modules/menu/dto';
 import { VendorOnly, AdminOrVendor, AccessControl } from 'src/common/guards';
 import { User, UserType } from 'src/entities';
@@ -53,37 +54,52 @@ export class MenuItemController {
   @Post()
   @VendorOnly()
   @ApiOperation({ summary: 'Create a new menu item' })
-  @ApiResponse({ status: 201, description: 'Menu item created successfully', type: MenuItemResponseDto })
+  @ApiResponse({ status: 201, description: 'Menu item created successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only vendors can create menu items' })
   async createMenuItem(
     @GetUser() user: User,
     @Body() createDto: CreateMenuItemDto,
-  ): Promise<MenuItemResponseDto> {
+  ): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.createMenuItem(user.id, createDto);
     return this.mapToResponseDto(menuItem);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Search and filter menu items' })
-  @ApiResponse({ status: 200, description: 'Menu items retrieved successfully' })
-  @ApiQuery({ name: 'query', required: false, description: 'Search query' })
+  @ApiOperation({ 
+    summary: 'Search and filter menu items',
+    description: 'Search menu items with optional proximity-based sorting and filtering. When coordinates are provided (either directly via latitude/longitude or via address_id), results include distance information and are sorted by proximity. Address ID can be used as an alternative to providing coordinates directly.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Menu items retrieved successfully with optional distance information',
+    type: SearchMenuItemsResponseDto
+  })
+  @ApiQuery({ name: 'query', required: false, description: 'Search query for menu item name or description' })
   @ApiQuery({ name: 'category_id', required: false, description: 'Category filter' })
   @ApiQuery({ name: 'vendor_id', required: false, description: 'Vendor filter' })
-  @ApiQuery({ name: 'min_price', required: false, description: 'Minimum price' })
-  @ApiQuery({ name: 'max_price', required: false, description: 'Maximum price' })
+  @ApiQuery({ name: 'min_price', required: false, description: 'Minimum price filter' })
+  @ApiQuery({ name: 'max_price', required: false, description: 'Maximum price filter' })
   @ApiQuery({ name: 'is_available', required: false, description: 'Availability filter' })
-  @ApiQuery({ name: 'page', required: false, description: 'Page number' })
+  @ApiQuery({ name: 'latitude', required: false, description: 'Customer latitude for proximity search' })
+  @ApiQuery({ name: 'longitude', required: false, description: 'Customer longitude for proximity search' })
+  @ApiQuery({ name: 'address_id', required: false, description: 'Address ID to use for proximity search (alternative to latitude/longitude)' })
+  @ApiQuery({ name: 'max_distance', required: false, description: 'Maximum delivery distance in kilometers' })
+  @ApiQuery({ name: 'prioritize_distance', required: false, description: 'Whether to prioritize distance-based sorting' })
+  @ApiQuery({ name: 'delivery_only', required: false, description: 'Filter for delivery-only vendors' })
+  @ApiQuery({ name: 'sort_by', required: false, description: 'Sort field (distance sorting takes priority when coordinates provided)' })
+  @ApiQuery({ name: 'sort_order', required: false, description: 'Sort order' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number for pagination' })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
-  async searchMenuItems(@Query() searchDto: SearchMenuItemsDto) {
+  async searchMenuItems(@Query() searchDto: SearchMenuItemsDto): Promise<SearchMenuItemsResponseDto> {
     return await this.menuItemService.searchMenuItems(searchDto);
   }
 
   @Get('vendor/:vendorId')
   @ApiOperation({ summary: 'Get menu items by vendor' })
   @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
-  @ApiResponse({ status: 200, description: 'Vendor menu items retrieved successfully' })
+  @ApiResponse({ status: 200, description: 'Vendor menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
   async getVendorMenu(@Param('vendorId') vendorId: string) {
     const items = await this.menuItemService.getVendorMenu(vendorId);
     return items.map(item => this.mapToResponseDto(item));
@@ -92,7 +108,7 @@ export class MenuItemController {
   @Get('category/:categoryId')
   @ApiOperation({ summary: 'Get menu items by category' })
   @ApiParam({ name: 'categoryId', description: 'Category ID' })
-  @ApiResponse({ status: 200, description: 'Category menu items retrieved successfully' })
+  @ApiResponse({ status: 200, description: 'Category menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
   async getCategoryMenu(@Param('categoryId') categoryId: string) {
     const items = await this.menuItemService.getCategoryMenu(categoryId);
     return items.map(item => this.mapToResponseDto(item));
@@ -101,9 +117,9 @@ export class MenuItemController {
   @Get(':id')
   @ApiOperation({ summary: 'Get menu item by ID' })
   @ApiParam({ name: 'id', description: 'Menu item ID' })
-  @ApiResponse({ status: 200, description: 'Menu item retrieved successfully', type: MenuItemResponseDto })
+  @ApiResponse({ status: 200, description: 'Menu item retrieved successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
-  async getMenuItemById(@Param('id') id: string): Promise<MenuItemResponseDto> {
+  async getMenuItemById(@Param('id') id: string): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.getMenuItemById(id);
     return this.mapToResponseDto(menuItem);
   }
@@ -115,7 +131,7 @@ export class MenuItemController {
   })
   @ApiOperation({ summary: 'Update a menu item' })
   @ApiParam({ name: 'id', description: 'Menu item ID' })
-  @ApiResponse({ status: 200, description: 'Menu item updated successfully', type: MenuItemResponseDto })
+  @ApiResponse({ status: 200, description: 'Menu item updated successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only owner can update' })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
@@ -123,7 +139,7 @@ export class MenuItemController {
     @Param('id') id: string,
     @Request() req,
     @Body() updateDto: UpdateMenuItemDto,
-  ): Promise<MenuItemResponseDto> {
+  ): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.updateMenuItem(id, req.user.vendor_id, updateDto);
     return this.mapToResponseDto(menuItem);
   }
@@ -149,10 +165,10 @@ export class MenuItemController {
   })
   @ApiOperation({ summary: 'Toggle menu item availability' })
   @ApiParam({ name: 'id', description: 'Menu item ID' })
-  @ApiResponse({ status: 200, description: 'Availability toggled successfully', type: MenuItemResponseDto })
+  @ApiResponse({ status: 200, description: 'Availability toggled successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 403, description: 'Forbidden - Only owner can modify' })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
-  async toggleAvailability(@Param('id') id: string, @Request() req): Promise<MenuItemResponseDto> {
+  async toggleAvailability(@Param('id') id: string, @Request() req): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.toggleItemAvailability(id, req.user.vendor_id);
     return this.mapToResponseDto(menuItem);
   }
@@ -225,24 +241,9 @@ export class MenuItemController {
     return this.mapToResponseDto(updatedMenuItem);
   }
 
-  private mapToResponseDto(menuItem: any): MenuItemResponseDto {
-    return {
-      id: menuItem.id,
-      vendor_id: menuItem.vendor_id,
-      category_id: menuItem.category_id,
-      name: menuItem.name,
-      description: menuItem.description,
-      price: menuItem.price,
-      preparation_time_minutes: menuItem.preparation_time_minutes,
-      image_url: menuItem.image_url,
-      is_available: menuItem.is_available,
-      created_at: menuItem.created_at,
-      updated_at: menuItem.updated_at,
-      vendor_name: menuItem.vendor?.business_name,
-      vendor_logo: menuItem.vendor?.business_logo_url,
-      category_name: menuItem.category?.name,
-      category: menuItem.category,
-      vendor: menuItem.vendor,
-    };
+  private mapToResponseDto(menuItem: any): MenuItemWithDistanceDto {
+    // Since MenuItemWithDistanceDto extends MenuItem, we can directly assign the menuItem
+    // The distance property will be added by the repository when coordinates are provided
+    return menuItem as MenuItemWithDistanceDto;
   }
 } 

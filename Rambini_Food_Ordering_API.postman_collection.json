@@ -2,26 +2,14 @@
 	"info": {
 		"_postman_id": "rambini-food-ordering-api",
 		"name": "Rambini Food Ordering API",
-		"description": "Complete API collection for Rambini Food Ordering Backend System",
+		"description": "Complete API collection for Rambini Food Ordering Platform with authentication, user management, menu, orders, cart, and vendor operations.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "rambini-food-ordering-api"
+		"_exporter_id": "rambini-api"
 	},
 	"item": [
 		{
-			"name": "Health Check",
+			"name": "🏥 Health & Status",
 			"item": [
-				{
-					"name": "Get Application Status",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/",
-							"host": ["{{base_url}}"],
-							"path": [""]
-						}
-					}
-				},
 				{
 					"name": "Health Check",
 					"request": {
@@ -32,15 +20,51 @@
 							"host": ["{{base_url}}"],
 							"path": ["health"]
 						}
-					}
+					},
+					"response": []
+				},
+				{
+					"name": "App Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						}
+					},
+					"response": []
 				}
 			]
 		},
 		{
-			"name": "Authentication",
+			"name": "🔐 Authentication",
 			"item": [
 				{
-					"name": "User Registration",
+					"name": "Register User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has OTP ID\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.otpId).to.be.a('string');",
+									"    pm.collectionVariables.set('otp_id', response.otpId);",
+									"    pm.collectionVariables.set('phone_number', pm.request.body.raw.phoneNumber);",
+									"    console.log('OTP ID saved:', response.otpId);",
+									"    console.log('Phone number saved:', pm.request.body.raw.phoneNumber);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -51,7 +75,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"phoneNumber\": \"+1234567890\"\n}"
+							"raw": "{\n  \"phoneNumber\": \"+2348012345678\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/auth/register",
@@ -59,94 +83,37 @@
 							"path": ["auth", "register"]
 						}
 					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for User Registration",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('otpId');",
-									"    pm.expect(responseJson).to.have.property('message');",
-									"});",
-									"",
-									"// Capture OTP ID for subsequent requests",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.otpId) {",
-									"        pm.collectionVariables.set('otp_id', responseJson.otpId);",
-									"        console.log('OTP ID captured:', responseJson.otpId);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Registration Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "User Login",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"phoneNumber\": \"+1234567890\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/auth/login",
-							"host": ["{{base_url}}"],
-							"path": ["auth", "login"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for User Login",
-									"pm.test('Status code is 200', function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('otpId');",
-									"    pm.expect(responseJson).to.have.property('message');",
-									"});",
-									"",
-									"// Capture OTP ID for subsequent requests",
-									"if (pm.response.code === 200) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.otpId) {",
-									"        pm.collectionVariables.set('otp_id', responseJson.otpId);",
-									"        console.log('OTP ID captured:', responseJson.otpId);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Login Response:', pm.response.json());"
-								]
-							}
-						}
-					]
+					"response": []
 				},
 				{
 					"name": "Verify OTP",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has tokens\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.tokens).to.be.an('object');",
+									"    pm.expect(response.tokens.accessToken).to.be.a('string');",
+									"    pm.expect(response.tokens.refreshToken).to.be.a('string');",
+									"    pm.collectionVariables.set('access_token', response.tokens.accessToken);",
+									"    pm.collectionVariables.set('refresh_token', response.tokens.refreshToken);",
+									"    pm.collectionVariables.set('user_id', response.user.id);",
+									"    pm.collectionVariables.set('user_type', response.user.userType);",
+									"    console.log('Access token saved:', response.tokens.accessToken);",
+									"    console.log('User ID saved:', response.user.id);",
+									"    console.log('User type saved:', response.user.userType);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -165,77 +132,44 @@
 							"path": ["auth", "verify-otp"]
 						}
 					},
+					"response": []
+				},
+				{
+					"name": "Complete Profile",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Verify OTP",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('accessToken');",
-									"    pm.expect(responseJson).to.have.property('refreshToken');",
-									"    pm.expect(responseJson).to.have.property('user');",
-									"});",
-									"",
-									"// Capture vital tokens and user information",
-									"if (pm.response.code === 200) {",
-									"    const responseJson = pm.response.json();",
-									"    ",
-									"    // Capture access token",
-									"    if (responseJson.accessToken) {",
-									"        pm.collectionVariables.set('access_token', responseJson.accessToken);",
-									"        console.log('Access Token captured');",
-									"    }",
-									"    ",
-									"    // Capture refresh token",
-									"    if (responseJson.refreshToken) {",
-									"        pm.collectionVariables.set('refresh_token', responseJson.refreshToken);",
-									"        console.log('Refresh Token captured');",
-									"    }",
-									"    ",
-									"    // Capture user ID",
-									"    if (responseJson.user && responseJson.user.id) {",
-									"        pm.collectionVariables.set('user_id', responseJson.user.id);",
-									"        console.log('User ID captured:', responseJson.user.id);",
-									"    }",
-									"    ",
-									"    // Capture user role for conditional logic",
-									"    if (responseJson.user && responseJson.user.role) {",
-									"        pm.collectionVariables.set('user_role', responseJson.user.role);",
-									"        console.log('User Role captured:', responseJson.user.role);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('OTP Verification Response:', pm.response.json());"
-								]
+									"pm.test(\"Profile completed successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.user.profileCompleted).to.be.true;",
+									"    console.log('Profile completed for user:', response.user.id);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-				{
-					"name": "Complete Profile",
+					],
 					"request": {
 						"method": "POST",
 						"header": [
 							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"address\": {\n    \"addressLine1\": \"123 Main St\",\n    \"addressLine2\": \"Apt 4B\",\n    \"city\": \"New York\",\n    \"state\": \"NY\",\n    \"postalCode\": \"10001\",\n    \"latitude\": 40.7128,\n    \"longitude\": -74.0060,\n    \"isDefault\": true\n  }\n}"
+							"raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"address\": {\n    \"address_line_1\": \"123 Main Street\",\n    \"city\": \"Lagos\",\n    \"state\": \"Lagos\",\n    \"postal_code\": \"100001\",\n    \"country\": \"NG\",\n    \"latitude\": 6.5244,\n    \"longitude\": 3.3792,\n    \"is_default\": true\n  }\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/auth/complete-profile",
@@ -243,41 +177,49 @@
 							"path": ["auth", "complete-profile"]
 						}
 					},
+					"response": []
+				},
+				{
+					"name": "Login",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Complete Profile",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('user');",
-									"    pm.expect(responseJson).to.have.property('message');",
-									"});",
-									"",
-									"// Capture address ID if created",
-									"if (pm.response.code === 200) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.user && responseJson.user.addresses && responseJson.user.addresses.length > 0) {",
-									"        const defaultAddress = responseJson.user.addresses.find(addr => addr.isDefault);",
-									"        if (defaultAddress && defaultAddress.id) {",
-									"            pm.collectionVariables.set('address_id', defaultAddress.id);",
-									"            console.log('Default Address ID captured:', defaultAddress.id);",
-									"        }",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Complete Profile Response:', pm.response.json());"
-								]
+									"pm.test(\"Response has OTP ID\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.otpId).to.be.a('string');",
+									"    pm.collectionVariables.set('login_otp_id', response.otpId);",
+									"    console.log('Login OTP ID saved:', response.otpId);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phoneNumber\": \"{{phone_number}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					},
+					"response": []
 				},
 				{
 					"name": "Resend OTP",
@@ -298,10 +240,31 @@
 							"host": ["{{base_url}}"],
 							"path": ["auth", "resend-otp"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
 					"name": "Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"New access token received\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.accessToken).to.be.a('string');",
+									"    pm.collectionVariables.set('access_token', response.accessToken);",
+									"    console.log('New access token saved:', response.accessToken);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
@@ -320,49 +283,31 @@
 							"path": ["auth", "refresh-token"]
 						}
 					},
+					"response": []
+				},
+				{
+					"name": "Get Current User",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Refresh Token",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('accessToken');",
-									"    pm.expect(responseJson).to.have.property('refreshToken');",
-									"});",
-									"",
-									"// Capture new tokens",
-									"if (pm.response.code === 200) {",
-									"    const responseJson = pm.response.json();",
-									"    ",
-									"    // Update access token",
-									"    if (responseJson.accessToken) {",
-									"        pm.collectionVariables.set('access_token', responseJson.accessToken);",
-									"        console.log('New Access Token captured');",
-									"    }",
-									"    ",
-									"    // Update refresh token",
-									"    if (responseJson.refreshToken) {",
-									"        pm.collectionVariables.set('refresh_token', responseJson.refreshToken);",
-									"        console.log('New Refresh Token captured');",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Refresh Token Response:', pm.response.json());"
-								]
+									"pm.test(\"User information returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.phoneNumber).to.be.a('string');",
+									"    pm.expect(response.userType).to.be.a('string');",
+									"    console.log('Current user:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-				{
-					"name": "Get Current User",
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -377,72 +322,35 @@
 							"path": ["auth", "me"]
 						}
 					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "👤 User Management",
+			"item": [
+				{
+					"name": "Get Current User Profile",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Get Current User",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('user');",
-									"    pm.expect(responseJson.user).to.have.property('id');",
-									"});",
-									"",
-									"// Capture additional user information",
-									"if (pm.response.code === 200) {",
-									"    const responseJson = pm.response.json();",
-									"    const user = responseJson.user;",
-									"    ",
-									"    // Update user ID if not already set",
-									"    if (user && user.id) {",
-									"        pm.collectionVariables.set('user_id', user.id);",
-									"        console.log('User ID updated:', user.id);",
-									"    }",
-									"    ",
-									"    // Update user role if available",
-									"    if (user && user.role) {",
-									"        pm.collectionVariables.set('user_role', user.role);",
-									"        console.log('User Role updated:', user.role);",
-									"    }",
-									"    ",
-									"    // Capture default address if available",
-									"    if (user && user.addresses && user.addresses.length > 0) {",
-									"        const defaultAddress = user.addresses.find(addr => addr.isDefault);",
-									"        if (defaultAddress && defaultAddress.id) {",
-									"            pm.collectionVariables.set('address_id', defaultAddress.id);",
-									"            console.log('Default Address ID updated:', defaultAddress.id);",
-									"        }",
-									"    }",
-									"    ",
-									"    // Log user profile summary",
-									"    console.log('User Profile:', {",
-									"        id: user.id,",
-									"        role: user.role,",
-									"        email: user.email,",
-									"        addresses: user.addresses ? user.addresses.length : 0",
-									"    });",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Get Current User Response:', pm.response.json());"
-								]
+									"pm.test(\"User profile returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.phone_number).to.be.a('string');",
+									"    console.log('User profile:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				}
-			]
-		},
-		{
-			"name": "User Management",
-			"item": [
-				{
-					"name": "Get User Profile",
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -456,35 +364,244 @@
 							"host": ["{{base_url}}"],
 							"path": ["users", "profile"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Update User Profile",
+					"name": "Update Current User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"User updated successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.first_name).to.equal('John Updated');",
+									"    pm.expect(response.last_name).to.equal('Doe Updated');",
+									"    console.log('User updated:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "PUT",
 						"header": [
 							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"first_name\": \"John Updated\",\n  \"last_name\": \"Doe Updated\",\n  \"email\": \"john.updated@example.com\"\n}"
+							"raw": "{\n  \"firstName\": \"John Updated\",\n  \"lastName\": \"Doe Updated\",\n  \"email\": \"john.updated@example.com\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/users/profile",
 							"host": ["{{base_url}}"],
 							"path": ["users", "profile"]
 						}
-					}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Phone Number",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/verify-phone",
+							"host": ["{{base_url}}"],
+							"path": ["users", "verify-phone"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/verify-email",
+							"host": ["{{base_url}}"],
+							"path": ["users", "verify-email"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Complete Profile",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/complete-profile",
+							"host": ["{{base_url}}"],
+							"path": ["users", "complete-profile"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Suspend Current User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/suspend",
+							"host": ["{{base_url}}"],
+							"path": ["users", "suspend"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Activate Current User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/activate",
+							"host": ["{{base_url}}"],
+							"path": ["users", "activate"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Current User",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/account",
+							"host": ["{{base_url}}"],
+							"path": ["users", "account"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📍 Address Management",
+			"item": [
+				{
+					"name": "Create Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Address created successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.address_line_1).to.equal('456 Business Street');",
+									"    pm.collectionVariables.set('address_id', response.id);",
+									"    console.log('Address created:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"address_line_1\": \"456 Business Street\",\n  \"address_line_2\": \"Suite 100\",\n  \"city\": \"Lagos\",\n  \"state\": \"Lagos\",\n  \"postal_code\": \"100002\",\n  \"country\": \"NG\",\n  \"latitude\": 6.5244,\n  \"longitude\": 3.3792,\n  \"address_type\": \"WORK\",\n  \"is_default\": false,\n  \"delivery_instructions\": \"Call before delivery\",\n  \"landmark\": \"Near Central Bank\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/addresses",
+							"host": ["{{base_url}}"],
+							"path": ["users", "addresses"]
+						}
+					},
+					"response": []
 				},
 				{
 					"name": "Get User Addresses",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Addresses returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.be.an('array');",
+									"    console.log('User addresses:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -498,92 +615,233 @@
 							"host": ["{{base_url}}"],
 							"path": ["users", "addresses"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Add User Address",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"address_line_1\": \"123 Main St\",\n  \"address_line_2\": \"Apt 4B\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"postal_code\": \"10001\",\n  \"country\": \"USA\",\n  \"latitude\": 40.7128,\n  \"longitude\": -74.0060,\n  \"is_default\": true\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/users/addresses",
-							"host": ["{{base_url}}"],
-							"path": ["users", "addresses"]
-						}
-					},
+					"name": "Get Address by ID",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Add User Address",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('address');",
-									"    pm.expect(responseJson.address).to.have.property('id');",
-									"});",
-									"",
-									"// Capture address ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.address && responseJson.address.id) {",
-									"        pm.collectionVariables.set('address_id', responseJson.address.id);",
-									"        console.log('Address ID captured:', responseJson.address.id);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Add Address Response:', pm.response.json());"
-								]
+									"pm.test(\"Address returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.equal(pm.collectionVariables.get('address_id'));",
+									"    console.log('Address details:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-				{
-					"name": "Update User Address",
+					],
 					"request": {
-						"method": "PUT",
+						"method": "GET",
 						"header": [
 							{
 								"key": "Authorization",
 								"value": "Bearer {{access_token}}"
-							},
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/addresses/{{address_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["users", "addresses", "{{address_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Address updated successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.address_line_1).to.equal('456 Business Street Updated');",
+									"    console.log('Address updated:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"address_line_1\": \"456 Updated St\",\n  \"address_line_2\": \"Suite 200\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"postal_code\": \"10001\",\n  \"country\": \"USA\",\n  \"latitude\": 40.7128,\n  \"longitude\": -74.0060,\n  \"is_default\": true\n}"
+							"raw": "{\n  \"address_line_1\": \"456 Business Street Updated\",\n  \"city\": \"Lagos Updated\",\n  \"delivery_instructions\": \"Updated delivery instructions\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/users/addresses/{{address_id}}",
 							"host": ["{{base_url}}"],
 							"path": ["users", "addresses", "{{address_id}}"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Delete User Address",
+					"name": "Set Default Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Address set as default\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.is_default).to.be.true;",
+									"    console.log('Default address set:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/addresses/{{address_id}}/default",
+							"host": ["{{base_url}}"],
+							"path": ["users", "addresses", "{{address_id}}", "default"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Default Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Default address returned\", function () {",
+									"    const response = pm.response.json();",
+									"    if (response) {",
+									"        pm.expect(response.is_default).to.be.true;",
+									"        console.log('Default address:', response);",
+									"    } else {",
+									"        console.log('No default address set');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/addresses/default",
+							"host": ["{{base_url}}"],
+							"path": ["users", "addresses", "default"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Address validation result\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.isValid).to.be.a('boolean');",
+									"    console.log('Address validation:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"address_line_1\": \"789 Test Street\",\n  \"city\": \"Test City\",\n  \"state\": \"Test State\",\n  \"postal_code\": \"12345\",\n  \"country\": \"NG\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/addresses/validate",
+							"host": ["{{base_url}}"],
+							"path": ["users", "addresses", "validate"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Address deleted successfully\", function () {",
+									"    console.log('Address deleted successfully');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -597,280 +855,52 @@
 							"host": ["{{base_url}}"],
 							"path": ["users", "addresses", "{{address_id}}"]
 						}
-					}
+					},
+					"response": []
 				}
 			]
 		},
 		{
-			"name": "Menu Management",
+			"name": "🛒 Cart Management",
 			"item": [
-				{
-					"name": "Get Categories",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/menu/categories",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "categories"]
-						}
-					}
-				},
-				{
-					"name": "Create Category",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Italian Cuisine\",\n  \"description\": \"Authentic Italian dishes\",\n  \"image_url\": \"https://example.com/italian.jpg\",\n  \"icon_url\": \"https://example.com/italian-icon.png\",\n  \"sort_order\": 1,\n  \"is_active\": true\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/menu/categories",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "categories"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Create Category",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('category');",
-									"    pm.expect(responseJson.category).to.have.property('id');",
-									"});",
-									"",
-									"// Capture category ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.category && responseJson.category.id) {",
-									"        pm.collectionVariables.set('category_id', responseJson.category.id);",
-									"        console.log('Category ID captured:', responseJson.category.id);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Create Category Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Get Menu Items",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/menu/items",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "items"]
-						}
-					}
-				},
-				{
-					"name": "Get Menu Items by Category",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/menu/items?categoryId={{category_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "items"],
-							"query": [
-								{
-									"key": "categoryId",
-									"value": "{{category_id}}"
-								}
-							]
-						}
-					}
-				},
-				{
-					"name": "Search Menu Items",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/menu/items/search?query=pizza&categoryId={{category_id}}&minPrice=10&maxPrice=50",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "items", "search"],
-							"query": [
-								{
-									"key": "query",
-									"value": "pizza"
-								},
-								{
-									"key": "categoryId",
-									"value": "{{category_id}}"
-								},
-								{
-									"key": "minPrice",
-									"value": "10"
-								},
-								{
-									"key": "maxPrice",
-									"value": "50"
-								}
-							]
-						}
-					}
-				},
-				{
-					"name": "Create Menu Item",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Margherita Pizza\",\n  \"description\": \"Classic tomato and mozzarella pizza\",\n  \"price\": 15.99,\n  \"category_id\": \"{{category_id}}\",\n  \"cost_price\": 8.50,\n  \"preparation_time_minutes\": 20,\n  \"image_url\": \"https://example.com/pizza.jpg\",\n  \"images\": [\"https://example.com/pizza-1.jpg\", \"https://example.com/pizza-2.jpg\"],\n  \"is_available\": true,\n  \"is_featured\": false,\n  \"ingredients\": \"tomato sauce, mozzarella, basil\",\n  \"portion_size\": \"12 inch\",\n  \"sort_order\": 1\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/menu/items",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "items"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Create Menu Item",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('menuItem');",
-									"    pm.expect(responseJson.menuItem).to.have.property('id');",
-									"});",
-									"",
-									"// Capture menu item ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.menuItem && responseJson.menuItem.id) {",
-									"        pm.collectionVariables.set('menu_item_id', responseJson.menuItem.id);",
-									"        console.log('Menu Item ID captured:', responseJson.menuItem.id);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Create Menu Item Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Update Menu Item",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Margherita Pizza Updated\",\n  \"price\": 17.99,\n  \"is_available\": true,\n  \"description\": \"Updated classic tomato and mozzarella pizza\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/menu/items/{{menu_item_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "items", "{{menu_item_id}}"]
-						}
-					}
-				},
-				{
-					"name": "Delete Menu Item",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/menu/items/{{menu_item_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["menu", "items", "{{menu_item_id}}"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Cart Management",
-			"item": [
-				{
-					"name": "Get Cart",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/cart",
-							"host": ["{{base_url}}"],
-							"path": ["cart"]
-						}
-					}
-				},
 				{
 					"name": "Add Item to Cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Item added to cart successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.menu_item_id).to.equal(pm.request.body.raw.menu_item_id);",
+									"    pm.collectionVariables.set('cart_item_id', response.id);",
+									"    console.log('Cart item added:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "POST",
 						"header": [
 							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"menu_item_id\": \"{{menu_item_id}}\",\n  \"quantity\": 2,\n  \"special_instructions\": \"Extra cheese please\",\n  \"customizations\": {\n    \"cheese_type\": \"mozzarella\",\n    \"crust\": \"thin\"\n  }\n}"
+							"raw": "{\n  \"menu_item_id\": \"{{menu_item_id}}\",\n  \"quantity\": 2\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/cart/add",
@@ -878,67 +908,189 @@
 							"path": ["cart", "add"]
 						}
 					},
+					"response": []
+				},
+				{
+					"name": "Get Cart",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Add Item to Cart",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('cartItem');",
-									"    pm.expect(responseJson.cartItem).to.have.property('id');",
-									"});",
-									"",
-									"// Capture cart item ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.cartItem && responseJson.cartItem.id) {",
-									"        pm.collectionVariables.set('cart_item_id', responseJson.cartItem.id);",
-									"        console.log('Cart Item ID captured:', responseJson.cartItem.id);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Add to Cart Response:', pm.response.json());"
-								]
+									"pm.test(\"Cart returned successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.user_id).to.be.a('string');",
+									"    pm.expect(response.items).to.be.an('array');",
+									"    pm.expect(response.total_items).to.be.a('number');",
+									"    pm.expect(response.subtotal).to.be.a('number');",
+									"    console.log('Cart contents:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-
-				{
-					"name": "Update Cart Item",
+					],
 					"request": {
-						"method": "PUT",
+						"method": "GET",
 						"header": [
 							{
 								"key": "Authorization",
 								"value": "Bearer {{access_token}}"
-							},
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart",
+							"host": ["{{base_url}}"],
+							"path": ["cart"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Cart validation result\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.is_valid).to.be.a('boolean');",
+									"    pm.expect(response.valid_items).to.be.an('array');",
+									"    pm.expect(response.invalid_items).to.be.an('array');",
+									"    console.log('Cart validation:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart/validate",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "validate"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cart Item by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Cart item returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.equal(pm.collectionVariables.get('cart_item_id'));",
+									"    console.log('Cart item details:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/cart/items/{{cart_item_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "items", "{{cart_item_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Cart Item",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Cart item updated successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.quantity).to.equal(3);",
+									"    pm.expect(response.special_instructions).to.equal('Extra spicy please');",
+									"    console.log('Cart item updated:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"quantity\": 3,\n  \"special_instructions\": \"Extra cheese and pepperoni\",\n  \"customizations\": {\n    \"cheese_type\": \"mozzarella\",\n    \"crust\": \"thick\",\n    \"toppings\": [\"pepperoni\", \"extra_cheese\"]\n  }\n}"
+							"raw": "{\n  \"quantity\": 3,\n  \"special_instructions\": \"Extra spicy please\",\n  \"customizations\": {\n    \"spice_level\": \"extra_hot\",\n    \"add_cheese\": true\n  }\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/cart/items/{{cart_item_id}}",
 							"host": ["{{base_url}}"],
 							"path": ["cart", "items", "{{cart_item_id}}"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
 					"name": "Remove Item from Cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Item removed from cart\", function () {",
+									"    console.log('Cart item removed successfully');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -952,10 +1104,30 @@
 							"host": ["{{base_url}}"],
 							"path": ["cart", "items", "{{cart_item_id}}"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
 					"name": "Clear Cart",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Cart cleared successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.removed_count).to.be.a('number');",
+									"    console.log('Cart cleared, items removed:', response.removed_count);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -969,78 +1141,33 @@
 							"host": ["{{base_url}}"],
 							"path": ["cart"]
 						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Order Management",
-			"item": [
-				{
-					"name": "Create Order",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"delivery_address_id\": \"{{address_id}}\",\n  \"order_type\": \"DELIVERY\",\n  \"payment_method\": \"WALLET\",\n  \"delivery_instructions\": \"Please deliver to the front door\",\n  \"vendor_notes\": \"Customer prefers extra napkins\",\n  \"use_cart_items\": true,\n  \"preferred_delivery_time\": \"2024-01-15T19:00:00Z\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/orders",
-							"host": ["{{base_url}}"],
-							"path": ["orders"]
-						}
 					},
+					"response": []
+				},
+				{
+					"name": "Validate Cart for Checkout",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Create Order",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('order');",
-									"    pm.expect(responseJson.order).to.have.property('id');",
-									"});",
-									"",
-									"// Capture order ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.order && responseJson.order.id) {",
-									"        pm.collectionVariables.set('order_id', responseJson.order.id);",
-									"        console.log('Order ID captured:', responseJson.order.id);",
-									"    }",
-									"    ",
-									"    // Capture order status for tracking",
-									"    if (responseJson.order && responseJson.order.status) {",
-									"        pm.collectionVariables.set('order_status', responseJson.order.status);",
-									"        console.log('Order Status captured:', responseJson.order.status);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Create Order Response:', pm.response.json());"
-								]
+									"pm.test(\"Checkout validation result\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.is_valid).to.be.a('boolean');",
+									"    pm.expect(response.valid_items).to.be.an('array');",
+									"    pm.expect(response.invalid_items).to.be.an('array');",
+									"    pm.expect(response.errors).to.be.an('array');",
+									"    console.log('Checkout validation:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-				{
-					"name": "Get User Orders",
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -1050,14 +1177,839 @@
 							}
 						],
 						"url": {
+							"raw": "{{base_url}}/cart/validate-checkout",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "validate-checkout"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🍽️ Menu & Categories",
+			"item": [
+				{
+					"name": "Categories",
+					"item": [
+						{
+							"name": "Create Category",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 201\", function () {",
+											"    pm.response.to.have.status(201);",
+											"});",
+											"",
+											"pm.test(\"Category created successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.id).to.be.a('string');",
+											"    pm.expect(response.name).to.equal('Main Dishes');",
+											"    pm.collectionVariables.set('category_id', response.id);",
+											"    console.log('Category created:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Main Dishes\",\n  \"description\": \"Delicious main course meals\",\n  \"sort_order\": 1,\n  \"is_active\": true\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/categories",
+									"host": ["{{base_url}}"],
+									"path": ["categories"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Categories",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Categories returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.be.an('array');",
+											"    console.log('All categories:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/categories",
+									"host": ["{{base_url}}"],
+									"path": ["categories"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Active Categories",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Active categories returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.be.an('array');",
+											"    response.forEach(category => {",
+											"        pm.expect(category.is_active).to.be.true;",
+											"    });",
+											"    console.log('Active categories:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/categories/active",
+									"host": ["{{base_url}}"],
+									"path": ["categories", "active"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Category by ID",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Category returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.id).to.equal(pm.collectionVariables.get('category_id'));",
+											"    console.log('Category details:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/categories/{{category_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["categories", "{{category_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Category",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Category updated successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.name).to.equal('Main Dishes Updated');",
+											"    console.log('Category updated:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Main Dishes Updated\",\n  \"description\": \"Updated description for main dishes\",\n  \"sort_order\": 2\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/categories/{{category_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["categories", "{{category_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload Category Image",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "image",
+											"type": "file",
+											"src": []
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/categories/{{category_id}}/image",
+									"host": ["{{base_url}}"],
+									"path": ["categories", "{{category_id}}", "image"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload Category Icon",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "icon",
+											"type": "file",
+											"src": []
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/categories/{{category_id}}/icon",
+									"host": ["{{base_url}}"],
+									"path": ["categories", "{{category_id}}", "icon"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Category",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/categories/{{category_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["categories", "{{category_id}}"]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Menu Items",
+					"item": [
+						{
+							"name": "Search Menu Items",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Search results returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.items).to.be.an('array');",
+											"    pm.expect(response.total).to.be.a('number');",
+											"    if (response.items.length > 0) {",
+											"        pm.collectionVariables.set('menu_item_id', response.items[0].id);",
+											"        console.log('First menu item ID saved:', response.items[0].id);",
+											"    }",
+											"    console.log('Search results:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/menu-items?query=chicken&min_price=10&max_price=50&is_available=true&page=1&limit=20&latitude=6.5244&longitude=3.3792&max_distance=10&prioritize_distance=true",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items"],
+									"query": [
+										{
+											"key": "query",
+											"value": "chicken"
+										},
+										{
+											"key": "min_price",
+											"value": "10"
+										},
+										{
+											"key": "max_price",
+											"value": "50"
+										},
+										{
+											"key": "is_available",
+											"value": "true"
+										},
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										},
+										{
+											"key": "latitude",
+											"value": "6.5244"
+										},
+										{
+											"key": "longitude",
+											"value": "3.3792"
+										},
+										{
+											"key": "max_distance",
+											"value": "10"
+										},
+										{
+											"key": "prioritize_distance",
+											"value": "true"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Menu Item by ID",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Menu item returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.id).to.equal(pm.collectionVariables.get('menu_item_id'));",
+											"    console.log('Menu item details:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/menu-items/{{menu_item_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "{{menu_item_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Vendor Menu",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Vendor menu returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.be.an('array');",
+											"    console.log('Vendor menu:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/menu-items/vendor/{{vendor_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "vendor", "{{vendor_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Category Menu",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Category menu returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.be.an('array');",
+											"    console.log('Category menu:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/menu-items/category/{{category_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "category", "{{category_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Create Menu Item",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 201\", function () {",
+											"    pm.response.to.have.status(201);",
+											"});",
+											"",
+											"pm.test(\"Menu item created successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.id).to.be.a('string');",
+											"    pm.expect(response.name).to.equal('Chicken Burger');",
+											"    pm.collectionVariables.set('menu_item_id', response.id);",
+											"    console.log('Menu item created:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Chicken Burger\",\n  \"description\": \"Delicious grilled chicken burger with fresh vegetables\",\n  \"price\": 15.99,\n  \"category_id\": \"{{category_id}}\",\n  \"is_available\": true,\n  \"preparation_time_minutes\": 20,\n  \"ingredients\": [\"chicken breast\", \"lettuce\", \"tomato\", \"onion\", \"burger bun\"],\n  \"allergens\": [\"gluten\"],\n  \"dietary_info\": [\"non_vegetarian\"],\n  \"spice_level\": \"medium\",\n  \"customization_options\": {\n    \"spice_levels\": [\"mild\", \"medium\", \"hot\"],\n    \"add_ons\": [\"cheese\", \"bacon\", \"avocado\"]\n  }\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/menu-items",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Menu Item",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Menu item updated successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.price).to.equal(17.99);",
+											"    pm.expect(response.description).to.include('Updated');",
+											"    console.log('Menu item updated:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"Chicken Burger Deluxe\",\n  \"description\": \"Updated description for the deluxe chicken burger\",\n  \"price\": 17.99,\n  \"is_available\": true,\n  \"preparation_time_minutes\": 25\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/menu-items/{{menu_item_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "{{menu_item_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Menu Item",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/menu-items/{{menu_item_id}}",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "{{menu_item_id}}"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Toggle Menu Item Availability",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Availability toggled successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.is_available).to.be.a('boolean');",
+											"    console.log('Availability toggled:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"is_available\": false\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/menu-items/{{menu_item_id}}/availability",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "{{menu_item_id}}", "availability"]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Bulk Update Menu Items",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Bulk update successful\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.message).to.include('updated');",
+											"    pm.expect(response.affected_count).to.be.a('number');",
+											"    console.log('Bulk update result:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "PATCH",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"operation\": \"UPDATE_CATEGORY\",\n  \"menu_item_ids\": [\"{{menu_item_id}}\"],\n  \"updates\": {\n    \"category_id\": \"{{category_id}}\",\n    \"is_available\": true\n  }\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/menu-items/bulk",
+									"host": ["{{base_url}}"],
+									"path": ["menu-items", "bulk"]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "📦 Orders",
+			"item": [
+				{
+					"name": "Create Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Order created successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.order_number).to.be.a('string');",
+									"    pm.collectionVariables.set('order_id', response.id);",
+									"    pm.collectionVariables.set('order_number', response.order_number);",
+									"    console.log('Order created:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"delivery_address_id\": \"{{address_id}}\",\n  \"order_type\": \"DELIVERY\",\n  \"payment_method\": \"WALLET\",\n  \"use_cart_items\": true,\n  \"delivery_instructions\": \"Please call before delivery\",\n  \"vendor_notes\": \"Extra spicy please\"\n}"
+						},
+						"url": {
 							"raw": "{{base_url}}/orders",
 							"host": ["{{base_url}}"],
 							"path": ["orders"]
 						}
-					}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer Orders",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Customer orders returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.orders).to.be.an('array');",
+									"    pm.expect(response.total).to.be.a('number');",
+									"    console.log('Customer orders:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/orders?page=1&limit=20&order_status=NEW&sort_by=created_at&sort_order=DESC",
+							"host": ["{{base_url}}"],
+							"path": ["orders"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "order_status",
+									"value": "NEW"
+								},
+								{
+									"key": "sort_by",
+									"value": "created_at"
+								},
+								{
+									"key": "sort_order",
+									"value": "DESC"
+								}
+							]
+						}
+					},
+					"response": []
 				},
 				{
 					"name": "Get Order by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Order returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.equal(pm.collectionVariables.get('order_id'));",
+									"    console.log('Order details:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -1071,60 +2023,76 @@
 							"host": ["{{base_url}}"],
 							"path": ["orders", "{{order_id}}"]
 						}
-					}
-				},
-				{
-					"name": "Update Order Status",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"status\": \"PREPARING\",\n  \"estimated_delivery_time\": \"2024-01-15T19:30:00Z\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/orders/{{order_id}}/status",
-							"host": ["{{base_url}}"],
-							"path": ["orders", "{{order_id}}", "status"]
-						}
-					}
+					},
+					"response": []
 				},
 				{
 					"name": "Cancel Order",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Order cancelled successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.order_status).to.equal('CANCELLED');",
+									"    console.log('Order cancelled:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
-						"method": "PUT",
+						"method": "POST",
 						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"cancellation_reason\": \"Changed my mind\"\n}"
+							"raw": "{\n  \"reason\": \"Changed my mind\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/orders/{{order_id}}/cancel",
 							"host": ["{{base_url}}"],
 							"path": ["orders", "{{order_id}}", "cancel"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Get Vendor Orders",
+					"name": "Get Customer Order Stats",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Order stats returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.total_orders).to.be.a('number');",
+									"    pm.expect(response.total_revenue).to.be.a('number');",
+									"    console.log('Order stats:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [
@@ -1134,1129 +2102,357 @@
 							}
 						],
 						"url": {
-							"raw": "{{base_url}}/vendor/orders",
+							"raw": "{{base_url}}/orders/stats",
 							"host": ["{{base_url}}"],
-							"path": ["vendor", "orders"]
+							"path": ["orders", "stats"]
 						}
-					}
+					},
+					"response": []
 				}
 			]
 		},
 		{
-			"name": "Vendor Management",
+			"name": "🏪 Vendor Operations",
 			"item": [
 				{
-					"name": "Create Vendor Profile",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"business_name\": \"Pizza Palace\",\n  \"address_line_1\": \"123 Business Street\",\n  \"address_line_2\": \"Suite 100\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"postal_code\": \"10001\",\n  \"country\": \"USA\",\n  \"latitude\": 40.7128,\n  \"longitude\": -74.0060,\n  \"landmark\": \"Near Central Park\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor",
-							"host": ["{{base_url}}"],
-							"path": ["vendor"]
-						}
-					},
-					"event": [
+					"name": "Vendor Profile",
+					"item": [
 						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Create Vendor Profile (Form Data)",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('id');",
-									"    pm.expect(responseJson).to.have.property('business_name');",
-									"    pm.expect(responseJson).to.have.property('document_verification_status');",
-									"});",
-									"",
-									"// Capture vendor ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.id) {",
-									"        pm.collectionVariables.set('vendor_id', responseJson.id);",
-									"        console.log('Vendor ID captured:', responseJson.id);",
-									"    }",
-									"    ",
-									"    // Capture vendor verification status",
-									"    if (responseJson.document_verification_status) {",
-									"        pm.collectionVariables.set('vendor_status', responseJson.document_verification_status);",
-									"        console.log('Vendor Verification Status captured:', responseJson.document_verification_status);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Create Vendor Profile Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Create Vendor Profile (Alternative)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"business_name\": \"Sushi Master\",\n  \"address_line_1\": \"456 Sushi Avenue\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postal_code\": \"90210\",\n  \"country\": \"USA\",\n  \"latitude\": 34.0522,\n  \"longitude\": -118.2437\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor",
-							"host": ["{{base_url}}"],
-							"path": ["vendor"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Create Vendor Profile (JSON)",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('id');",
-									"    pm.expect(responseJson).to.have.property('business_name');",
-									"    pm.expect(responseJson).to.have.property('document_verification_status');",
-									"});",
-									"",
-									"// Capture vendor ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.id) {",
-									"        pm.collectionVariables.set('vendor_id', responseJson.id);",
-									"        console.log('Vendor ID captured:', responseJson.id);",
-									"    }",
-									"    ",
-									"    // Capture vendor verification status",
-									"    if (responseJson.document_verification_status) {",
-									"        pm.collectionVariables.set('vendor_status', responseJson.document_verification_status);",
-									"        console.log('Vendor Verification Status captured:', responseJson.document_verification_status);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Create Vendor Profile Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Get Vendor Profile",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/profile",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "profile"]
-						}
-					}
-				},
-				{
-					"name": "Search Vendors",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/vendor/search?is_active=true&is_accepting_orders=true&document_verification_status=APPROVED&sortBy=created_at&sortOrder=desc&page=1&limit=10",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "search"],
-							"query": [
+							"name": "Create Vendor",
+							"event": [
 								{
-									"key": "is_active",
-									"value": "true"
-								},
-								{
-									"key": "is_accepting_orders",
-									"value": "true"
-								},
-								{
-									"key": "document_verification_status",
-									"value": "APPROVED"
-								},
-								{
-									"key": "sortBy",
-									"value": "created_at"
-								},
-								{
-									"key": "sortOrder",
-									"value": "desc"
-								},
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "limit",
-									"value": "10"
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 201\", function () {",
+											"    pm.response.to.have.status(201);",
+											"});",
+											"",
+											"pm.test(\"Vendor created successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.id).to.be.a('string');",
+											"    pm.expect(response.business_name).to.equal('My Restaurant');",
+											"    pm.collectionVariables.set('vendor_id', response.id);",
+											"    console.log('Vendor created:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
 								}
-							]
-						}
-					},
-					"event": [
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "business_name",
+											"value": "My Restaurant",
+											"type": "text"
+										},
+										{
+											"key": "business_description",
+											"value": "Delicious food for everyone",
+											"type": "text"
+										},
+										{
+											"key": "business_type",
+											"value": "RESTAURANT",
+											"type": "text"
+										},
+										{
+											"key": "contact_person_name",
+											"value": "John Doe",
+											"type": "text"
+										},
+										{
+											"key": "contact_phone",
+											"value": "+2348012345678",
+											"type": "text"
+										},
+										{
+											"key": "business_address",
+											"value": "123 Business Street",
+											"type": "text"
+										},
+										{
+											"key": "business_city",
+											"value": "Lagos",
+											"type": "text"
+										},
+										{
+											"key": "business_state",
+											"value": "Lagos",
+											"type": "text"
+										},
+										{
+											"key": "business_country",
+											"value": "NG",
+											"type": "text"
+										},
+										{
+											"key": "documents",
+											"type": "file",
+											"src": []
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/vendor/apply",
+									"host": ["{{base_url}}"],
+									"path": ["vendor", "apply"]
+								}
+							},
+							"response": []
+						},
 						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Search Vendors",
-									"pm.test('Status code is 200', function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('vendors');",
-									"    pm.expect(responseJson).to.have.property('pagination');",
-									"});",
-									"",
-									"// Log response for debugging",
-									"console.log('Search Vendors Response:', pm.response.json());"
-								]
-							}
+							"name": "Get Vendor Profile",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Vendor profile returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.id).to.be.a('string');",
+											"    pm.expect(response.business_name).to.be.a('string');",
+											"    console.log('Vendor profile:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/vendor/profile",
+									"host": ["{{base_url}}"],
+									"path": ["vendor", "profile"]
+								}
+							},
+							"response": []
 						}
 					]
 				},
 				{
-					"name": "Get Vendor by ID (Public)",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/vendor/{{vendor_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "{{vendor_id}}"]
+					"name": "Vendor Orders",
+					"item": [
+						{
+							"name": "Get Vendor Orders",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Vendor orders returned\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.orders).to.be.an('array');",
+											"    pm.expect(response.total).to.be.a('number');",
+											"    console.log('Vendor orders:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/vendor/orders?page=1&limit=20&order_status=NEW&sort_by=created_at&sort_order=DESC",
+									"host": ["{{base_url}}"],
+									"path": ["vendor", "orders"],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										},
+										{
+											"key": "order_status",
+											"value": "NEW"
+										},
+										{
+											"key": "sort_by",
+											"value": "created_at"
+										},
+										{
+											"key": "sort_order",
+											"value": "DESC"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Order Status",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Order status updated successfully\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response.order_status).to.equal('CONFIRMED');",
+											"    console.log('Order status updated:', response);",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{access_token}}"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"order_status\": \"CONFIRMED\",\n  \"estimated_prep_time_minutes\": 30,\n  \"vendor_notes\": \"Order confirmed, will start preparing soon\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/vendor/orders/{{order_id}}/status",
+									"host": ["{{base_url}}"],
+									"path": ["vendor", "orders", "{{order_id}}", "status"]
+								}
+							},
+							"response": []
 						}
-					},
+					]
+				}
+			]
+		},
+		{
+			"name": "📱 Notifications",
+			"item": [
+				{
+					"name": "Get User Notifications",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Get Vendor by ID (Public)",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('id');",
-									"    pm.expect(responseJson).to.have.property('business_name');",
-									"    pm.expect(responseJson).to.have.property('document_verification_status');",
-									"    pm.expect(responseJson).to.have.property('address_id');",
-									"});",
-									"",
-									"// Log response for debugging",
-									"console.log('Get Vendor by ID Response:', pm.response.json());"
-								]
+									"pm.test(\"Notifications returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response).to.be.an('array');",
+									"    console.log('User notifications:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-				{
-					"name": "Get Vendor Menu",
+					],
 					"request": {
 						"method": "GET",
-						"header": [],
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
 						"url": {
-							"raw": "{{base_url}}/vendor/{{vendor_id}}/menu?categoryId={{category_id}}&isAvailable=true&sortBy=price&sortOrder=asc&page=1&limit=20",
+							"raw": "{{base_url}}/notifications?unreadOnly=false&limit=20&offset=0",
 							"host": ["{{base_url}}"],
-							"path": ["vendor", "{{vendor_id}}", "menu"],
+							"path": ["notifications"],
 							"query": [
 								{
-									"key": "categoryId",
-									"value": "{{category_id}}"
-								},
-								{
-									"key": "isAvailable",
-									"value": "true"
-								},
-								{
-									"key": "sortBy",
-									"value": "price"
-								},
-								{
-									"key": "sortOrder",
-									"value": "asc"
-								},
-								{
-									"key": "page",
-									"value": "1"
+									"key": "unreadOnly",
+									"value": "false"
 								},
 								{
 									"key": "limit",
 									"value": "20"
+								},
+								{
+									"key": "offset",
+									"value": "0"
 								}
 							]
 						}
 					},
+					"response": []
+				},
+				{
+					"name": "Get Unread Count",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Get Vendor Menu",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('menuItems');",
-									"    pm.expect(responseJson).to.have.property('pagination');",
-									"});",
-									"",
-									"// Log response for debugging",
-									"console.log('Get Vendor Menu Response:', pm.response.json());"
-								]
+									"pm.test(\"Unread count returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.count).to.be.a('number');",
+									"    console.log('Unread notifications:', response.count);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
-				},
-				{
-					"name": "Submit Vendor Application",
+					],
 					"request": {
-						"method": "POST",
+						"method": "GET",
 						"header": [
 							{
 								"key": "Authorization",
 								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"business_name\": \"Pizza Palace\",\n  \"business_description\": \"Authentic Italian pizzeria serving traditional and modern Italian dishes\",\n  \"business_type\": \"RESTAURANT\",\n  \"contact_person_name\": \"John Doe\",\n  \"contact_phone\": \"+1234567890\",\n  \"contact_email\": \"john.doe@example.com\",\n  \"business_address\": \"789 Business Avenue\",\n  \"business_city\": \"New York\",\n  \"business_state\": \"NY\",\n  \"business_postal_code\": \"10002\",\n  \"business_country\": \"NG\",\n  \"latitude\": 40.7589,\n  \"longitude\": -73.9851,\n  \"website_url\": \"https://pizzapalace.com\",\n  \"social_media_handles\": \"@pizzapalace_ny\",\n  \"additional_notes\": \"Specializing in Neapolitan style pizzas\",\n  \"is_urgent\": false\n}"
-						},
 						"url": {
-							"raw": "{{base_url}}/vendor/applications",
+							"raw": "{{base_url}}/notifications/unread-count",
 							"host": ["{{base_url}}"],
-							"path": ["vendor", "applications"]
+							"path": ["notifications", "unread-count"]
 						}
 					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Submit Vendor Application",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('application');",
-									"    pm.expect(responseJson.application).to.have.property('id');",
-									"});",
-									"",
-									"// Capture application ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.application && responseJson.application.id) {",
-									"        pm.collectionVariables.set('application_id', responseJson.application.id);",
-									"        console.log('Vendor Application ID captured:', responseJson.application.id);",
-									"    }",
-									"    ",
-									"    // Capture application status",
-									"    if (responseJson.application && responseJson.application.status) {",
-									"        pm.collectionVariables.set('application_status', responseJson.application.status);",
-									"        console.log('Application Status captured:', responseJson.application.status);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Vendor Application Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Update Vendor Profile",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"business_name\": \"Pizza Palace Updated\",\n  \"address_line_1\": \"123 Updated Business Street\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"postal_code\": \"10001\",\n  \"country\": \"USA\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor/profile",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "profile"]
-						}
-					}
-				},
-				{
-					"name": "Activate Vendor Profile",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/activate",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "activate"]
-						}
-					}
-				},
-				{
-					"name": "Deactivate Vendor Profile",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/deactivate",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "deactivate"]
-						}
-					}
-				},
-				{
-					"name": "Get Vendor Documents",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/documents",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "documents"]
-						}
-					}
-				},
-				{
-					"name": "Upload Additional Documents",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "documents",
-									"type": "file",
-									"src": []
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor/documents",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "documents"]
-						}
-					}
-				},
-				{
-					"name": "Remove Document",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/documents/{{filename}}",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "documents", "{{filename}}"]
-						}
-					}
-				},
-				{
-					"name": "Get All Vendors (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/all",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "all"]
-						}
-					}
-				},
-				{
-					"name": "Get Pending Verifications (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/pending",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "pending"]
-						}
-					}
-				},
-				{
-					"name": "Get Under Review Vendors (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/under-review",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "under-review"]
-						}
-					}
-				},
-				{
-					"name": "Get Verification Stats (Admin)",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/stats",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "stats"]
-						}
-					}
-				},
-				{
-					"name": "Mark Vendor Under Review (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"notes\": \"Additional documentation required\",\n  \"estimated_approval_date\": \"2024-02-01T00:00:00Z\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/{{vendor_id}}/under-review",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "{{vendor_id}}", "under-review"]
-						}
-					}
-				},
-				{
-					"name": "Approve Vendor Documents (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"notes\": \"All documents verified successfully\",\n  \"reviewed_by\": \"admin_user_id\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/{{vendor_id}}/approve",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "{{vendor_id}}", "approve"]
-						}
-					}
-				},
-				{
-					"name": "Reject Vendor Documents (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"reason\": \"Incomplete documentation\",\n  \"notes\": \"Please provide additional business license documents\",\n  \"reviewed_by\": \"admin_user_id\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/{{vendor_id}}/reject",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "{{vendor_id}}", "reject"]
-						}
-					}
-				},
-				{
-					"name": "Reset Vendor Verification (Admin)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor/admin/{{vendor_id}}/reset-verification",
-							"host": ["{{base_url}}"],
-							"path": ["vendor", "admin", "{{vendor_id}}", "reset-verification"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Vendor Applications",
-			"item": [
-				{
-					"name": "Submit Vendor Application",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"business_name\": \"Tasty Bites Restaurant\",\n  \"business_description\": \"A cozy restaurant serving local cuisine\",\n  \"business_type\": \"RESTAURANT\",\n  \"contact_person_name\": \"John Doe\",\n  \"contact_phone\": \"+2348012345678\",\n  \"contact_email\": \"john@tastybites.com\",\n  \"business_address\": \"123 Main Street\",\n  \"business_city\": \"Lagos\",\n  \"business_state\": \"Lagos\",\n  \"business_postal_code\": \"100001\",\n  \"business_country\": \"NG\",\n  \"latitude\": 6.5244,\n  \"longitude\": 3.3792,\n  \"website_url\": \"https://tastybites.com\",\n  \"social_media_handles\": \"@tastybites_ng\",\n  \"additional_notes\": \"Family-owned business since 2010\",\n  \"is_urgent\": false\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor-applications",
-							"host": ["{{base_url}}"],
-							"path": ["vendor-applications"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Submit Vendor Application",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('application');",
-									"    pm.expect(responseJson.application).to.have.property('id');",
-									"});",
-									"",
-									"// Capture application ID",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.application && responseJson.application.id) {",
-									"        pm.collectionVariables.set('application_id', responseJson.application.id);",
-									"        console.log('Vendor Application ID captured:', responseJson.application.id);",
-									"    }",
-									"    ",
-									"    // Capture application status",
-									"    if (responseJson.application && responseJson.application.status) {",
-									"        pm.collectionVariables.set('application_status', responseJson.application.status);",
-									"        console.log('Application Status captured:', responseJson.application.status);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Vendor Application Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Get Vendor Application",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor-applications/{{application_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["vendor-applications", "{{application_id}}"]
-						}
-					}
-				},
-				{
-					"name": "Update Vendor Application",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"business_description\": \"Updated description for our restaurant\",\n  \"website_url\": \"https://updated-tastybites.com\",\n  \"additional_notes\": \"Updated notes with more details\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor-applications/{{application_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["vendor-applications", "{{application_id}}"]
-						}
-					}
-				},
-				{
-					"name": "Submit Application for Review",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/vendor-applications/{{application_id}}/submit",
-							"host": ["{{base_url}}"],
-							"path": ["vendor-applications", "{{application_id}}", "submit"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Vendor Application File Uploads",
-			"item": [
-				{
-					"name": "Upload Application Documents",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "application_id",
-									"value": "{{application_id}}",
-									"type": "text"
-								},
-								{
-									"key": "document_type",
-									"value": "BUSINESS_LICENSE",
-									"type": "text"
-								},
-								{
-									"key": "description",
-									"value": "Business license document",
-									"type": "text"
-								},
-								{
-									"key": "document",
-									"type": "file",
-									"src": []
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor-applications/{{application_id}}/documents",
-							"host": ["{{base_url}}"],
-							"path": ["vendor-applications", "{{application_id}}", "documents"]
-						}
-					}
-				},
-				{
-					"name": "Upload Menu Samples",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "application_id",
-									"value": "{{application_id}}",
-									"type": "text"
-								},
-								{
-									"key": "description",
-									"value": "Sample menu items",
-									"type": "text"
-								},
-								{
-									"key": "menu_sample",
-									"type": "file",
-									"src": []
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/vendor-applications/{{application_id}}/menu-samples",
-							"host": ["{{base_url}}"],
-							"path": ["vendor-applications", "{{application_id}}", "menu-samples"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "File Storage",
-			"item": [
-				{
-					"name": "Upload Image",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "file",
-									"type": "file",
-									"src": []
-								},
-								{
-									"key": "category",
-									"value": "menu-item",
-									"type": "text"
-								},
-								{
-									"key": "processingOptions",
-									"value": "{\"resize\": true, \"maxWidth\": 800, \"maxHeight\": 600, \"quality\": 85}",
-									"type": "text"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/files/upload/image",
-							"host": ["{{base_url}}"],
-							"path": ["files", "upload", "image"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Upload Image",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('file');",
-									"    pm.expect(responseJson.file).to.have.property('id');",
-									"    pm.expect(responseJson.file).to.have.property('url');",
-									"});",
-									"",
-									"// Capture file ID and URL",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.file && responseJson.file.id) {",
-									"        pm.collectionVariables.set('file_id', responseJson.file.id);",
-									"        console.log('File ID captured:', responseJson.file.id);",
-									"    }",
-									"    ",
-									"    if (responseJson.file && responseJson.file.url) {",
-									"        pm.collectionVariables.set('file_url', responseJson.file.url);",
-									"        console.log('File URL captured:', responseJson.file.url);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('File Upload Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Upload File",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"body": {
-							"mode": "formdata",
-							"formdata": [
-								{
-									"key": "file",
-									"type": "file",
-									"src": []
-								},
-								{
-									"key": "category",
-									"value": "menu-item",
-									"type": "text"
-								}
-							]
-						},
-						"url": {
-							"raw": "{{base_url}}/files/upload",
-							"host": ["{{base_url}}"],
-							"path": ["files", "upload"]
-						}
-					},
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Test script for Upload File",
-									"pm.test('Status code is 201', function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('file');",
-									"    pm.expect(responseJson.file).to.have.property('id');",
-									"    pm.expect(responseJson.file).to.have.property('url');",
-									"});",
-									"",
-									"// Capture file ID and URL",
-									"if (pm.response.code === 201) {",
-									"    const responseJson = pm.response.json();",
-									"    if (responseJson.file && responseJson.file.id) {",
-									"        pm.collectionVariables.set('file_id', responseJson.file.id);",
-									"        console.log('File ID captured:', responseJson.file.id);",
-									"    }",
-									"    ",
-									"    if (responseJson.file && responseJson.file.url) {",
-									"        pm.collectionVariables.set('file_url', responseJson.file.url);",
-									"        console.log('File URL captured:', responseJson.file.url);",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('File Upload Response:', pm.response.json());"
-								]
-							}
-						}
-					]
-				},
-				{
-					"name": "Get File",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{base_url}}/files/{{file_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["files", "{{file_id}}"]
-						}
-					}
-				},
-				{
-					"name": "Delete File",
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/files/{{file_id}}",
-							"host": ["{{base_url}}"],
-							"path": ["files", "{{file_id}}"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Notifications",
-			"item": [
-				{
-					"name": "Get User Notifications",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/notifications",
-							"host": ["{{base_url}}"],
-							"path": ["notifications"]
-						}
-					}
-				},
-				{
-					"name": "Create System Notification",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"notification_type\": \"ORDER_UPDATE\",\n  \"title\": \"Order Update\",\n  \"message\": \"Your order has been confirmed\",\n  \"data\": {\n    \"order_id\": \"{{order_id}}\",\n    \"status\": \"CONFIRMED\"\n  },\n  \"delivery_method\": \"IN_APP\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/notifications",
-							"host": ["{{base_url}}"],
-							"path": ["notifications"]
-						}
-					}
-				},
-				{
-					"name": "Create Broadcast Notification",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"notification_type\": \"SYSTEM\",\n  \"title\": \"System Maintenance\",\n  \"message\": \"Scheduled maintenance on Sunday\",\n  \"data\": {\n    \"maintenance_date\": \"2024-01-21T00:00:00Z\",\n    \"duration\": \"2 hours\"\n  },\n  \"delivery_method\": \"IN_APP\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/notifications/broadcast",
-							"host": ["{{base_url}}"],
-							"path": ["notifications", "broadcast"]
-						}
-					}
+					"response": []
 				},
 				{
 					"name": "Mark Notification as Read",
@@ -2273,207 +2469,434 @@
 							"host": ["{{base_url}}"],
 							"path": ["notifications", "{{notification_id}}", "read"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Update Notification Preferences",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
+					"name": "Register Device Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Device token registered successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.token).to.be.a('string');",
+									"    pm.collectionVariables.set('device_token_id', response.id);",
+									"    console.log('Device token registered:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"notification_type\": \"ORDER_UPDATE\",\n  \"in_app_enabled\": true,\n  \"push_enabled\": true,\n  \"sms_enabled\": false,\n  \"email_enabled\": true\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/notifications/preferences",
-							"host": ["{{base_url}}"],
-							"path": ["notifications", "preferences"]
 						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Admin",
-			"item": [
-				{
-					"name": "Admin Login",
+					],
 					"request": {
 						"method": "POST",
 						"header": [
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"phoneNumber\": \"+1234567890\",\n  \"password\": \"admin123\"\n}"
+							"raw": "{\n  \"token\": \"device_push_token_here\",\n  \"platform\": \"ANDROID\",\n  \"deviceId\": \"device_123\",\n  \"deviceModel\": \"Samsung Galaxy S21\",\n  \"appVersion\": \"1.0.0\",\n  \"osVersion\": \"Android 12\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/auth/admin/login",
+							"raw": "{{base_url}}/notifications/register-device",
 							"host": ["{{base_url}}"],
-							"path": ["auth", "admin", "login"]
+							"path": ["notifications", "register-device"]
 						}
 					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📁 File Storage",
+			"item": [
+				{
+					"name": "Upload General File",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
-								"type": "text/javascript",
 								"exec": [
-									"// Test script for Admin Login",
-									"pm.test('Status code is 200', function () {",
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"File uploaded successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.url).to.be.a('string');",
+									"    pm.collectionVariables.set('file_id', response.id);",
+									"    console.log('File uploaded:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "category",
+									"value": "GENERAL",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/upload",
+							"host": ["{{base_url}}"],
+							"path": ["upload"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Menu Item Image",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Menu item image uploaded successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.be.a('string');",
+									"    pm.expect(response.url).to.be.a('string');",
+									"    console.log('Menu item image uploaded:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "image",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/menu-items/{{menu_item_id}}/image",
+							"host": ["{{base_url}}"],
+							"path": ["menu-items", "{{menu_item_id}}", "image"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get File by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has required fields', function () {",
-									"    const responseJson = pm.response.json();",
-									"    pm.expect(responseJson).to.have.property('accessToken');",
-									"    pm.expect(responseJson).to.have.property('refreshToken');",
-									"    pm.expect(responseJson).to.have.property('user');",
-									"});",
-									"",
-									"// Capture admin tokens",
-									"if (pm.response.code === 200) {",
-									"    const responseJson = pm.response.json();",
-									"    ",
-									"    // Capture admin access token",
-									"    if (responseJson.accessToken) {",
-									"        pm.collectionVariables.set('admin_access_token', responseJson.accessToken);",
-									"        console.log('Admin Access Token captured');",
-									"    }",
-									"    ",
-									"    // Capture admin refresh token",
-									"    if (responseJson.refreshToken) {",
-									"        pm.collectionVariables.set('admin_refresh_token', responseJson.refreshToken);",
-									"        console.log('Admin Refresh Token captured');",
-									"    }",
-									"    ",
-									"    // Verify admin role",
-									"    if (responseJson.user && responseJson.user.role) {",
-									"        pm.test('User has admin role', function () {",
-									"            pm.expect(responseJson.user.role).to.equal('ADMIN');",
-									"        });",
-									"    }",
-									"}",
-									"",
-									"// Log response for debugging",
-									"console.log('Admin Login Response:', pm.response.json());"
-								]
+									"pm.test(\"File details returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.id).to.equal(pm.collectionVariables.get('file_id'));",
+									"    pm.expect(response.url).to.be.a('string');",
+									"    console.log('File details:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
 						}
-					]
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/upload/{{file_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["upload", "{{file_id}}"]
+						}
+					},
+					"response": []
 				},
+				{
+					"name": "Delete File",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/upload/{{file_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["upload", "{{file_id}}"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔧 Admin Operations",
+			"item": [
 				{
 					"name": "Get All Users",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Users returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.users).to.be.an('array');",
+									"    pm.expect(response.total).to.be.a('number');",
+									"    console.log('All users:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [
 							{
 								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"url": {
-							"raw": "{{base_url}}/admin/users",
+							"raw": "{{base_url}}/admin/users?page=1&limit=20&user_type=CUSTOMER&is_active=true&sort_by=created_at&sort_order=DESC",
 							"host": ["{{base_url}}"],
-							"path": ["admin", "users"]
+							"path": ["admin", "users"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "user_type",
+									"value": "CUSTOMER"
+								},
+								{
+									"key": "is_active",
+									"value": "true"
+								},
+								{
+									"key": "sort_by",
+									"value": "created_at"
+								},
+								{
+									"key": "sort_order",
+									"value": "DESC"
+								}
+							]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Get All Orders",
+					"name": "Get All Vendors",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Vendors returned\", function () {",
+									"    pm.expect(response.vendors).to.be.an('array');",
+									"    pm.expect(response.total).to.be.a('number');",
+									"    console.log('All vendors:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"method": "GET",
 						"header": [
 							{
 								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"url": {
-							"raw": "{{base_url}}/admin/orders",
+							"raw": "{{base_url}}/admin/vendors?page=1&limit=20&verification_status=PENDING&is_active=true&sort_by=created_at&sort_order=DESC",
 							"host": ["{{base_url}}"],
-							"path": ["admin", "orders"]
+							"path": ["admin", "vendors"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "verification_status",
+									"value": "PENDING"
+								},
+								{
+									"key": "is_active",
+									"value": "true"
+								},
+								{
+									"key": "sort_by",
+									"value": "created_at"
+								},
+								{
+									"key": "sort_order",
+									"value": "DESC"
+								}
+							]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Get Vendor Applications",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
+					"name": "Verify Vendor",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Vendor verified successfully\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.verification_status).to.equal('VERIFIED');",
+									"    console.log('Vendor verified:', response);",
+									"});"
+								],
+								"type": "text/javascript"
 							}
-						],
-						"url": {
-							"raw": "{{base_url}}/admin/vendor-applications",
-							"host": ["{{base_url}}"],
-							"path": ["admin", "vendor-applications"]
 						}
-					}
-				},
-				{
-					"name": "Approve Vendor Application",
+					],
 					"request": {
-						"method": "PUT",
+						"method": "POST",
 						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							},
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"status\": \"APPROVED\",\n  \"comments\": \"Application approved after review\",\n  \"reviewed_by\": \"admin_user_id\",\n  \"review_notes\": \"All requirements met successfully\"\n}"
+							"raw": "{\n  \"verification_status\": \"VERIFIED\",\n  \"admin_notes\": \"All documents verified successfully\",\n  \"verification_date\": \"2024-01-15T10:00:00Z\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/admin/vendor-applications/{{application_id}}/status",
+							"raw": "{{base_url}}/admin/vendors/{{vendor_id}}/verify",
 							"host": ["{{base_url}}"],
-							"path": ["admin", "vendor-applications", "{{application_id}}", "status"]
+							"path": ["admin", "vendors", "{{vendor_id}}", "verify"]
 						}
-					}
+					},
+					"response": []
 				},
 				{
-					"name": "Reject Vendor Application",
+					"name": "Get System Stats",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"System stats returned\", function () {",
+									"    const response = pm.response.json();",
+									"    pm.expect(response.total_users).to.be.a('number');",
+									"    pm.expect(response.total_vendors).to.be.a('number');",
+									"    pm.expect(response.total_orders).to.be.a('number');",
+									"    console.log('System stats:', response);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
-						"method": "PUT",
+						"method": "GET",
 						"header": [
 							{
 								"key": "Authorization",
-								"value": "Bearer {{admin_access_token}}"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
+								"value": "Bearer {{access_token}}"
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"status\": \"REJECTED\",\n  \"comments\": \"Incomplete documentation provided\",\n  \"reviewed_by\": \"admin_user_id\",\n  \"review_notes\": \"Missing required business license documents\"\n}"
-						},
 						"url": {
-							"raw": "{{base_url}}/admin/vendor-applications/{{application_id}}/status",
+							"raw": "{{base_url}}/admin/stats",
 							"host": ["{{base_url}}"],
-							"path": ["admin", "vendor-applications", "{{application_id}}", "status"]
+							"path": ["admin", "stats"]
 						}
-					}
+					},
+					"response": []
 				}
 			]
 		}
@@ -2484,8 +2907,15 @@
 			"script": {
 				"type": "text/javascript",
 				"exec": [
-					"// Pre-request script to set up any required variables",
-					"console.log('Pre-request script executed for:', pm.request.name);"
+					"// Pre-request script to set up common variables",
+					"if (!pm.collectionVariables.get('base_url')) {",
+					"    pm.collectionVariables.set('base_url', 'http://localhost:3500/api/v1');",
+					"    console.log('Base URL set to:', pm.collectionVariables.get('base_url'));",
+					"}",
+					"",
+					"// Log current request details",
+					"console.log('Request:', pm.request.method, pm.request.url);",
+					"console.log('Headers:', pm.request.headers);"
 				]
 			}
 		},
@@ -2494,15 +2924,19 @@
 			"script": {
 				"type": "text/javascript",
 				"exec": [
-					"// Global test script to handle common response processing",
-					"console.log('Test script executed for:', pm.request.name);",
+					"// Global test script for common validations",
+					"pm.test(\"Response time is less than 2000ms\", function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+					"});",
 					"",
-					"// Set response time in environment for monitoring",
-					"pm.environment.set('response_time', pm.response.responseTime);",
+					"pm.test(\"Response has valid JSON\", function () {",
+					"    pm.response.to.be.json;",
+					"});",
 					"",
-					"// Log response status",
+					"// Log response details for debugging",
 					"console.log('Response Status:', pm.response.status);",
-					"console.log('Response Time:', pm.response.responseTime + 'ms');"
+					"console.log('Response Time:', pm.response.responseTime + 'ms');",
+					"console.log('Response Size:', pm.response.size().body + ' bytes');"
 				]
 			}
 		}
@@ -2524,12 +2958,12 @@
 			"type": "string"
 		},
 		{
-			"key": "admin_access_token",
+			"key": "user_id",
 			"value": "",
 			"type": "string"
 		},
 		{
-			"key": "user_id",
+			"key": "user_type",
 			"value": "",
 			"type": "string"
 		},
@@ -2539,7 +2973,17 @@
 			"type": "string"
 		},
 		{
+			"key": "phone_number",
+			"value": "+2348012345678",
+			"type": "string"
+		},
+		{
 			"key": "address_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "cart_item_id",
 			"value": "",
 			"type": "string"
 		},
@@ -2554,7 +2998,7 @@
 			"type": "string"
 		},
 		{
-			"key": "cart_item_id",
+			"key": "vendor_id",
 			"value": "",
 			"type": "string"
 		},
@@ -2564,17 +3008,7 @@
 			"type": "string"
 		},
 		{
-			"key": "application_id",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "vendor_id",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "file_id",
+			"key": "order_number",
 			"value": "",
 			"type": "string"
 		},
@@ -2584,32 +3018,12 @@
 			"type": "string"
 		},
 		{
-			"key": "user_role",
+			"key": "device_token_id",
 			"value": "",
 			"type": "string"
 		},
 		{
-			"key": "order_status",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "application_status",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "file_url",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "admin_refresh_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "vendor_status",
+			"key": "file_id",
 			"value": "",
 			"type": "string"
 		}

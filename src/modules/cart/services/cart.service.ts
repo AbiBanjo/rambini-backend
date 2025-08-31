@@ -44,6 +44,8 @@ export class CartService {
         quantity: existingCartItem.quantity
       });
       this.logger.log(`Updated existing cart item ${updatedCartItem.id} with quantity ${newQuantity}`);
+
+      console.log('updatedCartItem', updatedCartItem);
       
       return this.mapToCartItemResponse(updatedCartItem);
     }
@@ -99,7 +101,8 @@ export class CartService {
     }
 
     const updatedCartItem = await this.cartRepository.update(cartItem.id, {
-      quantity: cartItem.quantity
+      quantity: cartItem.quantity,
+      total_price: cartItem.total_price
     });
     this.logger.log(`Cart item ${cartItemId} updated successfully`);
 

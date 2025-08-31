@@ -109,6 +109,14 @@ export class AddressService {
     return address;
   }
 
+  async getAddressByIdWithoutValidation(addressId: string): Promise<Address | null> {
+    const address = await this.addressRepository.findOne({
+      where: { id: addressId },
+    });
+
+    return address;
+  }
+
   async updateAddress(
     userId: string,
     addressId: string,

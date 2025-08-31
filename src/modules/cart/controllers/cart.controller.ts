@@ -51,8 +51,8 @@ export class CartController {
   @ApiOperation({ summary: 'Get user cart' })
   @ApiResponse({ status: 200, description: 'Cart retrieved successfully', type: CartResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getCart(@Request() req): Promise<CartResponseDto> {
-    return await this.cartService.getCart(req.user.id);
+  async getCart(@GetUser() user: User,): Promise<CartResponseDto> {
+    return await this.cartService.getCart(user.id);
   }
 
   @Get('validate')
