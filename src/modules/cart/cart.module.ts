@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CartItem, MenuItem } from 'src/entities';
 import { MenuModule } from 'src/modules/menu/menu.module';
+import { AuthModule } from 'src/modules/auth/auth.module';
 
 // Controllers
 import { CartController } from './controllers/cart.controller';
@@ -16,6 +17,7 @@ import { CartRepository } from './repositories/cart.repository';
   imports: [
     TypeOrmModule.forFeature([CartItem, MenuItem]),
     MenuModule,
+    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
   ],
   controllers: [
     CartController,

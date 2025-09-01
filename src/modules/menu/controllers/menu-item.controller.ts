@@ -160,7 +160,26 @@ export class MenuItemController {
     roles: [UserType.VENDOR],
     requireVendorOwnership: 'id'
   })
-  @ApiOperation({ summary: 'Update a menu item' })
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiOperation({ summary: 'Update a menu item with optional image upload' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name of the menu item' },
+        description: { type: 'string', description: 'Description of the menu item' },
+        price: { type: 'number', description: 'Price of the menu item' },
+        preparation_time_minutes: { type: 'number', description: 'Preparation time in minutes' },
+        is_available: { type: 'boolean', description: 'Whether the item is available for ordering' },
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Image file for the menu item'
+        },
+      },
+    },
+  })
   @ApiParam({ name: 'id', description: 'Menu item ID' })
   @ApiResponse({ status: 200, description: 'Menu item updated successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -168,12 +187,24 @@ export class MenuItemController {
   @ApiResponse({ status: 404, description: 'Menu item not found' })
   async updateMenuItem(
     @Param('id') id: string,
-    @Request() req,
+    @GetUser() user: User,
     @Body() updateDto: UpdateMenuItemDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+          new FileTypeValidator({ fileType: '.(jpg|jpeg|png|webp)' }),
+        ],
+        fileIsRequired: false, // Make file optional
+      }),
+    )
+    file?: Express.Multer.File,
   ): Promise<MenuItemWithDistanceDto> {
-    const menuItem = await this.menuItemService.updateMenuItem(id, req.user.vendor_id, updateDto);
+    const menuItem = await this.menuItemService.updateMenuItemWithFile(id, user.id, updateDto, file);
     return this.mapToResponseDto(menuItem);
   }
+
+
 
   @Delete(':id')
   @AccessControl({
@@ -185,8 +216,8 @@ export class MenuItemController {
   @ApiResponse({ status: 200, description: 'Menu item deleted successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only owner can delete' })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
-  async deleteMenuItem(@Param('id') id: string, @Request() req): Promise<void> {
-    await this.menuItemService.deleteMenuItem(id, req.user.vendor_id);
+  async deleteMenuItem(@Param('id') id: string,  @GetUser() user: User,): Promise<void> {
+    await this.menuItemService.deleteMenuItem(id, user.id);
   }
 
   @Put(':id/availability')
@@ -199,8 +230,8 @@ export class MenuItemController {
   @ApiResponse({ status: 200, description: 'Availability toggled successfully', type: MenuItemWithDistanceDto })
   @ApiResponse({ status: 403, description: 'Forbidden - Only owner can modify' })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
-  async toggleAvailability(@Param('id') id: string, @Request() req): Promise<MenuItemWithDistanceDto> {
-    const menuItem = await this.menuItemService.toggleItemAvailability(id, req.user.vendor_id);
+  async toggleAvailability(@Param('id') id: string, @GetUser() user: User): Promise<MenuItemWithDistanceDto> {
+    const menuItem = await this.menuItemService.toggleItemAvailability(id, user.id);
     return this.mapToResponseDto(menuItem);
   }
 

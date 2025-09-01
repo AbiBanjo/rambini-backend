@@ -6,10 +6,12 @@ import { UserProfileService } from './services/user-profile.service';
 import { AddressService } from './services/address.service';
 import { AddressController } from './controllers/address.controller';
 import { User, Address } from 'src/entities';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Address]),
+    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
   ],
   controllers: [UserController, AddressController],
   providers: [UserService, UserProfileService, AddressService],

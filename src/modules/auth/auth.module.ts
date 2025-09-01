@@ -23,8 +23,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 // Common services
 import { RedisService } from '../../database/redis.service';
 
-// Import UserModule to get UserService and AddressService
-import { UserModule } from '../user/user.module';
+// User services (import directly to avoid circular dependency)
+import { UserService } from '../user/services/user.service';
+import { AddressService } from '../user/services/address.service';
 
 @Module({
   imports: [
@@ -40,7 +41,6 @@ import { UserModule } from '../user/user.module';
       }),
       inject: [ConfigService],
     }),
-    UserModule, // Import UserModule to get UserService and AddressService
   ],
   controllers: [AuthController],
   providers: [
@@ -51,6 +51,8 @@ import { UserModule } from '../user/user.module';
     JwtAuthGuard,
     JwtStrategy,
     RedisService,
+    UserService, // Provide UserService directly
+    AddressService, // Provide AddressService directly
   ],
   exports: [AuthService, JWTService, JwtAuthGuard],
 })

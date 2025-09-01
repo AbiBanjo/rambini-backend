@@ -261,13 +261,78 @@ export class MenuItemService {
     return updatedMenuItem;
   }
 
-  async deleteMenuItem(id: string, vendorId: string): Promise<void> {
-    this.logger.log(`Deleting menu item ${id} for vendor ${vendorId}`);
+  async updateMenuItemWithFile(
+    id: string,
+    userId: string,
+    updateDto: UpdateMenuItemDto,
+    file?: Express.Multer.File,
+  ): Promise<MenuItem> {
+    this.logger.log(`Updating menu item ${id} with file for vendor ${userId}`);
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
 
     const menuItem = await this.getMenuItemById(id);
+    // if menu does not exist 
+    if (!menuItem) {
+      throw new NotFoundException('Menu item not found')
+    }
+    // Verify ownership
+    if (menuItem.vendor_id !== vendor.id) {
+      throw new ForbiddenException('You can only update your own menu items');
+    }
+
+    // Validate category if being updated
+    if (updateDto.category_id) {
+      const category = await this.categoryRepository.findById(updateDto.category_id);
+      if (!category) {
+        throw new NotFoundException(`Category with ID ${updateDto.category_id} not found`);
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = { ...updateDto };
+
+    // If file is provided, process it and add image_url
+    if (file) {
+      // Import FileStorageService dynamically to avoid circular dependency
+      const { FileStorageService } = await import('src/modules/file-storage/services/file-storage.service');
+      const fileStorageService = new FileStorageService(this.configService);
+      
+      // Upload image to cloud storage
+      const uploadedFile = await fileStorageService.uploadImage(file, {
+        quality: 85,
+        createThumbnail: true,
+        thumbnailSize: 300,
+      });
+      
+      updateData.image_url = uploadedFile.url;
+      this.logger.log(`Image uploaded successfully: ${uploadedFile.url}`);
+    }
+
+    const updatedMenuItem = await this.menuItemRepository.update(id, updateData);
+    if (!updatedMenuItem) {
+      throw new NotFoundException(`Failed to update menu item ${id}`);
+    }
+
+    this.logger.log(`Menu item ${id} updated successfully`);
+    return updatedMenuItem;
+  }
+
+  async deleteMenuItem(id: string, userId: string): Promise<void> {
+    this.logger.log(`Deleting menu item ${id} for vendor ${userId}`);
+
+    const menuItem = await this.getMenuItemById(id);
+
+    // get vendor id from user id
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
     
     // Verify ownership
-    if (menuItem.vendor_id !== vendorId) {
+    if (menuItem.vendor_id !== vendor.id) {
       throw new ForbiddenException('You can only delete your own menu items');
     }
 
@@ -275,13 +340,19 @@ export class MenuItemService {
     this.logger.log(`Menu item ${id} deleted successfully`);
   }
 
-  async toggleItemAvailability(id: string, vendorId: string): Promise<MenuItem> {
+  async toggleItemAvailability(id: string, userId: string): Promise<MenuItem> {
     this.logger.log(`Toggling availability for menu item ${id}`);
 
     const menuItem = await this.getMenuItemById(id);
+
+    // get vendor id from user id
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
     
     // Verify ownership
-    if (menuItem.vendor_id !== vendorId) {
+    if (menuItem.vendor_id !== vendor.id) {
       throw new ForbiddenException('You can only modify your own menu items');
     }
 

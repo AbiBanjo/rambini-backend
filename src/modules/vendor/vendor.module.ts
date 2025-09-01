@@ -4,11 +4,13 @@ import { Vendor } from '../../entities';
 import { VendorController } from './controllers/vendor.controller';
 import { VendorService } from './services/vendor.service';
 import { UserModule } from '../user/user.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Vendor]),
     UserModule, // Import UserModule to get AddressService
+    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
   ],
   controllers: [VendorController],
   providers: [VendorService],

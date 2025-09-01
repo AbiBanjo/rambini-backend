@@ -4,6 +4,7 @@ import { Order, OrderItem, MenuItem, Vendor, User, Address } from 'src/entities'
 import { CartModule } from 'src/modules/cart/cart.module';
 import { MenuModule } from 'src/modules/menu/menu.module';
 import { UserModule } from 'src/modules/user/user.module';
+import { AuthModule } from 'src/modules/auth/auth.module';
 
 // Controllers
 import { OrderController } from './controllers/order.controller';
@@ -21,6 +22,7 @@ import { OrderRepository } from './repositories/order.repository';
     CartModule,
     MenuModule,
     UserModule,
+    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
   ],
   controllers: [
     OrderController,

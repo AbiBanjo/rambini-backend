@@ -26,10 +26,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token payload');
     }
 
-    // Check if token is expired
-    // if (this.jwtService.isTokenExpired(payload.sub)) {
-    //   throw new UnauthorizedException('Token expired');
-    // }
+    // Check if token is expired (this is handled by passport-jwt, but we can add additional checks)
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      throw new UnauthorizedException('Token has expired. Please login again.');
+    }
 
     // Fetch complete user data from database
     try {
@@ -42,6 +42,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       
       return user;
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('User not found or inactive');
     }
   }

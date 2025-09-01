@@ -18,13 +18,15 @@ import { CategoryRepository } from './repositories/category.repository';
 // modules
 import { VendorModule } from '../vendor/vendor.module';
 import { UserModule } from '../user/user.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([MenuItem, Category, Vendor]),
     FileStorageModule,
     VendorModule,
-    UserModule
+    UserModule,
+    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
   ],
   controllers: [
     MenuItemController,

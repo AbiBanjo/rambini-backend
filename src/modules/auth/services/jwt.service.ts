@@ -107,6 +107,18 @@ export class JWTService {
     return expiration < new Date();
   }
 
+  isTokenExpiredSafely(token: string): { expired: boolean; error?: string } {
+    try {
+      const expiration = this.getTokenExpiration(token);
+      if (!expiration) {
+        return { expired: true, error: 'Invalid token format' };
+      }
+      return { expired: expiration < new Date() };
+    } catch (error) {
+      return { expired: true, error: error.message };
+    }
+  }
+
   getTokenTimeToExpiry(token: string): number {
     const expiration = this.getTokenExpiration(token);
     if (!expiration) {

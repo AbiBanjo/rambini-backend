@@ -130,3 +130,7 @@ docker-compose.override.yml
 Dockerfile
 docker-compose.yml
 .dockerignore
+
+examples/
+docs/
+*.md

@@ -3,10 +3,12 @@ import { ConfigModule } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
 import { FileStorageService } from './services/file-storage.service';
 import { FileUploadController } from './controllers/file-upload.controller';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     ConfigModule,
+    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
     MulterModule.register({
       storage: undefined, // Use memory storage for processing
       limits: {
