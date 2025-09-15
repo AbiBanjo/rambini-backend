@@ -7,6 +7,7 @@ export interface UpdateProfileRequest {
   firstName?: string;
   lastName?: string;
   email?: string;
+  country?: string;
   dateOfBirth?: Date;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
   profilePicture?: string;

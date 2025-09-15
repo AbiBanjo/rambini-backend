@@ -29,7 +29,7 @@ export enum PaymentMethod {
   WALLET = 'WALLET',
   STRIPE = 'STRIPE',
   PAYSTACK = 'PAYSTACK',
-  CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
+  MERCURY = 'MERCURY',
 }
 
 export enum PaymentStatus {

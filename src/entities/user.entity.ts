@@ -5,7 +5,7 @@ import {
   OneToOne,
   Index,
 } from 'typeorm';
-import { IsEmail, IsPhoneNumber, IsEnum, IsOptional, IsBoolean, IsDateString } from 'class-validator';
+import { IsEmail, IsPhoneNumber, IsEnum, IsOptional, IsBoolean, IsDateString, IsString } from 'class-validator';
 import { BaseEntity } from './base.entity';
 import { Address } from './address.entity';
 import { Vendor } from './vendor.entity';
@@ -49,6 +49,11 @@ export class User extends BaseEntity {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @Column({ type: 'varchar', length: 2, nullable: true, comment: 'ISO 3166-1 alpha-2 country code' })
+  @IsOptional()
+  @IsString()
+  country?: string;
 
   @Column({ type: 'enum', enum: UserType, default: UserType.CUSTOMER })
   @IsEnum(UserType)

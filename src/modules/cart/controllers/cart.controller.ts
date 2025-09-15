@@ -23,6 +23,8 @@ import {
   UpdateCartItemDto,
   CartResponseDto,
   CartItemResponseDto,
+  GroupedCartResponseDto,
+  VendorCartResponseDto,
 } from '../dto';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
@@ -55,12 +57,60 @@ export class CartController {
     return await this.cartService.getCart(user.id);
   }
 
+  @Get('grouped')
+  @ApiOperation({ summary: 'Get user cart grouped by vendor' })
+  @ApiResponse({ status: 200, description: 'Grouped cart retrieved successfully', type: GroupedCartResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getCartGroupedByVendor(@GetUser() user: User): Promise<GroupedCartResponseDto> {
+    return await this.cartService.getCartGroupedByVendor(user.id);
+  }
+
+  @Get('inactive')
+  @ApiOperation({ summary: 'Get user inactive cart items' })
+  @ApiResponse({ status: 200, description: 'Inactive cart retrieved successfully', type: CartResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getInactiveCart(@GetUser() user: User): Promise<CartResponseDto> {
+    return await this.cartService.getCart(user.id, false);
+  }
+
+  @Get('inactive/grouped')
+  @ApiOperation({ summary: 'Get user inactive cart items grouped by vendor' })
+  @ApiResponse({ status: 200, description: 'Inactive grouped cart retrieved successfully', type: GroupedCartResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getInactiveCartGroupedByVendor(@GetUser() user: User): Promise<GroupedCartResponseDto> {
+    return await this.cartService.getCartGroupedByVendor(user.id, false);
+  }
+
+  @Get('vendor/:vendorId')
+  @ApiOperation({ summary: 'Get user active cart items by vendor ID' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({ status: 200, description: 'Vendor cart retrieved successfully', type: VendorCartResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getCartByVendor(
+    @GetUser() user: User,
+    @Param('vendorId') vendorId: string,
+  ): Promise<VendorCartResponseDto> {
+    return await this.cartService.getCartByVendor(user.id, vendorId);
+  }
+
+  @Get('vendor/:vendorId/inactive')
+  @ApiOperation({ summary: 'Get user inactive cart items by vendor ID' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({ status: 200, description: 'Inactive vendor cart retrieved successfully', type: VendorCartResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getInactiveCartByVendor(
+    @GetUser() user: User,
+    @Param('vendorId') vendorId: string,
+  ): Promise<VendorCartResponseDto> {
+    return await this.cartService.getCartByVendor(user.id, vendorId, false);
+  }
+
   @Get('validate')
   @ApiOperation({ summary: 'Validate cart items' })
   @ApiResponse({ status: 200, description: 'Cart validation completed' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async validateCart(@Request() req) {
-    return await this.cartService.validateCart(req.user.id);
+  async validateCart(@GetUser() user: User) {
+    return await this.cartService.validateCart(user.id);
   }
 
   @Get('item/:id')
@@ -70,10 +120,10 @@ export class CartController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Cart item not found' })
   async getCartItem(
-    @Request() req,
+    @GetUser() user: User,
     @Param('id') id: string,
   ): Promise<CartItemResponseDto> {
-    return await this.cartService.getCartItemById(req.user.id, id);
+    return await this.cartService.getCartItemById(user.id, id);
   }
 
   @Put('item/:id')
@@ -84,11 +134,11 @@ export class CartController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Cart item not found' })
   async updateCartItem(
-    @Request() req,
+    @GetUser() user: User,
     @Param('id') id: string,
     @Body() updateDto: UpdateCartItemDto,
   ): Promise<CartItemResponseDto> {
-    return await this.cartService.updateCartItem(req.user.id, id, updateDto);
+    return await this.cartService.updateCartItem(user.id, id, updateDto);
   }
 
   @Delete('item/:id')
@@ -98,18 +148,18 @@ export class CartController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Cart item not found' })
   async removeFromCart(
-    @Request() req,
+    @GetUser() user: User,
     @Param('id') id: string,
   ): Promise<void> {
-    await this.cartService.removeFromCart(req.user.id, id);
+    await this.cartService.removeFromCart(user.id, id);
   }
 
   @Delete('clear')
   @ApiOperation({ summary: 'Clear entire cart' })
   @ApiResponse({ status: 200, description: 'Cart cleared successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async clearCart(@Request() req) {
-    return await this.cartService.clearCart(req.user.id);
+  async clearCart(@GetUser() user: User) {
+    return await this.cartService.clearCart(user.id);
   }
 
   @Post('checkout/validate')
@@ -117,8 +167,8 @@ export class CartController {
   @ApiResponse({ status: 200, description: 'Cart validation for checkout completed' })
   @ApiResponse({ status: 400, description: 'Cart validation failed' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async validateCartForCheckout(@Request() req) {
-    const validation = await this.cartService.validateCart(req.user.id);
+  async validateCartForCheckout(@GetUser() user: User) {
+    const validation = await this.cartService.validateCart(user.id);
     
     if (!validation.is_valid) {
       return {

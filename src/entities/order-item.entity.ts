@@ -35,15 +35,6 @@ export class OrderItem extends BaseEntity {
   @Min(0)
   total_price: number;
 
-  @Column({ type: 'text', nullable: true })
-  @IsOptional()
-  @IsString()
-  special_instructions?: string;
-
-  @Column({ type: 'json', nullable: true })
-  @IsOptional()
-  @IsJSON()
-  variants?: Record<string, any>;
 
   // Relationships
   @ManyToOne('Order', { onDelete: 'CASCADE' })
@@ -54,15 +45,7 @@ export class OrderItem extends BaseEntity {
   @JoinColumn({ name: 'menu_item_id' })
   menu_item: any;
 
-  // Virtual properties
-  get has_variants(): boolean {
-    return this.variants && Object.keys(this.variants).length > 0;
-  }
-
-  get has_special_instructions(): boolean {
-    return !!this.special_instructions;
-  }
-
+ 
   // Methods
   calculateTotal(): void {
     this.total_price = this.unit_price * this.quantity;
@@ -78,15 +61,4 @@ export class OrderItem extends BaseEntity {
     this.calculateTotal();
   }
 
-  addSpecialInstructions(instructions: string): void {
-    this.special_instructions = instructions;
-  }
-
-  addVariants(variants: Record<string, any>): void {
-    this.variants = variants;
-  }
-
-  getVariantValue(variantName: string): any {
-    return this.variants?.[variantName];
-  }
 } 

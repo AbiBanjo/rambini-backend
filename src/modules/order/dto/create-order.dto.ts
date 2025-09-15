@@ -1,33 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsArray, ValidateNested, Min, Max } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsEnum, IsOptional, IsArray, ArrayNotEmpty, ArrayMinSize } from 'class-validator';
 import { OrderType, PaymentMethod } from 'src/entities';
 
-export class OrderItemDto {
-  @ApiProperty({ description: 'Menu item ID' })
-  @IsString()
-  menu_item_id: string;
-
-  @ApiProperty({ description: 'Quantity ordered', minimum: 1, maximum: 99 })
-  @IsNumber()
-  @Min(1)
-  @Max(99)
-  quantity: number;
-
-  @ApiPropertyOptional({ description: 'Special instructions for this item' })
-  @IsOptional()
-  @IsString()
-  special_instructions?: string;
-
-  @ApiPropertyOptional({ description: 'Customizations as JSON object' })
-  @IsOptional()
-  customizations?: Record<string, any>;
-}
-
 export class CreateOrderDto {
+  @ApiProperty({ description: 'Array of cart item IDs to checkout', type: [String] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  cart_item_ids: string[];
+
   @ApiProperty({ description: 'Delivery address ID' })
   @IsString()
-  delivery_address_id: string;
+  delivery_address_id?: string;
 
   @ApiProperty({ description: 'Order type', enum: OrderType })
   @IsEnum(OrderType)
@@ -46,18 +31,6 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   vendor_notes?: string;
-
-  @ApiPropertyOptional({ description: 'Whether to use existing cart items', default: true })
-  @IsOptional()
-  @IsBoolean()
-  use_cart_items?: boolean;
-
-  @ApiPropertyOptional({ description: 'Custom order items (if not using cart)' })
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => OrderItemDto)
-  custom_items?: OrderItemDto[];
 
   @ApiPropertyOptional({ description: 'Estimated delivery time preference' })
   @IsOptional()

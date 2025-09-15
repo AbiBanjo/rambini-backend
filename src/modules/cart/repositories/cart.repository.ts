@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository, SelectQueryBuilder, In } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CartItem, MenuItem, Vendor, Category } from 'src/entities';
 
@@ -47,6 +47,30 @@ export class CartRepository {
     });
   }
 
+  async findByCartItemIds(userId: string, cartItemIds: string[]): Promise<CartItem[]> {
+    if (!cartItemIds || cartItemIds.length === 0) {
+      return [];
+    }
+
+    return await this.cartItemRepository.find({
+      where: { 
+        id: In(cartItemIds),
+        user_id: userId,
+        is_active: true 
+      },
+      relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
+      order: { created_at: 'ASC' },
+    });
+  }
+
+  async findInactiveByUserId(userId: string): Promise<CartItem[]> {
+    return await this.cartItemRepository.find({
+      where: { user_id: userId, is_active: false },
+      relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
+      order: { created_at: 'ASC' },
+    });
+  }
+
   async update(id: string, updateData: Partial<CartItem>): Promise<CartItem | null> {
     await this.cartItemRepository.update(id, updateData);
     return await this.findById(id);
@@ -83,13 +107,13 @@ export class CartRepository {
     return await this.cartItemRepository.save(cartItem);
   }
 
-  async getCartSummary(userId: string): Promise<{
+  async getCartSummary(userId: string, isActive: boolean = true): Promise<{
     total_items: number;
     subtotal: number;
     vendor_count: number;
     is_empty: boolean;
   }> {
-    const cartItems = await this.findActiveByUserId(userId);
+    const cartItems = isActive ? await this.findActiveByUserId(userId) : await this.findInactiveByUserId(userId);
     
     if (cartItems.length === 0) {
       return {
@@ -152,15 +176,71 @@ export class CartRepository {
     return { valid_items, invalid_items, errors };
   }
 
-  async getCartWithDetails(userId: string): Promise<CartItem[]> {
+  async getCartWithDetails(userId: string, isActive: boolean = true): Promise<CartItem[]> {
     return await this.cartItemRepository
       .createQueryBuilder('cart_item')
       .leftJoinAndSelect('cart_item.menu_item', 'menu_item')
       .leftJoinAndSelect('menu_item.vendor', 'vendor')
       .leftJoinAndSelect('menu_item.category', 'category')
       .where('cart_item.user_id = :userId', { userId })
-      .andWhere('cart_item.is_active = :isActive', { isActive: true })
+      .andWhere('cart_item.is_active = :isActive', { isActive })
       .orderBy('cart_item.created_at', 'ASC')
       .getMany();
+  }
+
+  async getCartItemsGroupedByVendor(userId: string, isActive: boolean = true): Promise<CartItem[]> {
+    return await this.cartItemRepository
+      .createQueryBuilder('cart_item')
+      .leftJoinAndSelect('cart_item.menu_item', 'menu_item')
+      .leftJoinAndSelect('menu_item.vendor', 'vendor')
+      .leftJoinAndSelect('menu_item.category', 'category')
+      .where('cart_item.user_id = :userId', { userId })
+      .andWhere('cart_item.is_active = :isActive', { isActive })
+      .orderBy('vendor.business_name', 'ASC')
+      .addOrderBy('cart_item.created_at', 'ASC')
+      .getMany();
+  }
+
+  // Keep the old method for backward compatibility
+  async getActiveCartItemsGroupedByVendor(userId: string): Promise<CartItem[]> {
+    return this.getCartItemsGroupedByVendor(userId, true);
+  }
+
+  async getCartItemsByVendor(userId: string, vendorId: string, isActive: boolean = true): Promise<CartItem[]> {
+    return await this.cartItemRepository
+      .createQueryBuilder('cart_item')
+      .leftJoinAndSelect('cart_item.menu_item', 'menu_item')
+      .leftJoinAndSelect('menu_item.vendor', 'vendor')
+      .leftJoinAndSelect('menu_item.category', 'category')
+      .where('cart_item.user_id = :userId', { userId })
+      .andWhere('cart_item.vendor_id = :vendorId', { vendorId })
+      .andWhere('cart_item.is_active = :isActive', { isActive })
+      .orderBy('cart_item.created_at', 'ASC')
+      .getMany();
+  }
+
+  async getCartSummaryByVendor(userId: string, vendorId: string, isActive: boolean = true): Promise<{
+    total_items: number;
+    subtotal: number;
+    is_empty: boolean;
+  }> {
+    const cartItems = await this.getCartItemsByVendor(userId, vendorId, isActive);
+    
+    if (cartItems.length === 0) {
+      return {
+        total_items: 0,
+        subtotal: 0,
+        is_empty: true,
+      };
+    }
+
+    const total_items = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+    const subtotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+
+    return {
+      total_items,
+      subtotal,
+      is_empty: false,
+    };
   }
 } 

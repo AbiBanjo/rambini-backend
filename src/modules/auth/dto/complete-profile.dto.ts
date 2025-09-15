@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean, IsNumber, Min, Max, Length, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -104,6 +104,17 @@ export class CompleteProfileDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiProperty({
+    description: 'User country code (ISO 3166-1 alpha-2)',
+    example: 'NG',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  @Length(2, 2, { message: 'Country must be exactly 2 characters' })
+  @Matches(/^[A-Z]{2}$/, { message: 'Country must be a 2-letter uppercase ISO code (e.g., NG, US, UK)' })
+  country?: string;
 
   @ApiProperty({
     description: 'User address information (optional)',

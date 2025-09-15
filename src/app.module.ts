@@ -13,7 +13,7 @@ import { FileStorageModule } from './modules/file-storage/file-storage.module';
 import { MenuModule } from './modules/menu/menu.module';
 import { CartModule } from './modules/cart/cart.module';
 import { OrderModule } from './modules/order/order.module';
-// import { PaymentModule } from './modules/payment/payment.module';
+import { PaymentModule } from './modules/payment/payment.module';
 // import { NotificationModule } from './modules/notification/notification.module';
 // import { AdminModule } from './modules/admin/admin.module';
 
@@ -59,7 +59,7 @@ import { CommonModule } from './common/common.module';
     MenuModule,
     CartModule,
     OrderModule,
-    // PaymentModule,
+    PaymentModule,
     // NotificationModule,
     // AdminModule,
     

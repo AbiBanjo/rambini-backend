@@ -37,11 +37,11 @@ export class OrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new order from cart or custom items' })
+  @ApiOperation({ summary: 'Create a new order from selected cart items' })
   @ApiResponse({ status: 201, description: 'Order created successfully', type: OrderResponseDto })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid order data or cart issues' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid cart items, single vendor requirement not met, or cart validation issues' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 404, description: 'Delivery address or menu items not found' })
+  @ApiResponse({ status: 404, description: 'Delivery address or cart items not found' })
   async createOrder(
     @GetUser() user: User,
     @Body() createOrderDto: CreateOrderDto,

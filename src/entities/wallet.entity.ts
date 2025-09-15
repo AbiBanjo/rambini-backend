@@ -36,17 +36,7 @@ export class Wallet extends BaseEntity {
   @IsBoolean()
   is_active: boolean;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 1000000.0 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  daily_limit?: number;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 10000000.0 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  monthly_limit?: number;
 
   @Column({ type: 'timestamp', nullable: true })
   @IsOptional()
@@ -87,12 +77,4 @@ export class Wallet extends BaseEntity {
     return this.is_active && this.balance >= amount;
   }
 
-  updateLimits(daily?: number, monthly?: number): void {
-    if (daily !== undefined && daily >= 0) {
-      this.daily_limit = daily;
-    }
-    if (monthly !== undefined && monthly >= 0) {
-      this.monthly_limit = monthly;
-    }
-  }
 } 

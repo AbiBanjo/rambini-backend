@@ -64,4 +64,67 @@ export class CartResponseDto {
 
   @ApiProperty({ description: 'Number of unique vendors in cart' })
   vendor_count: number;
+}
+
+export class VendorCartGroupDto {
+  @ApiProperty({ description: 'Vendor ID' })
+  vendor_id: string;
+
+  @ApiProperty({ description: 'Vendor business name' })
+  vendor_name: string;
+
+  @ApiProperty({ description: 'Array of cart items from this vendor' })
+  items: CartItemResponseDto[];
+
+  @ApiProperty({ description: 'Total number of items from this vendor' })
+  vendor_total_items: number;
+
+  @ApiProperty({ description: 'Subtotal for this vendor' })
+  vendor_subtotal: number;
+}
+
+export class GroupedCartResponseDto {
+  @ApiProperty({ description: 'User ID' })
+  user_id: string;
+
+  @ApiProperty({ description: 'Cart items grouped by vendor' })
+  vendors: VendorCartGroupDto[];
+
+  @ApiProperty({ description: 'Total number of items across all vendors' })
+  total_items: number;
+
+  @ApiProperty({ description: 'Subtotal amount across all vendors' })
+  subtotal: number;
+
+  @ApiProperty({ description: 'Total amount including fees' })
+  total_amount: number;
+
+  @ApiProperty({ description: 'Whether cart is empty' })
+  is_empty: boolean;
+
+  @ApiProperty({ description: 'Number of unique vendors in cart' })
+  vendor_count: number;
+}
+
+export class VendorCartResponseDto {
+  @ApiProperty({ description: 'User ID' })
+  user_id: string;
+
+  @ApiProperty({ description: 'Vendor ID' })
+  vendor_id: string;
+
+  @ApiProperty({ description: 'Vendor business name' })
+  vendor_name: string;
+
+  @ApiProperty({ description: 'Array of cart items from this vendor' })
+  items: CartItemResponseDto[];
+
+  @ApiProperty({ description: 'Total number of items from this vendor' })
+  total_items: number;
+
+  @ApiProperty({ description: 'Subtotal for this vendor' })
+  subtotal: number;
+
+  @ApiProperty({ description: 'Whether vendor cart is empty' })
+  is_empty: boolean;
 } 

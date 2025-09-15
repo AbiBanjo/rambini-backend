@@ -8,6 +8,7 @@ import { JWTService, TokenPair } from './jwt.service';
 import { UserService } from '../../user/services/user.service';
 import { AddressService } from '../../user/services/address.service';
 import { RegisterDto, VerifyOtpDto, CompleteProfileDto } from '../dto';
+import { getCurrencyForCountry } from '../../../utils/currency-mapper';
 
 export interface AuthResponse {
   user: {
@@ -18,6 +19,7 @@ export interface AuthResponse {
     firstName?: string;
     lastName?: string;
     email?: string;
+    country?: string;
   };
   tokens: TokenPair;
 }
@@ -130,16 +132,7 @@ export class AuthService {
         profile_completed: false,
       });
 
-      // Create wallet for user
-      const wallet = this.walletRepository.create({
-        user_id: user.id,
-        balance: 0,
-        currency: Currency.NGN,
-      });
-
-      await this.walletRepository.save(wallet);
-
-      this.logger.log(`Created new user ${user.id} with wallet`);
+      this.logger.log(`Created new user ${user.id}`);
     } else {
       // Update existing user verification status
       user = await this.userService.markPhoneVerified(user.id);
@@ -157,6 +150,7 @@ export class AuthService {
         firstName: user.first_name,
         lastName: user.last_name,
         email: user.email,
+        country: user.country,
       },
       tokens,
     };
@@ -178,8 +172,31 @@ export class AuthService {
       first_name: profileRequest.firstName,
       last_name: profileRequest.lastName,
       email: profileRequest.email,
+      country: profileRequest.country,
       profile_completed: true,
     });
+
+    // Create or update wallet with country-based currency
+    const currency = getCurrencyForCountry(profileRequest.country);
+    let wallet = await this.walletRepository.findOne({
+      where: { user_id: userId }
+    });
+    
+    if (!wallet) {
+      // Create new wallet for user
+      wallet = this.walletRepository.create({
+        user_id: userId,
+        balance: 0,
+        currency: currency,
+      });
+      await this.walletRepository.save(wallet);
+      this.logger.log(`Created wallet with currency ${currency} for user ${userId}`);
+    } else if (wallet.currency !== currency) {
+      // Update existing wallet currency
+      wallet.currency = currency;
+      await this.walletRepository.save(wallet);
+      this.logger.log(`Updated wallet currency to ${currency} for user ${userId}`);
+    }
 
     // Create default address if provided
     if (profileRequest.address) {
@@ -224,6 +241,7 @@ export class AuthService {
         firstName: updatedUser.first_name,
         lastName: updatedUser.last_name,
         email: updatedUser.email,
+        country: updatedUser.country,
       },
       tokens,
     };

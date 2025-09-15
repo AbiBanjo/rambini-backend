@@ -3,6 +3,7 @@ import { OrderRepository } from '../repositories/order.repository';
 import { CartService } from 'src/modules/cart/services/cart.service';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
 import { AddressService } from 'src/modules/user/services/address.service';
+import { PaymentService } from 'src/modules/payment/services/payment.service';
 import { 
   CreateOrderDto, 
   UpdateOrderStatusDto, 
@@ -21,106 +22,29 @@ export class OrderService {
     private readonly cartService: CartService,
     private readonly menuItemRepository: MenuItemRepository,
     private readonly addressService: AddressService,
+    private readonly paymentService: PaymentService,
   ) {}
 
-  /**
-   * Creates a new order for a customer
-   * 
-   * Vendor Validation Rules:
-   * 1. All items in an order must be from the same vendor
-   * 2. Vendor ID must be valid and not empty
-   * 3. This is enforced at multiple levels:
-   *    - Application level: validateSingleVendor() method
-   *    - Database level: Foreign key constraints on vendor_id
-   *    - Business logic: Single vendor per order requirement
-   * 
-   * @param customerId The ID of the customer placing the order
-   * @param createOrderDto The order creation data
-   * @returns OrderResponseDto The created order
-   * @throws BadRequestException if vendor validation fails
-   * @throws NotFoundException if required entities not found
-   */
   async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto> {
-    this.logger.log(`Creating order for customer ${customerId}`);
+    this.logger.log(`Creating order for customer ${customerId} with cart items: ${createOrderDto.cart_item_ids.join(', ')}`);
 
-    // Validate delivery address
+    // Validate delivery address if there is one
+    if(createOrderDto.delivery_address_id){	
     const deliveryAddress = await this.addressService.getAddressById(customerId, createOrderDto.delivery_address_id);
     if (!deliveryAddress) {
       throw new NotFoundException('Delivery address not found');
     }
 
-    // Get order items from cart or custom items
-    let orderItems: any[] = [];
-    let vendorId: string | null = null;
-    let subtotal = 0;
+  }
 
-    if (createOrderDto.use_cart_items !== false) {
-      // Use cart items
-      const cart = await this.cartService.getCart(customerId);
-      if (cart.items.length === 0) {
-        throw new BadRequestException('Cart is empty. Please add items to cart before placing order.');
-      }
-
-      // Validate cart items
-      const cartValidation = await this.cartService.validateCart(customerId);
-      if (!cartValidation.is_valid) {
-        throw new BadRequestException('Cart contains invalid items. Please resolve issues before placing order.');
-      }
-
-      // Validate single vendor using utility method
-      vendorId = this.validateSingleVendor(cart.items, 'cart items');
-
-      orderItems = cart.items.map(item => ({
-        menu_item_id: item.menu_item_id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-      }));
-
-      subtotal = cart.subtotal;
-    } else if (createOrderDto.custom_items && createOrderDto.custom_items.length > 0) {
-      // Use custom items
-      const menuItems = await Promise.all(
-        createOrderDto.custom_items.map(async (item) => {
-          if (!item.menu_item_id || item.menu_item_id.trim() === '') {
-            throw new BadRequestException('Menu item ID is required for all custom items');
-          }
-          
-          const menuItem = await this.menuItemRepository.findById(item.menu_item_id);
-          if (!menuItem) {
-            throw new NotFoundException(`Menu item ${item.menu_item_id} not found`);
-          }
-          if (!menuItem.is_available) {
-            throw new BadRequestException(`Menu item "${menuItem.name}" is not available`);
-          }
-          if (!menuItem.vendor_id || menuItem.vendor_id.trim() === '') {
-            throw new BadRequestException(`Menu item "${menuItem.name}" has invalid vendor information`);
-          }
-          return { menuItem, orderItem: item };
-        })
-      );
-
-      // Validate single vendor using utility method
-      vendorId = this.validateSingleVendor(menuItems.map(item => ({ vendor_id: item.menuItem.vendor_id })), 'custom items');
-
-      orderItems = menuItems.map(item => ({
-        menu_item_id: item.menuItem.id,
-        quantity: item.orderItem.quantity,
-        unit_price: item.menuItem.price,
-        total_price: item.menuItem.price * item.orderItem.quantity,
-        special_instructions: item.orderItem.special_instructions,
-        customizations: item.orderItem.customizations,
-      }));
-
-      subtotal = orderItems.reduce((sum, item) => sum + item.total_price, 0);
-    } else {
-      throw new BadRequestException('Either use cart items or provide custom items');
+    // Validate cart items for checkout
+    const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, createOrderDto.cart_item_ids);
+    
+    if (!cartValidation.is_valid) {
+      throw new BadRequestException(`Cart validation failed: ${cartValidation.issues.join(', ')}`);
     }
 
-    // Final vendor validation before creating order
-    if (!vendorId || vendorId.trim() === '') {
-      throw new BadRequestException('Valid vendor information is required to create an order');
-    }
+    const { cartItems, vendorId, subtotal } = cartValidation;
 
     // Validate that vendor exists and is active
     await this.validateVendorExistsAndActive(vendorId);
@@ -153,26 +77,49 @@ export class OrderService {
       discount_amount: discountAmount,
       commission_amount: commissionAmount,
       total_amount: totalAmount,
-      // delivery_instructions: createOrderDto.delivery_instructions,
+      special_instructions: createOrderDto.delivery_instructions,
       vendor_notes: createOrderDto.vendor_notes,
     });
 
-    // Create order items
-    for (const item of orderItems) {
+    // Create order items from cart items
+    for (const cartItem of cartItems) {
       await this.orderRepository.createOrderItem({
         order_id: order.id,
-        menu_item_id: item.menu_item_id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        total_price: item.total_price,
-        special_instructions: item.special_instructions,
-        // customizations: item.customizations,
+        menu_item_id: cartItem.menu_item_id,
+        quantity: cartItem.quantity,
+        unit_price: cartItem.unit_price,
+        total_price: cartItem.total_price,
       });
     }
 
-    // Clear cart if using cart items
-    if (createOrderDto.use_cart_items !== false) {
-      await this.cartService.clearCart(customerId);
+    // Remove cart items that were used in the order
+    await this.cartService.removeCartItems(customerId, createOrderDto.cart_item_ids);
+
+    // Process payment based on payment method
+    try {
+      if (createOrderDto.payment_method === PaymentMethod.WALLET) {
+        // For wallet payments, process immediately
+        await this.paymentService.processPayment({
+          order_id: order.id,
+          payment_method: createOrderDto.payment_method,
+        });
+
+        // Update order payment status to paid
+        await this.orderRepository.update(order.id, {
+          payment_status: PaymentStatus.PAID,
+        });
+      } else {
+        // For external payments, create payment record but don't process yet
+        // The payment will be processed when the user completes payment on external platform
+        await this.paymentService.processPayment({
+          order_id: order.id,
+          payment_method: createOrderDto.payment_method,
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Payment processing failed for order ${order.id}: ${error.message}`);
+      // Don't fail the order creation, just log the error
+      // The order can still be created and payment can be retried
     }
 
     // Get complete order with relations
@@ -440,40 +387,7 @@ export class OrderService {
     return [OrderStatus.NEW, OrderStatus.CONFIRMED, OrderStatus.PREPARING].includes(status);
   }
 
-  /**
-   * Validates that all items belong to the same vendor
-   * @param items Array of items with vendor_id property
-   * @param context Context for error messages (e.g., 'cart items', 'custom items')
-   * @returns The single vendor ID if validation passes
-   * @throws BadRequestException if validation fails
-   */
-  private validateSingleVendor(items: Array<{ vendor_id: string }>, context: string): string {
-    if (!items || items.length === 0) {
-      throw new BadRequestException(`${context} cannot be empty`);
-    }
 
-    // Check for empty or invalid vendor IDs
-    const invalidItems = items.filter(item => !item.vendor_id || item.vendor_id.trim() === '');
-    if (invalidItems.length > 0) {
-      throw new BadRequestException(`${context} must have valid vendor information for all items`);
-    }
-
-    // Check if all items are from the same vendor
-    const vendorIds = new Set(items.map(item => item.vendor_id.trim()));
-    if (vendorIds.size === 0) {
-      throw new BadRequestException(`${context} must have valid vendor information`);
-    }
-    if (vendorIds.size > 1) {
-      throw new BadRequestException(`All items in an order must be from the same vendor. Please create separate orders for different vendors.`);
-    }
-
-    const vendorId = Array.from(vendorIds)[0];
-    if (!vendorId || vendorId.trim() === '') {
-      throw new BadRequestException(`${context} must have valid vendor information`);
-    }
-
-    return vendorId;
-  }
 
   /**
    * Validates that a vendor exists and is active
@@ -521,7 +435,7 @@ export class OrderService {
       cancelled_at: order.cancelled_at,
       cancellation_reason: order.cancellation_reason,
       cancelled_by: order.cancelled_by,
-      // delivery_instructions: order.delivery_instructions,
+      delivery_instructions: order.special_instructions,
       delivery_notes: order.delivery_notes,
       customer_rating: order.customer_rating,
       customer_review: order.customer_review,
@@ -556,8 +470,6 @@ export class OrderService {
       quantity: orderItem.quantity,
       unit_price: orderItem.unit_price,
       total_price: orderItem.total_price,
-      special_instructions: orderItem.special_instructions,
-      // customizations: orderItem.customizations,
       created_at: orderItem.created_at,
     };
   }
