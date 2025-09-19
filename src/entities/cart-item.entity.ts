@@ -76,9 +76,6 @@ export class CartItem extends BaseEntity {
   }
 
   updateQuantity(newQuantity: number): void {
-    if (newQuantity < 1 || newQuantity > 99) {
-      throw new Error('Quantity must be between 1 and 99');
-    }
     this.quantity = newQuantity;
     this.calculateTotal();
   }

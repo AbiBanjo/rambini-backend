@@ -33,7 +33,28 @@
 - **Purpose**: Real-time notifications, order updates, admin broadcasts
 - **Features**: Room-based messaging, automatic fallback, scaling support
 
-### 1.2 Cloud Infrastructure
+### 1.2 Payment Processing
+
+#### Payment Gateway Integration
+**Paystack**
+- **Purpose**: Primary payment processing for Nigerian market
+- **Features**: Card payments, bank transfers, USSD, mobile money
+- **Currencies**: NGN (primary), USD, ZAR, GHS, KES
+- **Integration**: REST API with webhook support
+- **Documentation**: See `docs/PAYSTACK_INTEGRATION_GUIDE.md`
+
+**Stripe Integration**
+- **Purpose**: International payment processing for global customers
+- **Features**: Card payments, digital wallets, 3D Secure, recurring payments
+- **Currencies**: USD, EUR, GBP, CAD, AUD, JPY, and 100+ more
+- **Integration**: Stripe SDK with PaymentIntents API
+- **Documentation**: See `docs/STRIPE_INTEGRATION_GUIDE.md`
+
+**Alternative Payment Methods**
+- **Mercury**: Additional payment processing
+- **Wallet**: Internal wallet system for users
+
+### 1.3 Cloud Infrastructure
 
 #### Cloud Provider Options
 **Option 1: AWS**

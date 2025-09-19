@@ -183,50 +183,6 @@ export class MenuItemService {
     
     const result = await this.menuItemRepository.search(resolvedSearchDto);
     
-    // Enhanced logging for proximity search results
-    if (searchLatitude && searchLongitude) {
-      const itemsWithDistance = result.items.filter(item => (item as MenuItemWithDistanceDto).distance !== undefined && (item as MenuItemWithDistanceDto).distance !== null);
-      const itemsWithoutDistance = result.items.filter(item => (item as MenuItemWithDistanceDto).distance === undefined || (item as MenuItemWithDistanceDto).distance === null);
-      
-      this.logger.log(`Found ${result.total} menu items total`);
-      this.logger.log(`Items with distance info: ${itemsWithDistance.length}`);
-      this.logger.log(`Items without distance info: ${itemsWithoutDistance.length}`);
-      
-      if (itemsWithDistance.length > 0) {
-        const distances = itemsWithDistance.map(item => (item as MenuItemWithDistanceDto).distance!);
-        const minDistance = Math.min(...distances);
-        const maxDistance = Math.max(...distances);
-        const avgDistance = distances.reduce((sum, dist) => sum + dist, 0) / distances.length;
-        
-        this.logger.log(`Distance range: ${minDistance} km to ${maxDistance} km`);
-        this.logger.log(`Average distance: ${Math.round(avgDistance * 100) / 100} km`);
-        
-        // Log proximity distribution
-        const nearby = itemsWithDistance.filter(item => (item as MenuItemWithDistanceDto).distance! <= 2).length;
-        const medium = itemsWithDistance.filter(item => (item as MenuItemWithDistanceDto).distance! > 2 && (item as MenuItemWithDistanceDto).distance! <= 5).length;
-        const far = itemsWithDistance.filter(item => (item as MenuItemWithDistanceDto).distance! > 5).length;
-        
-        this.logger.log(`Proximity distribution: ${nearby} nearby (≤2km), ${medium} medium (2-5km), ${far} far (>5km)`);
-      }
-      
-      if (itemsWithoutDistance.length > 0) {
-        this.logger.warn(`${itemsWithoutDistance.length} items lack distance information - vendor address data may be incomplete`);
-        
-        // Log specific vendors without address information for debugging
-        const vendorsWithoutAddress = itemsWithoutDistance.map(item => ({
-          menuItemId: item.id,
-          vendorId: item.vendor_id,
-          vendorName: item.vendor?.business_name || 'Unknown',
-          hasAddress: !!item.vendor?.address,
-          hasCoordinates: !!(item.vendor?.address?.latitude && item.vendor?.address?.longitude)
-        }));
-        
-        this.logger.warn('Vendors missing address information:', vendorsWithoutAddress);
-      }
-    } else {
-      this.logger.log(`Found ${result.total} menu items (no proximity sorting applied)`);
-    }
-    
     return result;
   }
 

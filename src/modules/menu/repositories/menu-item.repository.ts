@@ -54,8 +54,8 @@ export class MenuItemRepository {
     
     
     // Apply sorting - prioritize distance-based sorting when coordinates are provided
-    if (searchDto.latitude && searchDto.longitude ) {
-      // When coordinates are provided and distance prioritization is enabled, always sort by distance first
+    if (searchDto.latitude && searchDto.longitude) {
+      // When coordinates are provided, always sort by distance first
       // Use a CASE statement to handle vendors without coordinates (put them last)
       dataQueryBuilder.orderBy(
         `CASE 
@@ -197,8 +197,31 @@ export class MenuItemRepository {
       queryBuilder.andWhere('menu_item.is_available = :isAvailable', { isAvailable: searchDto.is_available });
     }
 
-    // For count query, only check if coordinates exist - don't do complex distance calculations
-    if (searchDto.latitude && searchDto.longitude) {
+    // Apply proximity filtering if coordinates and max distance provided
+    if (searchDto.latitude && searchDto.longitude && searchDto.max_distance) {
+      // Filter vendors within the specified distance using standard coordinates
+      queryBuilder.andWhere(
+        'vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL'
+      );
+      
+      // Use Haversine formula for distance calculation in SQL
+      const maxDistanceKm = searchDto.max_distance;
+      queryBuilder.andWhere(
+        `(
+          6371 * acos(
+            cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
+            cos(radians(vendor_address.longitude) - radians(:lon)) +
+            sin(radians(:lat)) * sin(radians(vendor_address.latitude))
+          )
+        ) <= :maxDistance`,
+        {
+          lat: searchDto.latitude,
+          lon: searchDto.longitude,
+          maxDistance: maxDistanceKm
+        }
+      );
+    } else if (searchDto.latitude && searchDto.longitude) {
+      // For count query without max_distance, only check if coordinates exist
       queryBuilder.andWhere(
         'vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL'
       );

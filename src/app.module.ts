@@ -14,6 +14,7 @@ import { MenuModule } from './modules/menu/menu.module';
 import { CartModule } from './modules/cart/cart.module';
 import { OrderModule } from './modules/order/order.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { DeliveryModule } from './modules/delivery/delivery.module';
 // import { NotificationModule } from './modules/notification/notification.module';
 // import { AdminModule } from './modules/admin/admin.module';
 
@@ -60,6 +61,7 @@ import { CommonModule } from './common/common.module';
     CartModule,
     OrderModule,
     PaymentModule,
+    DeliveryModule,
     // NotificationModule,
     // AdminModule,
     

@@ -13,4 +13,6 @@ export * from './order.entity';
 export * from './order-item.entity';
 export * from './transaction.entity';
 export * from './vendor-application.entity';
-export * from './payment.entity'; 
+export * from './payment.entity';
+export * from './delivery.entity';
+export * from './delivery-tracking.entity'; 

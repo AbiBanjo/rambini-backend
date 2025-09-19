@@ -4,14 +4,19 @@ import { CartService } from 'src/modules/cart/services/cart.service';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
 import { AddressService } from 'src/modules/user/services/address.service';
 import { PaymentService } from 'src/modules/payment/services/payment.service';
+import { DeliveryService } from 'src/modules/delivery/services/delivery.service';
+import { DeliveryProviderSelectorService } from 'src/modules/delivery/services/delivery-provider-selector.service';
+import { VendorService } from 'src/modules/vendor/services/vendor.service';
 import { 
   CreateOrderDto, 
   UpdateOrderStatusDto, 
   OrderResponseDto, 
   OrderItemResponseDto,
-  OrderFilterDto 
+  OrderFilterDto,
+  CalculateOrderCostDto,
+  OrderCostResponseDto
 } from '../dto';
-import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, PaymentMethod } from 'src/entities';
+import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, PaymentMethod, DeliveryProvider } from 'src/entities';
 
 @Injectable()
 export class OrderService {
@@ -23,19 +28,28 @@ export class OrderService {
     private readonly menuItemRepository: MenuItemRepository,
     private readonly addressService: AddressService,
     private readonly paymentService: PaymentService,
+    private readonly deliveryService: DeliveryService,
+    private readonly deliveryProviderSelector: DeliveryProviderSelectorService,
+    private readonly vendorService: VendorService,
   ) {}
 
   async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto> {
     this.logger.log(`Creating order for customer ${customerId} with cart items: ${createOrderDto.cart_item_ids.join(', ')}`);
 
-    // Validate delivery address if there is one
+    // Validate delivery address if there is one and get country for provider selection
+    let deliveryAddress = null;
+    let selectedDeliveryProvider = null;
+    
     if(createOrderDto.delivery_address_id){	
-    const deliveryAddress = await this.addressService.getAddressById(customerId, createOrderDto.delivery_address_id);
-    if (!deliveryAddress) {
-      throw new NotFoundException('Delivery address not found');
+      deliveryAddress = await this.addressService.getAddressById(customerId, createOrderDto.delivery_address_id);
+      if (!deliveryAddress) {
+        throw new NotFoundException('Delivery address not found');
+      }
+      
+      // Select delivery provider based on country
+      selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(deliveryAddress.country);
+      this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for country: ${deliveryAddress.country}`);
     }
-
-  }
 
     // Validate cart items for checkout
     const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, createOrderDto.cart_item_ids);
@@ -66,6 +80,7 @@ export class OrderService {
       customer_id: customerId,
       vendor_id: vendorId,
       delivery_address_id: createOrderDto.delivery_address_id,
+      delivery_provider: selectedDeliveryProvider,
       order_status: OrderStatus.NEW,
       order_type: createOrderDto.order_type,
       payment_method: createOrderDto.payment_method,
@@ -130,6 +145,116 @@ export class OrderService {
 
     this.logger.log(`Order created successfully: ${order.id} (${orderNumber}) for vendor: ${vendorId}`);
     return this.mapToOrderResponse(completeOrder);
+  }
+
+  async calculateOrderCost(customerId: string, calculateOrderCostDto: CalculateOrderCostDto): Promise<OrderCostResponseDto> {
+    this.logger.log(`Calculating order cost for customer ${customerId} with cart items: ${calculateOrderCostDto.cart_item_ids.join(', ')}`);
+
+    // Validate cart items for checkout
+    const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, calculateOrderCostDto.cart_item_ids);
+    
+    if (!cartValidation.is_valid) {
+      throw new BadRequestException(`Cart validation failed: ${cartValidation.issues.join(', ')}`);
+    }
+
+    const { cartItems, vendorId, subtotal } = cartValidation;
+
+    // Get vendor information
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found');
+    }
+
+    // Validate delivery address if provided for delivery orders
+    let deliveryAddress = null;
+    let selectedDeliveryProvider = null;
+    
+    if (calculateOrderCostDto.order_type === OrderType.DELIVERY) {
+      if (!calculateOrderCostDto.delivery_address_id) {
+        throw new BadRequestException('Delivery address is required for delivery orders');
+      }
+      
+      deliveryAddress = await this.addressService.getAddressById(customerId, calculateOrderCostDto.delivery_address_id);
+      if (!deliveryAddress) {
+        throw new NotFoundException('Delivery address not found');
+      }
+      
+      // Select delivery provider based on country
+      selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(deliveryAddress.country);
+      this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for country: ${deliveryAddress.country}`);
+    }
+
+    // Calculate fees and totals
+    let deliveryFee = 0;
+    
+    if (calculateOrderCostDto.order_type === OrderType.DELIVERY && selectedDeliveryProvider) {
+      // Calculate actual delivery fee using delivery service
+      try {
+        deliveryFee = await this.calculateActualDeliveryFee(
+          selectedDeliveryProvider,
+          vendor.address,
+          deliveryAddress
+        );
+      } catch (error) {
+        this.logger.warn(`Failed to calculate actual delivery fee: ${error.message}. Using fallback calculation.`);
+        deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
+      }
+    } else {
+      deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
+    }
+    
+    const serviceFee = this.calculateServiceFee(subtotal);
+    const taxAmount = this.calculateTaxAmount(subtotal);
+    const discountAmount = 0; // No discounts for now
+    const totalAmount = subtotal + deliveryFee + serviceFee + taxAmount - discountAmount;
+
+    // Prepare response
+    const response: OrderCostResponseDto = {
+      subtotal,
+      delivery_fee: deliveryFee,
+      service_fee: serviceFee,
+      tax_amount: taxAmount,
+      discount_amount: discountAmount,
+      total_amount: totalAmount,
+      order_type: calculateOrderCostDto.order_type,
+      delivery_provider: selectedDeliveryProvider,
+      vendor: {
+        id: vendor.id,
+        business_name: vendor.business_name,
+      },
+    };
+
+    // Add appropriate address based on order type
+    if (calculateOrderCostDto.order_type === OrderType.PICKUP) {
+      // Include vendor address for pickup orders
+      if (vendor.address) {
+        response.pickup_address = {
+          address_line_1: vendor.address.address_line_1,
+          address_line_2: vendor.address.address_line_2,
+          city: vendor.address.city,
+          state: vendor.address.state,
+          postal_code: vendor.address.postal_code,
+          country: vendor.address.country,
+          latitude: vendor.address.latitude,
+          longitude: vendor.address.longitude,
+        };
+      }
+    } else if (calculateOrderCostDto.order_type === OrderType.DELIVERY && deliveryAddress) {
+      // Include customer delivery address for delivery orders
+      response.delivery_address = {
+        address_line_1: deliveryAddress.address_line_1,
+        address_line_2: deliveryAddress.address_line_2,
+        city: deliveryAddress.city,
+        state: deliveryAddress.state,
+        postal_code: deliveryAddress.postal_code,
+        country: deliveryAddress.country,
+        latitude: deliveryAddress.latitude,
+        longitude: deliveryAddress.longitude,
+      };
+    }
+
+    this.logger.log(`Order cost calculated successfully for vendor: ${vendorId}, total: ${totalAmount}`);
+    return response;
   }
 
   async getOrderById(orderId: string, userId: string, userType: string): Promise<OrderResponseDto> {
@@ -472,5 +597,63 @@ export class OrderService {
       total_price: orderItem.total_price,
       created_at: orderItem.created_at,
     };
+  }
+
+  /**
+   * Calculate actual delivery fee using delivery service
+   * @param provider Delivery provider
+   * @param originAddress Vendor address
+   * @param destinationAddress Customer address
+   * @returns Promise<number> Delivery fee in kobo
+   */
+  private async calculateActualDeliveryFee(
+    provider: DeliveryProvider,
+    originAddress: any,
+    destinationAddress: any
+  ): Promise<number> {
+    if (!originAddress || !destinationAddress) {
+      throw new Error('Origin and destination addresses are required');
+    }
+
+    const rateRequest = {
+      origin: {
+        address: originAddress.address_line_1,
+        city: originAddress.city,
+        state: originAddress.state,
+        country: originAddress.country,
+        postalCode: originAddress.postal_code,
+        latitude: originAddress.latitude,
+        longitude: originAddress.longitude,
+      },
+      destination: {
+        address: destinationAddress.address_line_1,
+        city: destinationAddress.city,
+        state: destinationAddress.state,
+        country: destinationAddress.country,
+        postalCode: destinationAddress.postal_code,
+        latitude: destinationAddress.latitude,
+        longitude: destinationAddress.longitude,
+      },
+      package: {
+        weight: 1, // Default weight in kg
+        length: 20, // Default dimensions in cm
+        width: 20,
+        height: 20,
+      },
+    };
+
+    const rates = await this.deliveryService.getDeliveryRates(provider, rateRequest);
+    
+    if (!rates || rates.length === 0) {
+      throw new Error('No delivery rates available');
+    }
+
+    // Return the cheapest rate
+    const cheapestRate = rates.reduce((min, rate) => 
+      rate.amount < min.amount ? rate : min
+    );
+
+    // Convert to kobo (assuming rates are in naira)
+    return Math.round(cheapestRate.amount * 100);
   }
 } 

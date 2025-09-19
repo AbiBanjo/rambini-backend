@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PaymentMethod, PaymentProvider } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class PaystackPaymentService implements PaymentProviderInterface {
@@ -8,6 +9,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
   private readonly paystackSecretKey: string;
   private readonly paystackPublicKey: string;
   private readonly paystackWebhookSecret: string;
+  private readonly paystackBaseUrl: string = 'https://api.paystack.co';
 
   constructor() {
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
@@ -28,13 +30,20 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     try {
       this.logger.log(`Initializing Paystack payment for reference: ${reference}`);
 
-      // In a real implementation, you would use the Paystack API here
+      if (!this.paystackSecretKey) {
+        throw new BadRequestException('Paystack configuration missing');
+      }
+
       const transaction = await this.createPaystackTransaction(amount, currency, reference, metadata);
+
+      if (!transaction.status) {
+        throw new Error('Failed to initialize payment with Paystack');
+      }
 
       return {
         success: true,
-        external_reference: transaction.reference,
-        payment_url: transaction.authorization_url,
+        external_reference: transaction.data.reference,
+        payment_url: transaction.data.authorization_url,
         gateway_response: transaction,
       };
     } catch (error) {
@@ -50,11 +59,18 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     try {
       this.logger.log(`Verifying Paystack payment: ${reference}`);
 
-      // In a real implementation, you would verify the transaction with Paystack API
+      if (!this.paystackSecretKey) {
+        throw new BadRequestException('Paystack configuration missing');
+      }
+
       const transaction = await this.verifyPaystackTransaction(reference);
 
+      if (!transaction.status) {
+        throw new Error('Failed to verify payment with Paystack');
+      }
+
       let status: 'pending' | 'completed' | 'failed' | 'cancelled';
-      switch (transaction.status) {
+      switch (transaction.data.status) {
         case 'pending':
           status = 'pending';
           break;
@@ -74,7 +90,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
       return {
         success: true,
         status,
-        external_reference: transaction.reference,
+        external_reference: transaction.data.reference,
         gateway_response: transaction,
       };
     } catch (error) {
@@ -91,8 +107,17 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     try {
       this.logger.log('Processing Paystack webhook');
 
-      // In a real implementation, you would verify the webhook signature
-      const event = await this.verifyPaystackWebhook(payload, signature);
+      if (!this.paystackWebhookSecret) {
+        throw new BadRequestException('Paystack webhook secret not configured');
+      }
+
+      // Verify webhook signature
+      const isValid = this.verifyWebhookSignature(payload, signature);
+      if (!isValid) {
+        throw new BadRequestException('Invalid webhook signature');
+      }
+
+      const event = payload;
 
       let status: 'pending' | 'completed' | 'failed' | 'cancelled';
       let reference: string;
@@ -109,12 +134,23 @@ export class PaystackPaymentService implements PaymentProviderInterface {
           reference = event.data.reference;
           amount = event.data.amount / 100;
           break;
+        case 'transfer.success':
+          status = 'completed';
+          reference = event.data.reference;
+          amount = event.data.amount / 100;
+          break;
+        case 'transfer.failed':
+          status = 'failed';
+          reference = event.data.reference;
+          amount = event.data.amount / 100;
+          break;
         default:
+          this.logger.warn(`Unhandled Paystack webhook event: ${event.event}`);
           return {
             success: false,
             reference: '',
             status: 'pending',
-            error: 'Unhandled event type',
+            error: `Unhandled event type: ${event.event}`,
           };
       }
 
@@ -145,12 +181,19 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     try {
       this.logger.log(`Processing Paystack refund for: ${reference}`);
 
-      // In a real implementation, you would create a refund using Paystack API
+      if (!this.paystackSecretKey) {
+        throw new BadRequestException('Paystack configuration missing');
+      }
+
       const refund = await this.createPaystackRefund(reference, amount, reason);
+
+      if (!refund.status) {
+        throw new Error('Failed to create refund with Paystack');
+      }
 
       return {
         success: true,
-        refund_reference: refund.reference,
+        refund_reference: refund.data.reference,
         gateway_response: refund,
       };
     } catch (error) {
@@ -166,42 +209,49 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     return [PaymentMethod.PAYSTACK];
   }
 
-  // Private helper methods (in a real implementation, these would use the Paystack API)
+  // Private helper methods for Paystack API integration
   private async createPaystackTransaction(
     amount: number,
     currency: string,
     reference: string,
     metadata?: Record<string, any>
   ): Promise<any> {
-    // Simulate Paystack transaction creation
-    return {
-      reference: `TXN_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      authorization_url: `https://checkout.paystack.com/${reference}`,
-      access_code: `AC_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    const url = `${this.paystackBaseUrl}/transaction/initialize`;
+    
+    const requestBody = {
       amount: Math.round(amount * 100), // Convert to kobo
       currency: currency.toUpperCase(),
-      status: 'pending',
+      reference: reference,
       metadata: {
         payment_reference: reference,
         ...metadata,
       },
+      callback_url: process.env.PAYSTACK_CALLBACK_URL || `${process.env.APP_URL}/payment/callback`,
     };
+
+    const response = await this.makePaystackRequest('POST', url, requestBody);
+    return response;
   }
 
   private async verifyPaystackTransaction(reference: string): Promise<any> {
-    // Simulate Paystack transaction verification
-    return {
-      reference,
-      status: 'success',
-      amount: 1000000, // Example amount in kobo
-      currency: 'NGN',
-    };
+    const url = `${this.paystackBaseUrl}/transaction/verify/${reference}`;
+    
+    const response = await this.makePaystackRequest('GET', url);
+    return response;
   }
 
-  private async verifyPaystackWebhook(payload: any, signature: string): Promise<any> {
-    // In a real implementation, you would verify the webhook signature
-    // For now, we'll just return the payload
-    return payload;
+  private verifyWebhookSignature(payload: any, signature: string): boolean {
+    try {
+      const hash = crypto
+        .createHmac('sha512', this.paystackWebhookSecret)
+        .update(JSON.stringify(payload))
+        .digest('hex');
+      
+      return hash === signature;
+    } catch (error) {
+      this.logger.error(`Webhook signature verification failed: ${error.message}`);
+      return false;
+    }
   }
 
   private async createPaystackRefund(
@@ -209,12 +259,54 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     amount?: number,
     reason?: string
   ): Promise<any> {
-    // Simulate Paystack refund creation
-    return {
-      reference: `REF_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    const url = `${this.paystackBaseUrl}/refund`;
+    
+    const requestBody: any = {
       transaction: reference,
-      amount: amount ? Math.round(amount * 100) : undefined,
       reason: reason || 'requested_by_customer',
     };
+
+    if (amount) {
+      requestBody.amount = Math.round(amount * 100); // Convert to kobo
+    }
+
+    const response = await this.makePaystackRequest('POST', url, requestBody);
+    return response;
+  }
+
+  private async makePaystackRequest(method: string, url: string, body?: any): Promise<any> {
+    try {
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${this.paystackSecretKey}`,
+        'Content-Type': 'application/json',
+      };
+
+      const requestOptions: RequestInit = {
+        method,
+        headers,
+      };
+
+      if (body && method !== 'GET') {
+        requestOptions.body = JSON.stringify(body);
+      }
+
+      this.logger.debug(`Making ${method} request to ${url}`);
+      
+      const response = await fetch(url, requestOptions);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(`Paystack API error: ${data.message || 'Unknown error'}`);
+      }
+
+      if (!data.status) {
+        throw new Error(`Paystack API returned error: ${data.message || 'Unknown error'}`);
+      }
+
+      return data;
+    } catch (error) {
+      this.logger.error(`Paystack API request failed: ${error.message}`);
+      throw error;
+    }
   }
 }

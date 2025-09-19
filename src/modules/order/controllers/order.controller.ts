@@ -25,6 +25,8 @@ import {
   UpdateOrderStatusDto,
   OrderResponseDto,
   OrderFilterDto,
+  CalculateOrderCostDto,
+  OrderCostResponseDto,
 } from '../dto';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
@@ -47,6 +49,19 @@ export class OrderController {
     @Body() createOrderDto: CreateOrderDto,
   ): Promise<OrderResponseDto> {
     return await this.orderService.createOrder(user.id, createOrderDto);
+  }
+
+  @Post('cost')
+  @ApiOperation({ summary: 'Calculate order cost with delivery fees and addresses' })
+  @ApiResponse({ status: 200, description: 'Order cost calculated successfully', type: OrderCostResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid cart items or missing delivery address for delivery orders' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Cart items, vendor, or delivery address not found' })
+  async calculateOrderCost(
+    @GetUser() user: User,
+    @Body() calculateOrderCostDto: CalculateOrderCostDto,
+  ): Promise<OrderCostResponseDto> {
+    return await this.orderService.calculateOrderCost(user.id, calculateOrderCostDto);
   }
 
   @Get()

@@ -10,8 +10,8 @@ export class DatabaseSeeder {
 
     try {
       // Run seeders in dependency order
-      const userSeeder = new UserSeeder(this.dataSource);
-      await userSeeder.run();
+      // const userSeeder = new UserSeeder(this.dataSource);
+      // await userSeeder.run();
 
       const categorySeeder = new CategorySeeder(this.dataSource);
       await categorySeeder.run();

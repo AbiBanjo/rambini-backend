@@ -63,6 +63,11 @@ export class Order extends BaseEntity {
   @IsString()
   delivery_address_id: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  @IsOptional()
+  @IsString()
+  delivery_provider?: string;
+
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.NEW })
   @IsEnum(OrderStatus)
   order_status: OrderStatus;

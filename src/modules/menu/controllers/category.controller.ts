@@ -31,7 +31,7 @@ import { Category } from 'src/entities';
 
 @ApiTags('categories')
 @Controller('categories')
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class CategoryController {
   constructor(

@@ -38,7 +38,7 @@ import {
   SearchMenuItemsResponseDto,
 } from 'src/modules/menu/dto';
 import { VendorOnly, AdminOrVendor, AccessControl } from 'src/common/guards';
-import { User, UserType } from 'src/entities';
+import { MenuItem, User, UserType } from 'src/entities';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 
 @ApiTags('menu-items')
@@ -92,9 +92,9 @@ export class MenuItemController {
       }),
     )
     file?: Express.Multer.File,
-  ): Promise<MenuItemWithDistanceDto> {
-    const menuItem = await this.menuItemService.createMenuItemWithFile(user.id, createDto, file);
-    return this.mapToResponseDto(menuItem);
+  ): Promise<MenuItem> {
+    return this.menuItemService.createMenuItemWithFile(user.id, createDto, file);
+    // return this.mapToResponseDto(menuItem);
   }
 
   @Get()
@@ -133,7 +133,8 @@ export class MenuItemController {
   @ApiResponse({ status: 200, description: 'Vendor menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
   async getVendorMenu(@Param('vendorId') vendorId: string) {
     const items = await this.menuItemService.getVendorMenu(vendorId);
-    return items.map(item => this.mapToResponseDto(item));
+    // return items.map(item => this.mapToResponseDto(item));
+    return items;
   }
 
   @Get('category/:categoryId')
@@ -142,7 +143,8 @@ export class MenuItemController {
   @ApiResponse({ status: 200, description: 'Category menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
   async getCategoryMenu(@Param('categoryId') categoryId: string) {
     const items = await this.menuItemService.getCategoryMenu(categoryId);
-    return items.map(item => this.mapToResponseDto(item));
+    // return items.map(item => this.mapToResponseDto(item));
+    return items;
   }
 
   @Get(':id')
@@ -152,7 +154,8 @@ export class MenuItemController {
   @ApiResponse({ status: 404, description: 'Menu item not found' })
   async getMenuItemById(@Param('id') id: string): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.getMenuItemById(id);
-    return this.mapToResponseDto(menuItem);
+    // return this.mapToResponseDto(menuItem);
+    return menuItem;
   }
 
   @Put(':id')
@@ -201,7 +204,8 @@ export class MenuItemController {
     file?: Express.Multer.File,
   ): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.updateMenuItemWithFile(id, user.id, updateDto, file);
-    return this.mapToResponseDto(menuItem);
+    // return this.mapToResponseDto(menuItem);
+    return menuItem;
   }
 
 
@@ -232,7 +236,8 @@ export class MenuItemController {
   @ApiResponse({ status: 404, description: 'Menu item not found' })
   async toggleAvailability(@Param('id') id: string, @GetUser() user: User): Promise<MenuItemWithDistanceDto> {
     const menuItem = await this.menuItemService.toggleItemAvailability(id, user.id);
-    return this.mapToResponseDto(menuItem);
+    // return this.mapToResponseDto(menuItem);
+    return menuItem;
   }
 
   @Post('bulk-operations')

@@ -19,6 +19,8 @@ import {
 } from '../dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { Public } from '../decorators/public.decorator';
+import { GetUser } from '@/common/decorators/get-user.decorator';
+import { User } from '@/entities';
 
 @Controller('auth')
 export class AuthController {
@@ -49,10 +51,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async completeProfile(
-    @Request() req,
+    @GetUser() user: User,
     @Body() profileRequest: CompleteProfileDto,
   ) {
-    return this.authService.completeProfile(req.user.id, profileRequest);
+    return this.authService.completeProfile(user.id, profileRequest);
   }
 
   @Post('resend-otp')
@@ -71,11 +73,11 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async getCurrentUser(@Request() req) {
+  async getCurrentUser(@GetUser() user: User) {
     return {
-      id: req.user.id,
-      phoneNumber: req.user.phone_number,
-      userType: req.user.user_type,
+      id: user.id,
+      phoneNumber: user.phone_number,
+      userType: user.user_type,
     };
   }
 } 

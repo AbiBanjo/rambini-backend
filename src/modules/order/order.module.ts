@@ -6,6 +6,8 @@ import { MenuModule } from 'src/modules/menu/menu.module';
 import { UserModule } from 'src/modules/user/user.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { PaymentModule } from 'src/modules/payment/payment.module';
+import { DeliveryModule } from 'src/modules/delivery/delivery.module';
+import { VendorModule } from 'src/modules/vendor/vendor.module';
 
 // Controllers
 import { OrderController } from './controllers/order.controller';
@@ -25,6 +27,8 @@ import { OrderRepository } from './repositories/order.repository';
     UserModule,
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
     PaymentModule, // Import PaymentModule to get access to PaymentService
+    DeliveryModule, // Import DeliveryModule to get access to DeliveryService
+    VendorModule, // Import VendorModule to get access to VendorService
   ],
   controllers: [
     OrderController,
