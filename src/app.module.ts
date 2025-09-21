@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ThrottlerModule } from '@nestjs/throttler';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
 import { AppController } from 'src/app.controller';
 import { AppService } from 'src/app.service';
 
@@ -23,12 +25,26 @@ import { DatabaseModule } from 'src/database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CommonModule } from './common/common.module';
 
+// Load environment file based on NODE_ENV
+const nodeEnv = process.env.NODE_ENV || 'development';
+const envFile = `.env.${nodeEnv}`;
+const envPath = path.resolve(process.cwd(), envFile);
+
+// Load the environment file
+dotenv.config({ path: envPath });
+
+// Fallback to .env if environment-specific file doesn't exist
+if (nodeEnv !== 'development') {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+}
+
 @Module({
   imports: [
     // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: [envPath, '.env'],
+      ignoreEnvFile: false,
     }),
     
     // Common modules (global)

@@ -8,8 +8,15 @@ import {
   HttpExceptionFilter, 
   ValidationExceptionFilter 
 } from './common/filters';
+import { loadEnvironmentVariables, validateRequiredEnvironmentVariables } from './utils/env-loader';
 
 async function bootstrap() {
+  // Load environment variables first
+  loadEnvironmentVariables();
+  
+  // Validate required environment variables
+  validateRequiredEnvironmentVariables();
+  
   const app = await NestFactory.create(AppModule);
   
   // Get configuration service

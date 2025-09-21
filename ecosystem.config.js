@@ -8,7 +8,6 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3500,
-        ENV_FILE: '.env.production'
       },
       env_file: '.env.production',
       log_file: './logs/production-combined.log',
@@ -35,7 +34,6 @@ module.exports = {
       env: {
         NODE_ENV: 'staging',
         PORT: 3501,
-        ENV_FILE: '.env.staging'
       },
       env_file: '.env.staging',
       log_file: './logs/staging-combined.log',
@@ -62,7 +60,6 @@ module.exports = {
       env: {
         NODE_ENV: 'test',
         PORT: 3502,
-        ENV_FILE: '.env.test'
       },
       env_file: '.env.test',
       log_file: './logs/test-combined.log',

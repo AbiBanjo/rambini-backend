@@ -141,6 +141,12 @@ Go to your GitHub repository → Settings → Secrets and variables → Actions,
 
 ### 2. Environment Variables Format
 
+The application now automatically loads environment-specific files based on `NODE_ENV`:
+- **Production**: `.env.production`
+- **Staging**: `.env.staging` 
+- **Test**: `.env.test`
+- **Development**: `.env` (fallback)
+
 For each environment secret, use this format (all on one line):
 
 ```
@@ -336,6 +342,41 @@ sudo systemctl restart postgresql
 # Restart Redis
 sudo systemctl restart redis-server
 ```
+
+## Environment Variable Loading
+
+The application now includes automatic environment variable loading based on `NODE_ENV`. This fixes the issue where environment variables weren't being loaded properly.
+
+### How it works:
+1. **Automatic Detection**: The app detects `NODE_ENV` and loads the corresponding `.env.{NODE_ENV}` file
+2. **Fallback Support**: If the environment-specific file doesn't exist, it falls back to `.env`
+3. **Validation**: Required environment variables are validated on startup
+4. **Logging**: Environment loading is logged for debugging
+
+### Testing Environment Loading
+
+You can test if your environment variables are loading correctly:
+
+```bash
+# Test with production environment
+NODE_ENV=production node test-env-loading.js
+
+# Test with staging environment  
+NODE_ENV=staging node test-env-loading.js
+
+# Test with test environment
+NODE_ENV=test node test-env-loading.js
+```
+
+### Required Environment Variables
+
+The following variables are required and will cause the application to fail if missing:
+- `DB_HOST`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `DB_DATABASE`
+- `JWT_SECRET`
+- `SHIPBUBBLE_API_KEY`
 
 ## Troubleshooting
 

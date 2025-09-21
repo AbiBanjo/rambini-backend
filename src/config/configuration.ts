@@ -54,6 +54,8 @@ export default () => ({
   paystack: {
     secretKey: process.env.PAYSTACK_SECRET_KEY,
     publicKey: process.env.PAYSTACK_PUBLIC_KEY,
+    webhookSecret: process.env.PAYSTACK_WEBHOOK_SECRET,
+    callbackUrl: process.env.PAYSTACK_CALLBACK_URL,
   },
   
   fcm: {
@@ -75,6 +77,19 @@ export default () => ({
   external: {
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
     geocodingApiKey: process.env.GEOCODING_API_KEY,
+    mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN,
+  },
+
+  shipbubble: {
+    apiKey: process.env.SHIPBUBBLE_API_KEY,
+    webhookSecret: process.env.SHIPBUBBLE_WEBHOOK_SECRET,
+  },
+
+  uber: {
+    clientId: process.env.UBER_CLIENT_ID,
+    clientSecret: process.env.UBER_CLIENT_SECRET,
+    customerId: process.env.UBER_CUSTOMER_ID,
+    webhookSecret: process.env.UBER_WEBHOOK_SECRET,
   },
   
   admin: {
