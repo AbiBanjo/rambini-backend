@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserController } from './controllers/user.controller';
 import { UserService } from './services/user.service';
@@ -11,7 +11,7 @@ import { AuthModule } from '../auth/auth.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Address]),
-    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
+     AuthModule, 
   ],
   controllers: [UserController, AddressController],
   providers: [UserService, UserProfileService, AddressService],

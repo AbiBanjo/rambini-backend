@@ -1,8 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Address, AddressType } from '../../../entities';
 import { ConfigService } from '@nestjs/config';
+// import { ShipbubbleDeliveryService } from '../../delivery/services/shipbubble-delivery.service';
 
 import { CreateAddressDto, UpdateAddressDto } from '../dto';
 
@@ -25,6 +26,8 @@ export class AddressService {
     @InjectRepository(Address)
     private readonly addressRepository: Repository<Address>,
     private readonly configService: ConfigService,
+    // @Inject(forwardRef(() => ShipbubbleDeliveryService))
+    // private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
   ) {
     this.geocodingEnabled = !!(
       this.configService.get('GOOGLE_MAPS_API_KEY') ||
@@ -35,20 +38,21 @@ export class AddressService {
   async createAddress(userId: string, createRequest: CreateAddressRequest): Promise<Address> {
     return this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
       try {
-    // If coordinates are not provided, try to geocode the address
-    let latitude = createRequest.latitude;
-    let longitude = createRequest.longitude;
+        // If coordinates are not provided, try to geocode the address
+        let latitude = createRequest.latitude;
+        let longitude = createRequest.longitude;
 
-    if (!latitude || !longitude) {
-      const geocodingResult = await this.geocodeAddress(createRequest);
-      if (geocodingResult) {
-        latitude = geocodingResult.latitude;
-        longitude = geocodingResult.longitude;
-      }
-    }
+        if (!latitude || !longitude) {
+          const geocodingResult = await this.geocodeAddress(createRequest);
+          if (geocodingResult) {
+            latitude = geocodingResult.latitude;
+            longitude = geocodingResult.longitude;
+          }
+        }
 
-    // If this is the first address or marked as default, set it as default
-    if (createRequest.is_default) {
+
+        // If this is the first address or marked as default, set it as default
+        if (createRequest.is_default) {
           // Clear current default address
           const currentDefault = await transactionalEntityManager.findOne(Address, {
             where: { user_id: userId, is_default: true },
@@ -62,24 +66,25 @@ export class AddressService {
         }
 
         const address = transactionalEntityManager.create(Address, {
-      user_id: userId,
-      address_line_1: createRequest.address_line_1,
-      address_line_2: createRequest.address_line_2,
-      city: createRequest.city,
-      state: createRequest.state,
-      postal_code: createRequest.postal_code,
-      country: createRequest.country || 'NG',
-      latitude,
-      longitude,
-      address_type: createRequest.address_type || AddressType.HOME,
-      is_default: createRequest.is_default || false,
-    });
+          user_id: userId,
+          address_line_1: createRequest.address_line_1,
+          address_line_2: createRequest.address_line_2,
+          city: createRequest.city,
+          state: createRequest.state,
+          postal_code: createRequest.postal_code,
+          country: createRequest.country || 'NG',
+          latitude,
+          longitude,
+          address_type: createRequest.address_type || AddressType.HOME,
+          is_default: createRequest.is_default || false,
+          // shipbubble_address_code will be set later when address is used for delivery
+        });
 
         const savedAddress = await transactionalEntityManager.save(Address, address);
     
-    this.logger.log(`Address created for user ${userId}: ${savedAddress.id}`);
-    
-    return savedAddress;
+        this.logger.log(`Address created for user ${userId}: ${savedAddress.id}`);
+        
+        return savedAddress;
       } catch (error) {
         this.logger.error(`Failed to create address for user ${userId}:`, error);
         throw error;
@@ -132,26 +137,36 @@ export class AddressService {
           throw new NotFoundException('Address not found');
         }
 
-    // If coordinates are being updated or address lines changed, re-geocode
-    if (
-      updateRequest.address_line_1 ||
-      updateRequest.city ||
-      updateRequest.state ||
-      updateRequest.postal_code
-    ) {
-      const geocodingResult = await this.geocodeAddress({
-        address_line_1: updateRequest.address_line_1 || address.address_line_1,
-        city: updateRequest.city || address.city,
-        state: updateRequest.state || address.state,
-        postal_code: updateRequest.postal_code || address.postal_code,
-        country: updateRequest.country || address.country,
-      });
+        // If coordinates are being updated or address lines changed, re-geocode
+        if (
+          updateRequest.address_line_1 ||
+          updateRequest.city ||
+          updateRequest.state ||
+          updateRequest.postal_code
+        ) {
+          const geocodingResult = await this.geocodeAddress({
+            address_line_1: updateRequest.address_line_1 || address.address_line_1,
+            city: updateRequest.city || address.city,
+            state: updateRequest.state || address.state,
+            postal_code: updateRequest.postal_code || address.postal_code,
+            country: updateRequest.country || address.country,
+          });
 
-      if (geocodingResult) {
-        updateRequest.latitude = geocodingResult.latitude;
-        updateRequest.longitude = geocodingResult.longitude;
-      }
-    }
+          if (geocodingResult) {
+            updateRequest.latitude = geocodingResult.latitude;
+            updateRequest.longitude = geocodingResult.longitude;
+          }
+        }
+
+        // Clear ShipBubble address code if address fields are updated
+        // The address will need to be re-validated when used for delivery
+        if (updateRequest.address_line_1 ||
+            updateRequest.city ||
+            updateRequest.state ||
+            updateRequest.postal_code ||
+            updateRequest.country) {
+          address.shipbubble_address_code = null;
+        }
 
     if(updateRequest.is_default === true) {
           // Clear current default address
@@ -166,18 +181,18 @@ export class AddressService {
           }
     }
 
-    // Update address with correct field mapping
-    if (updateRequest.address_line_1 !== undefined) address.address_line_1 = updateRequest.address_line_1;
-    if (updateRequest.address_line_2 !== undefined) address.address_line_2 = updateRequest.address_line_2;
-    if (updateRequest.city !== undefined) address.city = updateRequest.city;
-    if (updateRequest.state !== undefined) address.state = updateRequest.state;
-    if (updateRequest.postal_code !== undefined) address.postal_code = updateRequest.postal_code;
-    if (updateRequest.country !== undefined) address.country = updateRequest.country;
-    if (updateRequest.latitude !== undefined) address.latitude = updateRequest.latitude;
-    if (updateRequest.longitude !== undefined) address.longitude = updateRequest.longitude;
-    if (updateRequest.address_type !== undefined) address.address_type = updateRequest.address_type;
-    
-    if (updateRequest.is_default !== undefined) address.is_default = updateRequest.is_default;
+        // Update address with correct field mapping
+        if (updateRequest.address_line_1 !== undefined) address.address_line_1 = updateRequest.address_line_1;
+        if (updateRequest.address_line_2 !== undefined) address.address_line_2 = updateRequest.address_line_2;
+        if (updateRequest.city !== undefined) address.city = updateRequest.city;
+        if (updateRequest.state !== undefined) address.state = updateRequest.state;
+        if (updateRequest.postal_code !== undefined) address.postal_code = updateRequest.postal_code;
+        if (updateRequest.country !== undefined) address.country = updateRequest.country;
+        if (updateRequest.latitude !== undefined) address.latitude = updateRequest.latitude;
+        if (updateRequest.longitude !== undefined) address.longitude = updateRequest.longitude;
+        if (updateRequest.address_type !== undefined) address.address_type = updateRequest.address_type;
+        
+        if (updateRequest.is_default !== undefined) address.is_default = updateRequest.is_default;
     
         const updatedAddress = await transactionalEntityManager.save(Address, address);
     
@@ -339,6 +354,120 @@ export class AddressService {
       errors,
     };
   }
+
+  /**
+   * Validate address with ShipBubble API
+   * @param addressData Address data for validation
+   * @returns Promise<ShipBubble validation result>
+   */
+  // async validateAddressWithShipBubble(addressData: {
+  //   name: string;
+  //   email: string;
+  //   phone: string;
+  //   address: string;
+  //   latitude?: number;
+  //   longitude?: number;
+  // }): Promise<{
+  //   success: boolean;
+  //   isValid: boolean;
+  //   data?: {
+  //     name: string;
+  //     email: string;
+  //     phone: string;
+  //     formatted_address: string;
+  //     country: string;
+  //     country_code: string;
+  //     city: string;
+  //     city_code: string;
+  //     state: string;
+  //     state_code: string;
+  //     postal_code: string;
+  //     latitude: number;
+  //     longitude: number;
+  //     address_code: number;
+  //   };
+  //   error?: string;
+  // }> {
+  //   try {
+  //     return await this.shipbubbleDeliveryService.validateAddressV1(addressData);
+  //   } catch (error) {
+  //     this.logger.error(`ShipBubble address validation error: ${error.message}`);
+  //     return {
+  //       success: false,
+  //       isValid: false,
+  //       error: 'Address validation service unavailable',
+  //     };
+  //   }
+  // }
+
+  /**
+   * Validate address for delivery and save the address code if successful
+   * This method is called when an address is being used for delivery
+   * @param addressId Address ID to validate
+   * @param userInfo User information for validation
+   * @returns Promise<Address with updated shipbubble_address_code>
+   */
+  // async validateAddressForDelivery(
+  //   addressId: string,
+  //   userInfo: { name: string; email: string; phone: string }
+  // ): Promise<Address> {
+  //   return this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
+  //     const address = await transactionalEntityManager.findOne(Address, {
+  //       where: { id: addressId },
+  //     });
+
+  //     if (!address) {
+  //       throw new NotFoundException('Address not found');
+  //     }
+
+  //     // If address already has a ShipBubble address code, return it
+  //     if (address.shipbubble_address_code) {
+  //       this.logger.log(`Address ${addressId} already has ShipBubble address code: ${address.shipbubble_address_code}`);
+  //       return address;
+  //     }
+
+  //     try {
+  //       const fullAddress = [
+  //         address.address_line_1,
+  //         address.address_line_2,
+  //         address.city,
+  //         address.state,
+  //         address.country || 'Nigeria'
+  //       ].filter(Boolean).join(', ');
+
+  //       const validationResult = await this.shipbubbleDeliveryService.validateAddressV1({
+  //         name: userInfo.name,
+  //         email: userInfo.email,
+  //         phone: userInfo.phone,
+  //         address: fullAddress,
+  //         latitude: address.latitude,
+  //         longitude: address.longitude,
+  //       });
+
+  //       if (validationResult.success && validationResult.data) {
+  //         // Save the address code for future use
+  //         address.shipbubble_address_code = validationResult.data.address_code.toString();
+          
+  //         // Update coordinates from ShipBubble response if available
+  //         if (validationResult.data.latitude && validationResult.data.longitude) {
+  //           address.latitude = validationResult.data.latitude;
+  //           address.longitude = validationResult.data.longitude;
+  //         }
+
+  //         const updatedAddress = await transactionalEntityManager.save(Address, address);
+  //         this.logger.log(`Address ${addressId} validated with ShipBubble, address_code: ${address.shipbubble_address_code}`);
+          
+  //         return updatedAddress;
+  //       } else {
+  //         this.logger.warn(`ShipBubble address validation failed for address ${addressId}: ${validationResult.error}`);
+  //         throw new BadRequestException(`Address validation failed: ${validationResult.error}`);
+  //       }
+  //     } catch (error) {
+  //       this.logger.error(`ShipBubble address validation error for address ${addressId}: ${error.message}`);
+  //       throw new BadRequestException(`Address validation failed: ${error.message}`);
+  //     }
+  //   });
+  // }
 
   private async clearDefaultAddress(userId: string): Promise<void> {
     // Find the current default address first

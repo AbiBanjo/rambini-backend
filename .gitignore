@@ -131,6 +131,9 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 
+# Documentation
 examples/
 docs/
-*.md
+
+# Text files at root
+*.txt

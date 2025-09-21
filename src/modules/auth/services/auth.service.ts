@@ -1,4 +1,4 @@
-import { Injectable, Logger, ConflictException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, ConflictException, UnauthorizedException, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserType, UserStatus, Wallet, Currency } from '../../../entities';
@@ -32,6 +32,7 @@ export class AuthService {
     @InjectRepository(Wallet)
     private readonly walletRepository: Repository<Wallet>,
     private readonly userService: UserService,
+    @Inject(forwardRef(() => AddressService))
     private readonly addressService: AddressService,
     private readonly otpService: OTPService,
     private readonly smsService: SMSService,
@@ -219,6 +220,7 @@ export class AuthService {
           latitude: profileRequest.address.latitude,
           longitude: profileRequest.address.longitude,
           is_default: profileRequest.address.is_default || true, // Set as default if it's the first address
+          country: profileRequest.country || 'NG',
         });
 
         this.logger.log(`Address created for user ${userId}: ${createdAddress.id}`);

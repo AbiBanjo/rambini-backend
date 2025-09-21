@@ -14,6 +14,12 @@ import {
   ShipmentTrackingResponseDto,
   DeliveryWebhookDto,
   TrackingEventDto,
+  ShipbubbleShippingRatesRequestDto,
+  ShipbubbleShippingRatesResponseDto,
+  ShipbubblePackageCategoriesResponseDto,
+  ShipbubblePackageDimensionsResponseDto,
+  ShipbubbleCreateShipmentRequestDto,
+  ShipbubbleCreateShipmentResponseDto,
 } from '../dto';
 
 @Injectable()
@@ -32,11 +38,7 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Validate delivery address using Shipbubble API
-   * @param address Address to validate
-   * @returns Promise<AddressValidationResult>
-   */
+// not part of the api
   async validateAddress(address: AddressValidationDto): Promise<AddressValidationResponseDto> {
     try {
       this.logger.log(`Validating address: ${address.address}, ${address.city}, ${address.state}`);
@@ -86,11 +88,86 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Get delivery rates from Shipbubble API
-   * @param rateRequest Rate request parameters
-   * @returns Promise<DeliveryRate[]>
-   */
+  async validateAddressV1(addressData: {
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+    latitude?: number;
+    longitude?: number;
+  }): Promise<{
+    success: boolean;
+    isValid: boolean;
+    data?: {
+      name: string;
+      email: string;
+      phone: string;
+      formatted_address: string;
+      country: string;
+      country_code: string;
+      city: string;
+      city_code: string;
+      state: string;
+      state_code: string;
+      postal_code: string;
+      latitude: number;
+      longitude: number;
+      address_code: number;
+    };
+    error?: string;
+  }> {
+    try {
+      this.logger.log(`Validating address with ShipBubble v1 API: ${addressData.address}`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/v1/shipping/address/validate`,
+          addressData,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      const data = response.data;
+
+      if (data.status === 'success') {
+        return {
+          success: true,
+          isValid: true,
+          data: data.data,
+        };
+      } else {
+        return {
+          success: false,
+          isValid: false,
+          error: data.message || 'Address validation failed',
+        };
+      }
+    } catch (error) {
+      this.logger.error(`ShipBubble v1 address validation failed: ${error.message}`);
+      
+      // Handle 422 Unprocessable Entity specifically
+      if (error.response?.status === 422) {
+        return {
+          success: false,
+          isValid: false,
+          error: error.response.data?.message || 'Address is not deliverable',
+        };
+      }
+
+      return {
+        success: false,
+        isValid: false,
+        error: 'Address validation service unavailable',
+      };
+    }
+  }
+
+ 
   async getDeliveryRates(rateRequest: DeliveryRateRequestDto): Promise<DeliveryRateResponseDto[]> {
     try {
       this.logger.log(`Getting delivery rates from ${rateRequest.origin.city} to ${rateRequest.destination.city}`);
@@ -159,11 +236,62 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Create a shipment using Shipbubble API
-   * @param shipmentData Shipment creation data
-   * @returns Promise<ShipmentCreationResult>
-   */
+
+  async fetchShippingRates(ratesRequest: ShipbubbleShippingRatesRequestDto): Promise<ShipbubbleShippingRatesResponseDto> {
+    try {
+      // Ensure pickup date is set to present day
+      const currentDate = new Date();
+      const todayString = currentDate.toISOString().split('T')[0]; // Format: yyyy-mm-dd
+      
+      // Override pickup date to present day
+      const updatedRatesRequest = {
+        ...ratesRequest,
+        pickup_date: todayString
+      };
+
+      this.logger.log(`Fetching shipping rates for pickup date: ${updatedRatesRequest.pickup_date} (automatically set to present day)`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/shipping/fetch_rates`,
+          updatedRatesRequest,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      const data = response.data;
+
+      if (data.status === 'success' && data.data) {
+        return data.data;
+      } else {
+        throw new BadRequestException(data.message || 'Failed to fetch shipping rates');
+      }
+    } catch (error) {
+      this.logger.error(`Failed to fetch shipping rates: ${error.message}`);
+      
+      // Handle specific API errors
+      if (error.response?.status === 422) {
+        throw new BadRequestException(error.response.data?.message || 'Invalid request data');
+      }
+      
+      if (error.response?.status === 400) {
+        throw new BadRequestException(error.response.data?.message || 'Bad request - check your input data');
+      }
+
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      
+      throw new BadRequestException('Failed to fetch shipping rates');
+    }
+  }
+
+  // not part 
   async createShipment(shipmentData: CreateShipmentDto): Promise<CreateShipmentResponseDto> {
     try {
       this.logger.log(`Creating shipment with rate ID: ${shipmentData.rateId}`);
@@ -233,11 +361,6 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Track a shipment using Shipbubble API
-   * @param trackingNumber Tracking number
-   * @returns Promise<ShipmentTracking>
-   */
   async trackShipment(trackingNumber: string): Promise<ShipmentTrackingResponseDto> {
     try {
       this.logger.log(`Tracking shipment: ${trackingNumber}`);
@@ -286,11 +409,7 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Cancel a shipment using Shipbubble API
-   * @param trackingNumber Tracking number
-   * @returns Promise<boolean>
-   */
+ 
   async cancelShipment(trackingNumber: string): Promise<boolean> {
     try {
       this.logger.log(`Cancelling shipment: ${trackingNumber}`);
@@ -316,12 +435,6 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Process webhook events from Shipbubble
-   * @param payload Webhook payload
-   * @param signature Webhook signature
-   * @returns Promise<WebhookResult>
-   */
   async processWebhook(payload: any, signature: string): Promise<DeliveryWebhookDto> {
     try {
       this.logger.log(`Processing Shipbubble webhook: ${payload.event_type}`);
@@ -376,12 +489,7 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Verify webhook signature (implement if needed)
-   * @param payload Webhook payload
-   * @param signature Webhook signature
-   * @returns boolean
-   */
+
   private verifyWebhookSignature(payload: any, signature: string): boolean {
     // Implement signature verification based on Shipbubble's webhook security
     // This would typically involve HMAC verification
@@ -389,10 +497,7 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     return true;
   }
 
-  /**
-   * Get available couriers from Shipbubble API
-   * @returns Promise<any[]>
-   */
+
   async getCouriers(): Promise<any[]> {
     try {
       const response = await firstValueFrom(
@@ -414,61 +519,171 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  /**
-   * Get package categories from Shipbubble API
-   * @returns Promise<any[]>
-   */
-  async getPackageCategories(): Promise<any[]> {
+
+  async getPackageCategories(): Promise<ShipbubblePackageCategoriesResponseDto> {
     try {
+      this.logger.log('Fetching package categories from Shipbubble');
+
       const response = await firstValueFrom(
         this.httpService.get(
-          `${this.baseUrl}/package-categories`,
+          `${this.baseUrl}/shipping/labels/categories`,
           {
             headers: {
               'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
             },
           },
         ),
       );
 
       const data = response.data;
-      return data.success ? data.data : [];
+
+      if (data.status === 'success' && data.data) {
+        return {
+          status: data.status,
+          message: data.message,
+          data: data.data,
+        };
+      } else {
+        throw new BadRequestException(data.message || 'Failed to get package categories');
+      }
     } catch (error) {
       this.logger.error(`Failed to get package categories: ${error.message}`);
-      return [];
+      
+      // Handle specific API errors
+      if (error.response?.status === 401) {
+        throw new BadRequestException('Unauthorized - Invalid API key');
+      }
+      
+      if (error.response?.status === 403) {
+        throw new BadRequestException('Forbidden - API access denied');
+      }
+
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      
+      throw new BadRequestException('Failed to get package categories');
     }
   }
 
-  // Enhanced interface methods (Shipbubble-specific implementations)
+  async getPackageDimensions(): Promise<ShipbubblePackageDimensionsResponseDto> {
+    try {
+      this.logger.log('Fetching package dimensions from Shipbubble');
 
-  /**
-   * Check if provider supports real-time tracking
-   * @returns boolean
-   */
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/shipping/labels/boxes`,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      const data = response.data;
+
+      if (data.status === 'success' && data.data) {
+        return {
+          status: data.status,
+          message: data.message,
+          data: data.data,
+        };
+      } else {
+        throw new BadRequestException(data.message || 'Failed to get package dimensions');
+      }
+    } catch (error) {
+      this.logger.error(`Failed to get package dimensions: ${error.message}`);
+      
+      // Handle specific API errors
+      if (error.response?.status === 401) {
+        throw new BadRequestException('Unauthorized - Invalid API key');
+      }
+      
+      if (error.response?.status === 403) {
+        throw new BadRequestException('Forbidden - API access denied');
+      }
+
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      
+      throw new BadRequestException('Failed to get package dimensions');
+    }
+  }
+
+  async createShipmentLabel(shipmentRequest: ShipbubbleCreateShipmentRequestDto): Promise<ShipbubbleCreateShipmentResponseDto> {
+    try {
+      this.logger.log(`Creating shipment label with request token: ${shipmentRequest.request_token}`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/shipping/labels`,
+          shipmentRequest,
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      const data = response.data;
+
+      if (data.status === 'success' && data.data) {
+        return {
+          status: data.status,
+          message: data.message,
+          data: data.data,
+        };
+      } else {
+        throw new BadRequestException(data.message || 'Failed to create shipment label');
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create shipment label: ${error.message}`);
+      
+      // Handle specific API errors
+      if (error.response?.status === 401) {
+        throw new BadRequestException('Unauthorized - Invalid API key');
+      }
+      
+      if (error.response?.status === 403) {
+        throw new BadRequestException('Forbidden - API access denied');
+      }
+
+      if (error.response?.status === 422) {
+        throw new BadRequestException(error.response.data?.message || 'Invalid request data');
+      }
+
+      if (error.response?.status === 400) {
+        throw new BadRequestException(error.response.data?.message || 'Bad request - check your input data');
+      }
+
+      if (error.response?.data?.message) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      
+      throw new BadRequestException('Failed to create shipment label');
+    }
+  }
+
+ 
   supportsRealTimeTracking(): boolean {
     return true;
   }
 
-  /**
-   * Check if provider requires consumer confirmation
-   * @returns boolean
-   */
   requiresConsumerConfirmation(): boolean {
     return false; // Shipbubble doesn't require consumer confirmation
   }
 
-  /**
-   * Check if provider supports store location management
-   * @returns boolean
-   */
+
   supportsStoreLocationManagement(): boolean {
     return false; // Shipbubble doesn't use store locations
   }
 
-  /**
-   * Get provider-specific features
-   * @returns string[]
-   */
   getProviderFeatures(): string[] {
     return [
       'real_time_tracking',
@@ -480,10 +695,6 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     ];
   }
 
-  /**
-   * Get provider workflow type
-   * @returns 'on_demand' | 'scheduled' | 'batch'
-   */
   getWorkflowType(): 'on_demand' | 'scheduled' | 'batch' {
     return 'scheduled'; // Shipbubble typically uses scheduled deliveries
   }

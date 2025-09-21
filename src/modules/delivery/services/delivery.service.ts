@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryRepository } from '../repositories/delivery.repository';
@@ -6,6 +6,7 @@ import { ShipbubbleDeliveryService } from './shipbubble-delivery.service';
 import { UberDeliveryService } from './uber-delivery.service';
 import { Delivery, ShipmentStatus, DeliveryProvider, DeliveryTracking } from 'src/entities';
 import { DeliveryProviderInterface } from '../interfaces/delivery-provider.interface';
+import { AddressService } from '../../user/services/address.service';
 import {
   AddressValidationDto,
   DeliveryRateRequestDto,
@@ -15,6 +16,10 @@ import {
   CreateShipmentResponseDto,
   ShipmentTrackingResponseDto,
   DeliveryWebhookDto,
+  ShipbubblePackageCategoriesResponseDto,
+  ShipbubblePackageDimensionsResponseDto,
+  ShipbubbleCreateShipmentRequestDto,
+  ShipbubbleCreateShipmentResponseDto,
 } from '../dto';
 import { DeliveryResponseDto } from '../dto';
 
@@ -27,6 +32,8 @@ export class DeliveryService {
     private readonly deliveryRepository: DeliveryRepository,
     private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
     private readonly uberDeliveryService: UberDeliveryService,
+    @Inject(forwardRef(() => AddressService))
+    private readonly addressService: AddressService,
     @InjectRepository(DeliveryTracking)
     private readonly deliveryTrackingRepository: Repository<DeliveryTracking>,
   ) {
@@ -77,12 +84,14 @@ export class DeliveryService {
    * @param orderId Order ID
    * @param provider Delivery provider
    * @param shipmentData Shipment creation data
+   * @param userInfo User information for address validation
    * @returns Promise<DeliveryResponseDto>
    */
   async createDelivery(
     orderId: string,
     provider: DeliveryProvider,
     shipmentData: CreateShipmentDto,
+    userInfo?: { name: string; email: string; phone: string },
   ): Promise<DeliveryResponseDto> {
     this.logger.log(`Creating delivery for order ${orderId} with provider ${provider}`);
 
@@ -96,6 +105,10 @@ export class DeliveryService {
     if (!deliveryProvider) {
       throw new BadRequestException(`Unsupported delivery provider: ${provider}`);
     }
+
+    // Note: Address validation should be done separately before creating delivery
+    // The delivery service assumes the address has already been validated
+    // Use the validateAddressForDelivery method in AddressService before calling this method
 
     // Get delivery rates to find the selected rate
     const rates = await deliveryProvider.getDeliveryRates({
@@ -361,6 +374,34 @@ export class DeliveryService {
       default:
         return null;
     }
+  }
+
+  /**
+   * Get package categories for shipping
+   * @returns Promise<ShipbubblePackageCategoriesResponseDto>
+   */
+  async getPackageCategories(): Promise<ShipbubblePackageCategoriesResponseDto> {
+    this.logger.log('Getting package categories from Shipbubble');
+    return await this.shipbubbleDeliveryService.getPackageCategories();
+  }
+
+  /**
+   * Get package dimensions for shipping
+   * @returns Promise<ShipbubblePackageDimensionsResponseDto>
+   */
+  async getPackageDimensions(): Promise<ShipbubblePackageDimensionsResponseDto> {
+    this.logger.log('Getting package dimensions from Shipbubble');
+    return await this.shipbubbleDeliveryService.getPackageDimensions();
+  }
+
+  /**
+   * Create shipment label using request token from rates API
+   * @param shipmentRequest Shipment creation request
+   * @returns Promise<ShipbubbleCreateShipmentResponseDto>
+   */
+  async createShipmentLabel(shipmentRequest: ShipbubbleCreateShipmentRequestDto): Promise<ShipbubbleCreateShipmentResponseDto> {
+    this.logger.log(`Creating shipment label with request token: ${shipmentRequest.request_token}`);
+    return await this.shipbubbleDeliveryService.createShipmentLabel(shipmentRequest);
   }
 
   /**

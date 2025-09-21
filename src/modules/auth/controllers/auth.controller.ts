@@ -78,6 +78,11 @@ export class AuthController {
       id: user.id,
       phoneNumber: user.phone_number,
       userType: user.user_type,
+      profileCompleted: user.profile_completed,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      email: user.email,
+      country: user.country,
     };
   }
 } 

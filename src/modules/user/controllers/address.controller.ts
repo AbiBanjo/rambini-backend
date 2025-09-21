@@ -73,4 +73,65 @@ export class AddressController {
   }> {
     return this.addressService.validateAddress(addressRequest);
   }
+
+  // @Post('validate-shipbubble')
+  // async validateAddressWithShipBubble(
+  //   @GetUser() user: User,
+  //   @Body() addressRequest: CreateAddressDto,
+  // ): Promise<{
+  //   success: boolean;
+  //   isValid: boolean;
+  //   data?: {
+  //     name: string;
+  //     email: string;
+  //     phone: string;
+  //     formatted_address: string;
+  //     country: string;
+  //     country_code: string;
+  //     city: string;
+  //     city_code: string;
+  //     state: string;
+  //     state_code: string;
+  //     postal_code: string;
+  //     latitude: number;
+  //     longitude: number;
+  //     address_code: number;
+  //   };
+  //   error?: string;
+  // }> {
+  //   const fullAddress = [
+  //     addressRequest.address_line_1,
+  //     addressRequest.address_line_2,
+  //     addressRequest.city,
+  //     addressRequest.state,
+  //     addressRequest.country || 'Nigeria'
+  //   ].filter(Boolean).join(', ');
+
+  //   const userInfo = {
+  //     name: user.full_name || `${user.first_name} ${user.last_name}`,
+  //     email: user.email,
+  //     phone: user.phone_number,
+  //   };
+
+  //   return this.addressService.validateAddressWithShipBubble({
+  //     ...userInfo,
+  //     address: fullAddress,
+  //     latitude: addressRequest.latitude,
+  //     longitude: addressRequest.longitude,
+  //   });
+  // }
+
+//  @Post(':id/validate-for-delivery')
+//    async validateAddressForDelivery(
+//     @GetUser() user: User,
+//     @Param('id') addressId: string,
+//   ): Promise<Address> {
+//     const userInfo = {
+//       name: user.full_name || `${user.first_name} ${user.last_name}`,
+//       email: user.email,
+//       phone: user.phone_number,
+//     };
+
+//     return this.addressService.validateAddressForDelivery(addressId, userInfo);
+//   }
 } 

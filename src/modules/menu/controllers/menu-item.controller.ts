@@ -127,12 +127,12 @@ export class MenuItemController {
     return await this.menuItemService.searchMenuItems(searchDto);
   }
 
-  @Get('vendor/:vendorId')
+  @Get('vendor')
   @ApiOperation({ summary: 'Get menu items by vendor' })
   @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
   @ApiResponse({ status: 200, description: 'Vendor menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
-  async getVendorMenu(@Param('vendorId') vendorId: string) {
-    const items = await this.menuItemService.getVendorMenu(vendorId);
+  async getVendorMenu(@GetUser() user: User) {
+    const items = await this.menuItemService.getVendorMenu(user.id);
     // return items.map(item => this.mapToResponseDto(item));
     return items;
   }

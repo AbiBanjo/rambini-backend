@@ -82,6 +82,11 @@ export class Address extends BaseEntity {
   @IsString()
   landmark?: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  @IsOptional()
+  @IsString()
+  shipbubble_address_code?: string;
+
   // Relationships
   @ManyToOne('User', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
+import * as AWS from 'aws-sdk';
 
 export interface UploadedFile {
   originalName: string;
@@ -39,12 +40,26 @@ export class FileStorageService {
   private readonly maxFileSize: number;
   private readonly allowedMimeTypes: string[];
   private readonly cdnUrl: string;
+  private readonly s3: AWS.S3;
+  private readonly s3BucketName: string;
+  private readonly s3Region: string;
 
   constructor(private readonly configService: ConfigService) {
     this.uploadDir = this.configService.get('UPLOAD_DIR', 'uploads');
     this.maxFileSize = this.configService.get('MAX_FILE_SIZE', 10 * 1024 * 1024); // 10MB
     this.allowedMimeTypes = this.configService.get('ALLOWED_MIME_TYPES', 'image/jpeg,image/png,image/webp').split(',');
     this.cdnUrl = this.configService.get('CDN_URL', '');
+    
+    // AWS S3 Configuration
+    this.s3BucketName = this.configService.get('AWS_S3_BUCKET_NAME');
+    this.s3Region = this.configService.get('AWS_REGION', 'us-east-1');
+    
+    // Initialize AWS S3
+    this.s3 = new AWS.S3({
+      accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
+      secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY'),
+      region: this.s3Region,
+    });
     
     this.ensureUploadDirectory();
   }
@@ -68,12 +83,14 @@ export class FileStorageService {
     // Generate unique filename
     const fileExtension = path.extname(file.originalname);
     const filename = `${uuidv4()}${fileExtension}`;
-    const filePath = path.join(this.uploadDir, filename);
+    const s3Key = `images/${filename}`;
 
     try {
-      // Process and save image
+      // Process image
       const processedImage = await this.processImage(file.buffer, options);
-      await fs.writeFile(filePath, processedImage);
+
+      // Upload to S3
+      const uploadResult = await this.uploadToS3(processedImage, s3Key, file.mimetype);
 
       // Create thumbnail if requested
       let thumbnailUrl: string | undefined;
@@ -89,8 +106,8 @@ export class FileStorageService {
         filename,
         mimetype: file.mimetype,
         size: file.size,
-        path: filePath,
-        url: this.getFileUrl(filename),
+        path: s3Key, // Store S3 key as path
+        url: uploadResult.Location,
         thumbnailUrl,
         metadata: {
           ...metadata,
@@ -98,10 +115,10 @@ export class FileStorageService {
         },
       };
 
-      this.logger.log(`Image uploaded successfully: ${filename}`);
+      this.logger.log(`Image uploaded successfully to S3: ${filename}`);
       return uploadedFile;
     } catch (error) {
-      this.logger.error(`Failed to upload image: ${error.message}`);
+      this.logger.error(`Failed to upload image to S3: ${error.message}`);
       throw new BadRequestException('Failed to process and upload image');
     }
   }
@@ -115,67 +132,63 @@ export class FileStorageService {
 
     const fileExtension = path.extname(file.originalname);
     const filename = `${uuidv4()}${fileExtension}`;
-    const categoryDir = path.join(this.uploadDir, category);
-    const filePath = path.join(categoryDir, filename);
+    const s3Key = `${category}/${filename}`;
 
     try {
-      // Ensure category directory exists
-      await fs.mkdir(categoryDir, { recursive: true });
-
-      // Save document
-      await fs.writeFile(filePath, file.buffer);
+      // Upload to S3
+      const uploadResult = await this.uploadToS3(file.buffer, s3Key, file.mimetype);
 
       const uploadedFile: UploadedFile = {
         originalName: file.originalname,
         filename,
         mimetype: file.mimetype,
         size: file.size,
-        path: filePath,
-        url: this.getFileUrl(filename, category),
+        path: s3Key, // Store S3 key as path
+        url: uploadResult.Location,
         metadata: {
           size: file.size,
         },
       };
 
-      this.logger.log(`Document uploaded successfully: ${filename}`);
+      this.logger.log(`Document uploaded successfully to S3: ${filename}`);
       return uploadedFile;
     } catch (error) {
-      this.logger.error(`Failed to upload document: ${error.message}`);
+      this.logger.error(`Failed to upload document to S3: ${error.message}`);
       throw new BadRequestException('Failed to upload document');
     }
   }
 
   async deleteFile(filename: string, category?: string): Promise<void> {
     try {
-      const filePath = category 
-        ? path.join(this.uploadDir, category, filename)
-        : path.join(this.uploadDir, filename);
+      const s3Key = category 
+        ? `${category}/${filename}`
+        : `images/${filename}`;
 
-      await fs.unlink(filePath);
-      this.logger.log(`File deleted successfully: ${filename}`);
+      await this.deleteFromS3(s3Key);
+      this.logger.log(`File deleted successfully from S3: ${filename}`);
     } catch (error) {
-      this.logger.error(`Failed to delete file: ${error.message}`);
+      this.logger.error(`Failed to delete file from S3: ${error.message}`);
       throw new NotFoundException('File not found or could not be deleted');
     }
   }
 
   async getFileInfo(filename: string, category?: string): Promise<UploadedFile | null> {
     try {
-      const filePath = category 
-        ? path.join(this.uploadDir, category, filename)
-        : path.join(this.uploadDir, filename);
+      const s3Key = category 
+        ? `${category}/${filename}`
+        : `images/${filename}`;
 
-      const stats = await fs.stat(filePath);
+      const headResult = await this.getS3ObjectInfo(s3Key);
       
       return {
         originalName: filename,
         filename,
-        mimetype: this.getMimeType(filename),
-        size: stats.size,
-        path: filePath,
-        url: this.getFileUrl(filename, category),
+        mimetype: headResult.ContentType || this.getMimeType(filename),
+        size: headResult.ContentLength || 0,
+        path: s3Key,
+        url: this.getFileUrl(path.basename(s3Key), path.dirname(s3Key)),
         metadata: {
-          size: stats.size,
+          size: headResult.ContentLength || 0,
         },
       };
     } catch {
@@ -294,13 +307,12 @@ export class FileStorageService {
         .toBuffer();
 
       const thumbnailFilename = `thumb_${filename}`;
-      const thumbnailPath = path.join(this.uploadDir, 'thumbnails', thumbnailFilename);
+      const s3Key = `thumbnails/${thumbnailFilename}`;
 
-      // Ensure thumbnails directory exists
-      await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
-      await fs.writeFile(thumbnailPath, thumbnailBuffer);
+      // Upload thumbnail to S3
+      const uploadResult = await this.uploadToS3(thumbnailBuffer, s3Key, 'image/jpeg');
 
-      return this.getFileUrl(thumbnailFilename, 'thumbnails');
+      return uploadResult.Location;
     } catch (error) {
       this.logger.warn(`Failed to create thumbnail: ${error.message}`);
       return '';
@@ -331,10 +343,26 @@ export class FileStorageService {
         : `${this.cdnUrl}/${filename}`;
     }
 
-    // Fallback to local path
-    return category 
-      ? `/files/${category}/${filename}`
-      : `/files/${filename}`;
+    // Generate S3 URL
+    const s3Key = category 
+      ? `${category}/${filename}`
+      : `images/${filename}`;
+    
+    // Note: For S3 buckets with ACLs disabled, ensure bucket policy allows public read access
+    // Example bucket policy:
+    // {
+    //   "Version": "2012-10-17",
+    //   "Statement": [
+    //     {
+    //       "Sid": "PublicReadGetObject",
+    //       "Effect": "Allow",
+    //       "Principal": "*",
+    //       "Action": "s3:GetObject",
+    //       "Resource": "arn:aws:s3:::your-bucket-name/*"
+    //     }
+    //   ]
+    // }
+    return `https://${this.s3BucketName}.s3.${this.s3Region}.amazonaws.com/${s3Key}`;
   }
 
   private getMimeType(filename: string): string {
@@ -356,5 +384,64 @@ export class FileStorageService {
     // Implementation depends on your database schema and requirements
     this.logger.log('Cleanup of orphaned files not implemented yet');
     return 0;
+  }
+
+  // S3 Helper Methods
+  private async uploadToS3(
+    buffer: Buffer,
+    key: string,
+    contentType: string,
+  ): Promise<AWS.S3.ManagedUpload.SendData> {
+    const params: AWS.S3.PutObjectRequest = {
+      Bucket: this.s3BucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      // ACL removed - use bucket policy for public access instead
+    };
+
+    return new Promise((resolve, reject) => {
+      this.s3.upload(params, (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      });
+    });
+  }
+
+  private async deleteFromS3(key: string): Promise<void> {
+    const params: AWS.S3.DeleteObjectRequest = {
+      Bucket: this.s3BucketName,
+      Key: key,
+    };
+
+    return new Promise((resolve, reject) => {
+      this.s3.deleteObject(params, (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  private async getS3ObjectInfo(key: string): Promise<AWS.S3.HeadObjectOutput> {
+    const params: AWS.S3.HeadObjectRequest = {
+      Bucket: this.s3BucketName,
+      Key: key,
+    };
+
+    return new Promise((resolve, reject) => {
+      this.s3.headObject(params, (err, data) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(data);
+        }
+      });
+    });
   }
 } 

@@ -113,7 +113,13 @@ export class MenuItemService {
     return menuItem;
   }
 
-  async getVendorMenu(vendorId: string): Promise<MenuItem[]> {
+  async getVendorMenu(userId: string): Promise<MenuItem[]> {
+    // 
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${userId} not found`);
+    }
+    const vendorId = vendor.id;
     this.logger.log(`Fetching menu for vendor ${vendorId}`);
     return await this.menuItemRepository.findByVendorId(vendorId);
   }

@@ -179,9 +179,9 @@ export class OrderService {
         throw new NotFoundException('Delivery address not found');
       }
       
-      // Select delivery provider based on country
-      selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(deliveryAddress.country);
-      this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for country: ${deliveryAddress.country}`);
+      // Select delivery provider based on vendor's country (not customer's delivery address)
+      selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(vendor.address.country);
+      this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for vendor country: ${vendor.address.country}`);
     }
 
     // Calculate fees and totals
@@ -197,11 +197,13 @@ export class OrderService {
         );
       } catch (error) {
         this.logger.warn(`Failed to calculate actual delivery fee: ${error.message}. Using fallback calculation.`);
-        deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
+        throw new BadRequestException('Failed to calculate actual delivery fee');
+        // deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
       }
-    } else {
-      deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
-    }
+    } 
+    // else {
+    //   deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
+    // }
     
     const serviceFee = this.calculateServiceFee(subtotal);
     const taxAmount = this.calculateTaxAmount(subtotal);

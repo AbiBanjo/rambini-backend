@@ -14,6 +14,15 @@ import {
   ShipmentTrackingResponseDto,
   DeliveryWebhookDto,
   TrackingEventDto,
+  UberDirectDeliveryQuoteRequestDto,
+  UberDirectDeliveryQuoteResponseDto,
+  UberDirectAddressDto,
+  UberDirectCreateDeliveryRequestDto,
+  UberDirectCreateDeliveryResponseDto,
+  UberDirectManifestItemDto,
+  UberDirectDeliveryDetailsDto,
+  UberDirectCourierDto,
+  UberDirectDeliveryStatusDto,
 } from '../dto';
 
 @Injectable()
@@ -40,10 +49,93 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
   }
 
   /**
-   * Confirm a delivery quote (Uber Direct specific)
-   * @param quoteId Quote ID to confirm
-   * @returns Promise<boolean>
+   * Create a delivery quote using Uber Direct API
+   * @param quoteRequest Quote request parameters
+   * @returns Promise<UberDirectDeliveryQuoteResponseDto>
    */
+  async createDeliveryQuote(quoteRequest: UberDirectDeliveryQuoteRequestDto): Promise<UberDirectDeliveryQuoteResponseDto> {
+    try {
+      const token = await this.getAccessToken();
+      
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/customers/${this.customerId}/delivery_quotes`,
+          quoteRequest,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to create delivery quote', error);
+      throw new BadRequestException(
+        error.response?.data?.message || 'Failed to create delivery quote'
+      );
+    }
+  }
+
+
+  async createDelivery(deliveryRequest: UberDirectCreateDeliveryRequestDto): Promise<UberDirectCreateDeliveryResponseDto> {
+    try {
+      const token = await this.getAccessToken();
+      
+      const response = await firstValueFrom(
+        this.httpService.post(
+          `${this.baseUrl}/customers/${this.customerId}/deliveries`,
+          deliveryRequest,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to create delivery', error);
+      throw new BadRequestException(
+        error.response?.data?.message || 'Failed to create delivery'
+      );
+    }
+  }
+
+  /**
+   * Get delivery details using Uber Direct API
+   * @param deliveryId Delivery ID
+   * @returns Promise<UberDirectDeliveryDetailsDto>
+   */
+  async getDelivery(deliveryId: string): Promise<UberDirectDeliveryDetailsDto> {
+    try {
+      const token = await this.getAccessToken();
+      
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.baseUrl}/customers/${this.customerId}/deliveries/${deliveryId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          },
+        ),
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get delivery details', error);
+      throw new BadRequestException(
+        error.response?.data?.message || 'Failed to get delivery details'
+      );
+    }
+  }
+
+
   async confirmDeliveryQuote(quoteId: string): Promise<boolean> {
     try {
       const token = await this.getAccessToken();
@@ -68,11 +160,6 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Get store locations for a given area (public method)
-   * @param origin Origin address
-   * @returns Promise<StoreLocation[]>
-   */
   async getStoreLocations(origin: any): Promise<StoreLocation[]> {
     try {
       const token = await this.getAccessToken();
@@ -96,9 +183,7 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Get or refresh access token
-   */
+
   private async getAccessToken(): Promise<string> {
     if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
       return this.accessToken;
@@ -131,11 +216,6 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Validate delivery address using Uber API
-   * @param address Address to validate
-   * @returns Promise<AddressValidationResponseDto>
-   */
   async validateAddress(address: AddressValidationDto): Promise<AddressValidationResponseDto> {
     try {
       const token = await this.getAccessToken();
@@ -175,16 +255,9 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Get delivery quotes using Uber Direct API
-   * @param rateRequest Rate request parameters
-   * @returns Promise<DeliveryRateResponseDto[]>
-   */
   async getDeliveryRates(rateRequest: DeliveryRateRequestDto): Promise<DeliveryRateResponseDto[]> {
     try {
-      const token = await this.getAccessToken();
-      
-      // First, we need to get store locations for the pickup area
+      // Get store locations for the pickup area
       const storeLocations = await this.getStoreLocations(rateRequest.origin);
       
       if (!storeLocations || storeLocations.length === 0) {
@@ -195,86 +268,34 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
       // Use the first available store location
       const storeLocation = storeLocations[0];
       
-      // Create delivery quote request according to Uber Direct API
-      const quoteRequest = {
-        pickup: {
-          address: storeLocation.address,
-          coordinates: {
-            latitude: storeLocation.latitude,
-            longitude: storeLocation.longitude,
-          },
-          contact: {
-            name: storeLocation.name,
-            phone: storeLocation.phone,
-          },
-        },
-        dropoff: {
-          address: `${rateRequest.destination.address}, ${rateRequest.destination.city}, ${rateRequest.destination.state}, ${rateRequest.destination.country}`,
-          coordinates: {
-            latitude: 0, // Will be geocoded
-            longitude: 0, // Will be geocoded
-          },
-          contact: {
-            name: 'Customer',
-            phone: '+1234567890', // This should come from the order
-          },
-        },
-        items: [
-          {
-            name: 'Food Order',
-            quantity: 1,
-            price: rateRequest.package.value || 0,
-          },
-        ],
-        customer_id: this.customerId,
-      };
-
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/deliveries/quotes`,
-          quoteRequest,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
+      // Create delivery quote using the new Uber Direct API
+      const quoteResponse = await this.createDeliveryQuoteFromRateRequest(
+        rateRequest,
+        storeLocation.phone,
+        '+1234567890', // This should come from the order
+        storeLocation.id
       );
 
-      if (!response.data.quotes || response.data.quotes.length === 0) {
-        return [];
-      }
-
-      // Convert Uber Direct quotes to our standard format
-      return response.data.quotes.map((quote: any) => ({
+      // Convert Uber Direct quote to our standard format
+      return [{
         courier: 'uber',
         courierName: 'Uber Direct',
-        service: quote.service_type || 'standard',
-        serviceName: quote.service_name || 'Uber Direct Delivery',
-        rateId: quote.quote_id,
-        amount: quote.fee / 100, // Convert from cents
-        currency: quote.currency || 'USD',
+        service: 'standard',
+        serviceName: 'Uber Direct Delivery',
+        rateId: quoteResponse.id,
+        amount: quoteResponse.fee / 100, // Convert from cents
+        currency: quoteResponse.currency || 'USD',
         estimatedDays: 0, // Uber delivers same day
         features: ['real_time_tracking', 'contactless_delivery', 'proof_of_delivery'],
-        storeLocation: storeLocation,
-        quoteExpiry: quote.expires_at,
-      }));
+      }];
     } catch (error) {
       this.logger.error('Failed to get delivery rates from Uber Direct', error);
       throw new BadRequestException('Failed to get delivery rates');
     }
   }
 
-  /**
-   * Create a delivery using Uber Direct API
-   * @param shipmentData Shipment creation data
-   * @returns Promise<CreateShipmentResponseDto>
-   */
   async createShipment(shipmentData: CreateShipmentDto): Promise<CreateShipmentResponseDto> {
     try {
-      const token = await this.getAccessToken();
-      
       // Get store locations for the pickup area
       const storeLocations = await this.getStoreLocations(shipmentData.origin);
       const storeLocation = storeLocations[0];
@@ -286,72 +307,28 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
         };
       }
 
-      // Create delivery request according to Uber Direct API
-      const deliveryRequest = {
-        pickup: {
-          address: storeLocation.address,
-          coordinates: {
-            latitude: storeLocation.latitude,
-            longitude: storeLocation.longitude,
-          },
-          contact: {
-            name: storeLocation.name,
-            phone: storeLocation.phone,
-          },
-        },
-        dropoff: {
-          address: `${shipmentData.destination.address}, ${shipmentData.destination.city}, ${shipmentData.destination.state}, ${shipmentData.destination.country}`,
-          coordinates: {
-            latitude: 0, // Will be geocoded
-            longitude: 0, // Will be geocoded
-          },
-          contact: {
-            name: 'Customer',
-            phone: '+1234567890', // This should come from the order
-          },
-        },
-        items: [
-          {
-            name: shipmentData.description || 'Food Order',
-            quantity: 1,
-            price: shipmentData.package.value || 0,
-          },
-        ],
-        quote_id: shipmentData.rateId,
-        external_store_id: shipmentData.reference,
-        customer_id: this.customerId,
-        // Uber Direct specific fields
-        pickup_instructions: 'Please ring the doorbell and wait for staff',
-        dropoff_instructions: shipmentData.delivery_instructions || 'Leave at door if no answer',
-        external_delivery_id: shipmentData.reference,
-      };
-
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/deliveries`,
-          deliveryRequest,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
+      // Create manifest items from package data
+      const manifestItems = this.createManifestItemsFromPackage(
+        shipmentData.package,
+        shipmentData.description || 'Food Order',
+        'Food delivery order'
       );
 
-      if (response.data.delivery_id) {
-        return {
-          success: true,
-          trackingNumber: response.data.delivery_id,
-          reference: response.data.external_delivery_id || shipmentData.reference,
-          labelUrl: response.data.tracking_url,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Failed to create delivery',
-        };
-      }
+      // Create delivery using the new Uber Direct Create Delivery API
+      const deliveryResponse = await this.createDeliveryFromShipmentData(
+        shipmentData,
+        storeLocation.name,
+        'Customer',
+        manifestItems,
+        shipmentData.rateId
+      );
+
+      return {
+        success: true,
+        trackingNumber: deliveryResponse.id,
+        reference: deliveryResponse.external_id || shipmentData.reference,
+        labelUrl: deliveryResponse.tracking_url,
+      };
     } catch (error) {
       this.logger.error('Failed to create delivery with Uber Direct', error);
       return {
@@ -361,36 +338,27 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Track a delivery using Uber API
-   * @param trackingNumber Tracking number
-   * @returns Promise<ShipmentTrackingResponseDto>
-   */
   async trackShipment(trackingNumber: string): Promise<ShipmentTrackingResponseDto> {
     try {
-      const token = await this.getAccessToken();
-      
-      const response = await firstValueFrom(
-        this.httpService.get(
-          `${this.baseUrl}/deliveries/${trackingNumber}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          },
-        ),
-      );
-
-      const delivery = response.data;
+      // Use the new Get Delivery API
+      const delivery = await this.getDelivery(trackingNumber);
       const events: TrackingEventDto[] = [];
 
-      // Map Uber delivery status to our tracking events
-      if (delivery.status) {
+      // Convert status history to tracking events
+      if (delivery.status_history && delivery.status_history.length > 0) {
+        events.push(...delivery.status_history.map(status => ({
+          status: this.mapUberStatusToShipmentStatus(status.status),
+          description: status.description,
+          timestamp: new Date(status.timestamp),
+          location: status.location ? `${status.location.latitude}, ${status.location.longitude}` : null,
+        })));
+      } else if (delivery.status) {
+        // Fallback to current status if no history
         events.push({
           status: this.mapUberStatusToShipmentStatus(delivery.status),
           description: this.getStatusDescription(delivery.status),
-          timestamp: new Date(delivery.updated_at || delivery.created_at),
-          location: delivery.courier?.location || null,
+          timestamp: new Date(delivery.updated),
+          location: delivery.courier?.location ? `${delivery.courier.location.latitude}, ${delivery.courier.location.longitude}` : null,
         });
       }
 
@@ -399,8 +367,8 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
         trackingNumber,
         status: this.mapUberStatusToShipmentStatus(delivery.status),
         events,
-        estimatedDelivery: delivery.dropoff?.eta ? new Date(delivery.dropoff.eta) : null,
-        currentLocation: delivery.courier?.location || null,
+        estimatedDelivery: delivery.eta ? new Date(delivery.eta) : null,
+        currentLocation: delivery.courier?.location ? `${delivery.courier.location.latitude}, ${delivery.courier.location.longitude}` : null,
       };
     } catch (error) {
       this.logger.error('Failed to track delivery', error);
@@ -414,11 +382,7 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Cancel a delivery using Uber API
-   * @param trackingNumber Tracking number
-   * @returns Promise<boolean>
-   */
+
   async cancelShipment(trackingNumber: string): Promise<boolean> {
     try {
       const token = await this.getAccessToken();
@@ -441,12 +405,6 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Process webhook events from Uber
-   * @param payload Webhook payload
-   * @param signature Webhook signature
-   * @returns Promise<DeliveryWebhookDto>
-   */
   async processWebhook(payload: any, signature: string): Promise<DeliveryWebhookDto> {
     try {
       // Verify webhook signature if needed
@@ -501,9 +459,7 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
-  /**
-   * Map Uber delivery status to our shipment status
-   */
+
   private mapUberStatusToShipmentStatus(uberStatus: string): string {
     const statusMap: { [key: string]: string } = {
       'pending': 'pending',
@@ -520,9 +476,7 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     return statusMap[uberStatus] || 'unknown';
   }
 
-  /**
-   * Get human-readable status description
-   */
+
   private getStatusDescription(uberStatus: string): string {
     const descriptions: { [key: string]: string } = {
       'pending': 'Delivery request is pending',
@@ -537,6 +491,189 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     };
 
     return descriptions[uberStatus] || 'Unknown status';
+  }
+
+  private formatAddressForUberDirect(address: any): string {
+    const uberAddress: UberDirectAddressDto = {
+      street_address: [address.address],
+      city: address.city,
+      state: address.state,
+      zip_code: address.postalCode || '',
+      country: address.country,
+    };
+
+    return JSON.stringify(uberAddress);
+  }
+
+
+  private generateTimeWindows(baseTime: Date = new Date()): {
+    pickup_ready_dt: string;
+    pickup_deadline_dt: string;
+    dropoff_ready_dt: string;
+    dropoff_deadline_dt: string;
+  } {
+    const now = new Date(baseTime);
+    
+    // Pickup ready: 20 minutes from now
+    const pickupReady = new Date(now.getTime() + 20 * 60 * 1000);
+    
+    // Pickup deadline: 30 minutes after pickup ready (50 minutes from now)
+    const pickupDeadline = new Date(pickupReady.getTime() + 30 * 60 * 1000);
+    
+    // Dropoff ready: same as pickup deadline
+    const dropoffReady = new Date(pickupDeadline);
+    
+    // Dropoff deadline: 90 minutes after dropoff ready
+    const dropoffDeadline = new Date(dropoffReady.getTime() + 90 * 60 * 1000);
+
+    return {
+      pickup_ready_dt: pickupReady.toISOString(),
+      pickup_deadline_dt: pickupDeadline.toISOString(),
+      dropoff_ready_dt: dropoffReady.toISOString(),
+      dropoff_deadline_dt: dropoffDeadline.toISOString(),
+    };
+  }
+
+
+  async createDeliveryQuoteFromRateRequest(
+    rateRequest: DeliveryRateRequestDto,
+    pickupPhone: string,
+    dropoffPhone: string,
+    externalStoreId?: string
+  ): Promise<UberDirectDeliveryQuoteResponseDto> {
+    const timeWindows = this.generateTimeWindows();
+    
+    const quoteRequest: UberDirectDeliveryQuoteRequestDto = {
+      pickup_address: this.formatAddressForUberDirect(rateRequest.origin),
+      dropoff_address: this.formatAddressForUberDirect(rateRequest.destination),
+      pickup_ready_dt: timeWindows.pickup_ready_dt,
+      pickup_deadline_dt: timeWindows.pickup_deadline_dt,
+      dropoff_ready_dt: timeWindows.dropoff_ready_dt,
+      dropoff_deadline_dt: timeWindows.dropoff_deadline_dt,
+      pickup_phone_number: pickupPhone,
+      dropoff_phone_number: dropoffPhone,
+      manifest_total_value: Math.round((rateRequest.package.value || 0) * 100), // Convert to cents
+      external_store_id: externalStoreId,
+    };
+
+    return this.createDeliveryQuote(quoteRequest);
+  }
+
+  /**
+   * Create delivery from standard shipment data
+   * @param shipmentData Standard shipment creation data
+   * @param pickupName Pickup location name
+   * @param dropoffName Dropoff location name
+   * @param manifestItems Manifest items for delivery
+   * @param quoteId Optional quote ID from previous quote
+   * @returns Promise<UberDirectCreateDeliveryResponseDto>
+   */
+  async createDeliveryFromShipmentData(
+    shipmentData: CreateShipmentDto,
+    pickupName: string,
+    dropoffName: string,
+    manifestItems: UberDirectManifestItemDto[],
+    quoteId?: string
+  ): Promise<UberDirectCreateDeliveryResponseDto> {
+    const timeWindows = this.generateTimeWindows();
+    
+    const deliveryRequest: UberDirectCreateDeliveryRequestDto = {
+      pickup_name: pickupName,
+      pickup_address: this.formatAddressForUberDirect(shipmentData.origin),
+      pickup_phone_number: '+1234567890', // This should come from the order
+      dropoff_name: dropoffName,
+      dropoff_address: this.formatAddressForUberDirect(shipmentData.destination),
+      dropoff_phone_number: '+1234567890', // This should come from the order
+      manifest_items: manifestItems,
+      manifest_total_value: Math.round((shipmentData.package.value || 0) * 100), // Convert to cents
+      pickup_ready_dt: timeWindows.pickup_ready_dt,
+      pickup_deadline_dt: timeWindows.pickup_deadline_dt,
+      dropoff_ready_dt: timeWindows.dropoff_ready_dt,
+      dropoff_deadline_dt: timeWindows.dropoff_deadline_dt,
+      manifest_reference: shipmentData.reference,
+      external_store_id: shipmentData.reference,
+      external_id: shipmentData.reference,
+      quote_id: quoteId,
+      deliverable_action: 'deliverable_action_meet_at_door',
+      undeliverable_action: 'return',
+      dropoff_notes: shipmentData.delivery_instructions || 'Please ring the doorbell',
+    };
+
+    return this.createDelivery(deliveryRequest);
+  }
+
+  /**
+   * Create manifest items from package data
+   * @param packageData Package information
+   * @param itemName Item name
+   * @param itemDescription Item description
+   * @returns UberDirectManifestItemDto[]
+   */
+  createManifestItemsFromPackage(
+    packageData: any,
+    itemName: string = 'Food Order',
+    itemDescription: string = 'Food delivery order'
+  ): UberDirectManifestItemDto[] {
+    return [{
+      name: itemName,
+      description: itemDescription,
+      quantity: 1,
+      value: Math.round((packageData.value || 0) * 100), // Convert to cents
+      weight: Math.round((packageData.weight || 0) * 1000), // Convert kg to grams
+      dimensions: {
+        length: packageData.length || 0,
+        width: packageData.width || 0,
+        height: packageData.height || 0,
+      },
+    }];
+  }
+
+  /**
+   * Get delivery details and convert to standard tracking format
+   * @param deliveryId Delivery ID
+   * @returns Promise<ShipmentTrackingResponseDto>
+   */
+  async getDeliveryTracking(deliveryId: string): Promise<ShipmentTrackingResponseDto> {
+    try {
+      const delivery = await this.getDelivery(deliveryId);
+      const events: TrackingEventDto[] = [];
+
+      // Convert status history to tracking events
+      if (delivery.status_history && delivery.status_history.length > 0) {
+        events.push(...delivery.status_history.map(status => ({
+          status: this.mapUberStatusToShipmentStatus(status.status),
+          description: status.description,
+          timestamp: new Date(status.timestamp),
+          location: status.location ? `${status.location.latitude}, ${status.location.longitude}` : null,
+        })));
+      } else if (delivery.status) {
+        // Fallback to current status if no history
+        events.push({
+          status: this.mapUberStatusToShipmentStatus(delivery.status),
+          description: this.getStatusDescription(delivery.status),
+          timestamp: new Date(delivery.updated),
+          location: delivery.courier?.location ? `${delivery.courier.location.latitude}, ${delivery.courier.location.longitude}` : null,
+        });
+      }
+
+      return {
+        success: true,
+        trackingNumber: deliveryId,
+        status: this.mapUberStatusToShipmentStatus(delivery.status),
+        events,
+        estimatedDelivery: delivery.eta ? new Date(delivery.eta) : null,
+        currentLocation: delivery.courier?.location ? `${delivery.courier.location.latitude}, ${delivery.courier.location.longitude}` : null,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get delivery tracking', error);
+      return {
+        success: false,
+        trackingNumber: deliveryId,
+        status: 'unknown',
+        events: [],
+        error: 'Failed to get delivery tracking',
+      };
+    }
   }
 
   // Enhanced interface methods

@@ -22,6 +22,10 @@ import {
   CreateShipmentResponseDto,
   ShipmentTrackingResponseDto,
   DeliveryResponseDto,
+  ShipbubblePackageCategoriesResponseDto,
+  ShipbubblePackageDimensionsResponseDto,
+  ShipbubbleCreateShipmentRequestDto,
+  ShipbubbleCreateShipmentResponseDto,
 } from '../dto';
 
 @ApiTags('Delivery')
@@ -127,6 +131,42 @@ export class DeliveryController {
   })
   async getDeliveryByTrackingNumber(@Param('trackingNumber') trackingNumber: string): Promise<DeliveryResponseDto> {
     return await this.deliveryService.getDeliveryByTrackingNumber(trackingNumber);
+  }
+
+  @Get('package-categories')
+  @ApiOperation({ summary: 'Get package categories for shipping' })
+  @ApiResponse({
+    status: 200,
+    description: 'Package categories for shipping labels',
+    type: ShipbubblePackageCategoriesResponseDto,
+  })
+  async getPackageCategories(): Promise<ShipbubblePackageCategoriesResponseDto> {
+    return await this.deliveryService.getPackageCategories();
+  }
+
+  @Get('package-dimensions')
+  @ApiOperation({ summary: 'Get package dimensions for shipping' })
+  @ApiResponse({
+    status: 200,
+    description: 'Package dimensions and box sizes for shipping',
+    type: ShipbubblePackageDimensionsResponseDto,
+  })
+  async getPackageDimensions(): Promise<ShipbubblePackageDimensionsResponseDto> {
+    return await this.deliveryService.getPackageDimensions();
+  }
+
+  @Post('create-shipment-label')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create shipment label using request token from rates API' })
+  @ApiResponse({
+    status: 201,
+    description: 'Shipment label created successfully',
+    type: ShipbubbleCreateShipmentResponseDto,
+  })
+  async createShipmentLabel(
+    @Body() shipmentRequest: ShipbubbleCreateShipmentRequestDto,
+  ): Promise<ShipbubbleCreateShipmentResponseDto> {
+    return await this.deliveryService.createShipmentLabel(shipmentRequest);
   }
 
   @Get()
