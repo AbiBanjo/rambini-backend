@@ -32,6 +32,7 @@ jobs:
         echo "Running tests..."
         echo "Tests completed successfully"
 
+
   deploy:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
