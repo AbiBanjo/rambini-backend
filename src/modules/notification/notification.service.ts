@@ -11,6 +11,12 @@ import {
   UserNotificationPreference,
   User,
 } from '../../entities';
+import { EmailNotificationService } from './services/email-notification.service';
+import { PushNotificationService } from './services/push-notification.service';
+import { InAppNotificationService } from './services/in-app-notification.service';
+import { NotificationTemplateService } from './services/notification-template.service';
+import { NotificationDeliveryService, DeliveryOptions, DeliveryResult } from './services/notification-delivery.service';
+import { NotificationQueueService } from './services/notification-queue.service';
 
 @Injectable()
 export class NotificationService {
@@ -25,6 +31,12 @@ export class NotificationService {
     private readonly preferenceRepository: Repository<UserNotificationPreference>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly emailService: EmailNotificationService,
+    private readonly pushService: PushNotificationService,
+    private readonly inAppService: InAppNotificationService,
+    private readonly templateService: NotificationTemplateService,
+    private readonly deliveryService: NotificationDeliveryService,
+    private readonly queueService: NotificationQueueService,
   ) {}
 
   // Notification Creation Methods
@@ -236,9 +248,9 @@ export class NotificationService {
     try {
       switch (deliveryMethod) {
         case NotificationDelivery.PUSH:
-          return await this.sendPushNotification(notification, user);
+          return await this.sendPushNotificationInternal(notification, user);
         case NotificationDelivery.EMAIL:
-          return await this.sendEmailNotification(notification, user);
+          return await this.sendEmailNotificationInternal(notification, user);
         case NotificationDelivery.SMS:
           return await this.sendSMSNotification(notification, user);
         case NotificationDelivery.IN_APP:
@@ -254,7 +266,7 @@ export class NotificationService {
     }
   }
 
-  private async sendPushNotification(notification: Notification, user: User): Promise<boolean> {
+  private async sendPushNotificationInternal(notification: Notification, user: User): Promise<boolean> {
     const deviceTokens = user.getPushEnabledDeviceTokens();
     
     if (deviceTokens.length === 0) {
@@ -270,7 +282,7 @@ export class NotificationService {
     return true;
   }
 
-  private async sendEmailNotification(notification: Notification, user: User): Promise<boolean> {
+  private async sendEmailNotificationInternal(notification: Notification, user: User): Promise<boolean> {
     // Here you would integrate with email service (SendGrid, AWS SES, etc.)
     this.logger.log(`Sending email notification to user ${user.id}`);
     
@@ -371,6 +383,304 @@ export class NotificationService {
     return this.notificationRepository.count({
       where: { user_id: userId, is_read: false },
     });
+  }
+
+  // Enhanced Notification Methods
+  async sendNotificationToChannels(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    options: DeliveryOptions & {
+      data?: Record<string, any>;
+      priority?: NotificationPriority;
+    }
+  ): Promise<DeliveryResult> {
+    try {
+      return await this.deliveryService.createAndDeliverNotification(
+        userId,
+        type,
+        title,
+        message,
+        options
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send notification to channels: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async sendNotificationFromTemplate(
+    userId: string,
+    templateType: NotificationType,
+    variables: Record<string, any>,
+    options: DeliveryOptions
+  ): Promise<DeliveryResult> {
+    try {
+      return await this.deliveryService.createAndDeliverFromTemplate(
+        userId,
+        templateType,
+        variables,
+        options
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send notification from template: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async queueNotification(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    options: DeliveryOptions & {
+      data?: Record<string, any>;
+      priority?: NotificationPriority;
+      scheduledFor?: Date;
+      maxRetries?: number;
+    }
+  ): Promise<void> {
+    try {
+      // Create notification first
+      const notification = await this.createNotification(
+        userId,
+        type,
+        title,
+        message,
+        {
+          data: options.data,
+          priority: options.priority,
+          scheduledFor: options.scheduledFor,
+        }
+      );
+
+      // Queue for delivery
+      await this.queueService.queueNotification(
+        notification.id,
+        userId,
+        {
+          ...options,
+          priority: options.priority || NotificationPriority.NORMAL,
+        }
+      );
+
+      this.logger.log(`Queued notification ${notification.id} for user ${userId}`);
+    } catch (error) {
+      this.logger.error(`Failed to queue notification: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  async sendBulkNotifications(
+    notifications: Array<{
+      userId: string;
+      type: NotificationType;
+      title: string;
+      message: string;
+      options: DeliveryOptions & {
+        data?: Record<string, any>;
+        priority?: NotificationPriority;
+      };
+    }>
+  ): Promise<DeliveryResult[]> {
+    try {
+      const results: DeliveryResult[] = [];
+
+      for (const notificationData of notifications) {
+        try {
+          const result = await this.sendNotificationToChannels(
+            notificationData.userId,
+            notificationData.type,
+            notificationData.title,
+            notificationData.message,
+            notificationData.options
+          );
+          results.push(result);
+        } catch (error) {
+          this.logger.error(`Failed to send bulk notification to user ${notificationData.userId}: ${error.message}`);
+          results.push({
+            notificationId: '',
+            userId: notificationData.userId,
+            channels: {},
+            overallSuccess: false,
+            totalChannels: notificationData.options.channels.length,
+            successfulChannels: 0,
+            failedChannels: notificationData.options.channels.length,
+          });
+        }
+      }
+
+      return results;
+    } catch (error) {
+      this.logger.error(`Failed to send bulk notifications: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Template Management
+  async getNotificationTemplates(): Promise<any[]> {
+    return this.templateService.getAllTemplates();
+  }
+
+  async getNotificationTemplate(type: NotificationType): Promise<any> {
+    return this.templateService.getTemplate(type);
+  }
+
+  // In-App Notification Methods
+  async getInAppNotifications(
+    userId: string,
+    options?: {
+      unreadOnly?: boolean;
+      limit?: number;
+      offset?: number;
+      type?: NotificationType;
+      priority?: NotificationPriority;
+      category?: string;
+    }
+  ): Promise<any[]> {
+    return this.inAppService.getUserNotifications(userId, options);
+  }
+
+  async markInAppNotificationAsRead(notificationId: string, userId: string): Promise<void> {
+    return this.inAppService.markAsRead(notificationId, userId);
+  }
+
+  async markAllInAppNotificationsAsRead(userId: string): Promise<number> {
+    return this.inAppService.markAllAsRead(userId);
+  }
+
+  async getInAppUnreadCount(userId: string): Promise<number> {
+    return this.inAppService.getUnreadCount(userId);
+  }
+
+  async deleteInAppNotification(notificationId: string, userId: string): Promise<void> {
+    return this.inAppService.deleteNotification(notificationId, userId);
+  }
+
+  async getInAppNotificationStats(userId: string, days: number = 30): Promise<any> {
+    return this.inAppService.getNotificationStats(userId, days);
+  }
+
+  // Email Notification Methods
+  async sendEmailNotification(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    customData?: Record<string, any>
+  ): Promise<boolean> {
+    try {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
+
+      const notification = await this.createNotification(
+        userId,
+        type,
+        title,
+        message,
+        {
+          deliveryMethod: NotificationDelivery.EMAIL,
+          data: customData,
+        }
+      );
+
+      return await this.emailService.sendEmailNotification(notification, user, customData);
+    } catch (error) {
+      this.logger.error(`Failed to send email notification: ${error.message}`, error.stack);
+      return false;
+    }
+  }
+
+  // Push Notification Methods
+  async sendPushNotification(
+    userId: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    customData?: Record<string, any>
+  ): Promise<any> {
+    try {
+      const user = await this.userRepository.findOne({ where: { id: userId } });
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
+
+      const deviceTokens = await this.getUserDeviceTokens(userId);
+      if (deviceTokens.length === 0) {
+        throw new Error(`No device tokens found for user ${userId}`);
+      }
+
+      const notification = await this.createNotification(
+        userId,
+        type,
+        title,
+        message,
+        {
+          deliveryMethod: NotificationDelivery.PUSH,
+          data: customData,
+        }
+      );
+
+      return await this.pushService.sendPushNotification(notification, user, deviceTokens, customData);
+    } catch (error) {
+      this.logger.error(`Failed to send push notification: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Queue Management
+  async getQueueStats(): Promise<any> {
+    return this.queueService.getQueueStats();
+  }
+
+  async pauseQueue(): Promise<void> {
+    return this.queueService.pauseQueue();
+  }
+
+  async resumeQueue(): Promise<void> {
+    return this.queueService.resumeQueue();
+  }
+
+  async getProcessingStatus(): Promise<any> {
+    return this.queueService.getProcessingStatus();
+  }
+
+  // FCM Topic Management
+  async subscribeToTopic(tokens: string[], topic: string): Promise<void> {
+    return this.pushService.subscribeToTopic(tokens, topic);
+  }
+
+  async unsubscribeFromTopic(tokens: string[], topic: string): Promise<void> {
+    return this.pushService.unsubscribeFromTopic(tokens, topic);
+  }
+
+  async sendToTopic(
+    topic: string,
+    type: NotificationType,
+    title: string,
+    message: string,
+    customData?: Record<string, any>
+  ): Promise<void> {
+    const notification = await this.createNotification(
+      'system', // System notification for topics
+      type,
+      title,
+      message,
+      {
+        deliveryMethod: NotificationDelivery.PUSH,
+        data: customData,
+      }
+    );
+
+    return this.pushService.sendToTopic(topic, notification, customData);
+  }
+
+  // Delivery Statistics
+  async getDeliveryStatistics(userId?: string, days: number = 7): Promise<any> {
+    return this.deliveryService.getDeliveryStatistics(userId, days);
   }
 
   // Cleanup Methods

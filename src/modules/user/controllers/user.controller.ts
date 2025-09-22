@@ -5,6 +5,7 @@ import { UserProfileService } from '../services/user-profile.service';
 import { User, UserType, UserStatus } from 'src/entities';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GetUser } from '../../../common/decorators/get-user.decorator';
+import { DeleteAccountDto } from '../dto/delete-account.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -58,12 +59,14 @@ export class UserController {
   @Delete('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete current user' })
-  @ApiResponse({ status: 200, description: 'User deleted successfully' })
+  @ApiOperation({ summary: 'Delete current user account' })
+  @ApiResponse({ status: 200, description: 'User account deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Invalid reason provided' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async deleteCurrentUser(@GetUser() user: User): Promise<void> {
-    return await this.userService.deleteUser(user.id);
+  async deleteCurrentUser(@Body() deleteAccountDto: DeleteAccountDto, @GetUser() user: User): Promise<{ message: string }> {
+    await this.userService.deleteUserAccount(user.id, deleteAccountDto.reason);
+    return { message: 'Account deleted successfully' };
   }
 
   @Post('verify-phone')

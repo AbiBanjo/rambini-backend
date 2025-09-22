@@ -10,7 +10,7 @@ export interface EnhancedDeliveryProviderInterface {
    * @param address Address to validate
    * @returns Promise<AddressValidationResponseDto>
    */
-  validateAddress(address: AddressValidationDto): Promise<AddressValidationResponseDto>;
+  // validateAddress(address: AddressValidationDto): Promise<AddressValidationResponseDto>;
 
   /**
    * Get delivery rates for a shipment

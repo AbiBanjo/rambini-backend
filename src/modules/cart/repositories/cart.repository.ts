@@ -125,7 +125,8 @@ export class CartRepository {
     }
 
     const total_items = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const subtotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+    // Ensure decimal strings from DB are coerced to numbers before summing
+    const subtotal = cartItems.reduce((sum, item) => sum + Number(item.total_price), 0);
     const vendor_count = new Set(cartItems.map(item => item.menu_item.vendor_id)).size;
 
     return {
@@ -235,7 +236,8 @@ export class CartRepository {
     }
 
     const total_items = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const subtotal = cartItems.reduce((sum, item) => sum + item.total_price, 0);
+    // Ensure decimal strings from DB are coerced to numbers before summing
+    const subtotal = cartItems.reduce((sum, item) => sum + Number(item.total_price), 0);
 
     return {
       total_items,

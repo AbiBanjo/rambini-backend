@@ -24,13 +24,14 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { RedisService } from '../../database/redis.service';
 
 // User services (import directly to avoid circular dependency)
-import { UserService } from '../user/services/user.service';
 import { AddressService } from '../user/services/address.service';
+import { UserModule } from '../user/user.module';
 
 @Module({
   imports: [
     PassportModule,
     TypeOrmModule.forFeature([Wallet, User, Address]),
+    forwardRef(() => UserModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -51,7 +52,6 @@ import { AddressService } from '../user/services/address.service';
     JwtAuthGuard,
     JwtStrategy,
     RedisService,
-    UserService, // Provide UserService directly
     AddressService, // Provide AddressService directly
   ],
   exports: [AuthService, JWTService, JwtAuthGuard],

@@ -1,13 +1,20 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User, UserType, UserStatus } from 'src/entities';
+import { Repository, DataSource } from 'typeorm';
+import { User, UserType, UserStatus, CartItem, MenuItem, Vendor } from 'src/entities';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(CartItem)
+    private readonly cartItemRepository: Repository<CartItem>,
+    @InjectRepository(MenuItem)
+    private readonly menuItemRepository: Repository<MenuItem>,
+    @InjectRepository(Vendor)
+    private readonly vendorRepository: Repository<Vendor>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async createUser(userData: Partial<User>): Promise<User> {
@@ -55,6 +62,47 @@ export class UserService {
     const user = await this.findById(id);
     user.delete();
     await this.userRepository.save(user);
+  }
+
+  async deleteUserAccount(id: string, reason: string): Promise<void> {
+    const user = await this.findById(id);
+    
+    // Use a transaction to ensure all deletions are atomic
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Delete cart items for the user
+      await queryRunner.manager.delete(CartItem, { user_id: id });
+      
+      // 2. If user is a vendor, delete their menu items
+      if (user.user_type === UserType.VENDOR) {
+        const vendor = await queryRunner.manager.findOne(Vendor, { 
+          where: { user_id: id } 
+        });
+        
+        if (vendor) {
+          // Delete all menu items for this vendor
+          await queryRunner.manager.delete(MenuItem, { vendor_id: vendor.id });
+        }
+      }
+      
+      // 3. Finally, delete the user profile (soft delete by setting status to DELETED)
+      user.delete();
+      await queryRunner.manager.save(user);
+      
+      await queryRunner.commitTransaction();
+      
+      // Log the deletion for audit purposes
+      console.log(`User ${id} account deleted. Reason: ${reason}`);
+      
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async markPhoneVerified(id: string): Promise<User> {

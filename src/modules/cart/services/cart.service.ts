@@ -4,14 +4,17 @@ import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repo
 import { AddToCartDto, UpdateCartItemDto, CartResponseDto, CartItemResponseDto, GroupedCartResponseDto, VendorCartGroupDto, VendorCartResponseDto } from '../dto';
 import { CartItem, MenuItem } from 'src/entities';
 import { MenuItemService } from '@/modules/menu/services/menu-item.service';
+import { VendorService } from '@/modules/vendor/services/vendor.service';
 
 @Injectable()
 export class CartService {
   private readonly logger = new Logger(CartService.name);
+ 
 
   constructor(
     private readonly cartRepository: CartRepository,
     private readonly menuItemService: MenuItemService,
+    private readonly vendorService: VendorService,
   ) {}
 
   async addToCart(userId: string, addToCartDto: AddToCartDto): Promise<CartItemResponseDto> {
@@ -57,6 +60,7 @@ export class CartService {
       total_price: menuItem.price * addToCartDto.quantity,
     });
 
+    // ensure vendor details are added
     this.logger.log(`Added new item to cart: ${cartItem.id}`);
     return this.mapToCartItemResponse(cartItem);
   }
@@ -229,7 +233,7 @@ export class CartService {
         issues.push(`Price for "${cartItem.menu_item.name}" has changed from ₦${cartPrice} to ₦${currentPrice}`);
       }
 
-      subtotal += cartItem.total_price;
+      subtotal += Number(cartItem.total_price);
     }
 
     // Validate single vendor
@@ -307,7 +311,8 @@ export class CartService {
     for (const [vendorId, items] of vendorGroups) {
       const vendorItems = items.map(item => this.mapToCartItemResponse(item));
       const vendorTotalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-      const vendorSubtotal = items.reduce((sum, item) => sum + item.total_price, 0);
+      // Coerce potential decimal strings to numbers before summing
+      const vendorSubtotal = items.reduce((sum, item) => sum + Number(item.total_price), 0);
       
       vendors.push({
         vendor_id: vendorId,
@@ -318,7 +323,7 @@ export class CartService {
       });
 
       totalItems += vendorTotalItems;
-      totalSubtotal += vendorSubtotal;
+      totalSubtotal += Number(vendorSubtotal);
     }
 
     return {
@@ -335,9 +340,7 @@ export class CartService {
   async getCartByVendor(userId: string, vendorId: string, isActive: boolean = true): Promise<VendorCartResponseDto> {
     this.logger.log(`Fetching ${isActive ? 'active' : 'inactive'} cart items for user ${userId} from vendor ${vendorId}`);
 
-    const cartItems = await this.cartRepository.getCartItemsByVendor(userId, vendorId, isActive);
-    const summary = await this.cartRepository.getCartSummaryByVendor(userId, vendorId, isActive);
-
+    const [cartItems, summary ]= await Promise.all([ this.cartRepository.getCartItemsByVendor(userId, vendorId, isActive),this.cartRepository.getCartSummaryByVendor(userId, vendorId, isActive)])
     const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item));
 
     // Get vendor name from first item or default

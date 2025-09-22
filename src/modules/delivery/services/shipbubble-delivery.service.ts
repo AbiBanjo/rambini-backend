@@ -88,7 +88,7 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  async validateAddressV1(addressData: {
+  async validateAddressLegacy(addressData: {
     name: string;
     email: string;
     phone: string;

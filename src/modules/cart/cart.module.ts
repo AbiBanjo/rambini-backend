@@ -12,12 +12,14 @@ import { CartService } from './services/cart.service';
 
 // Repositories
 import { CartRepository } from './repositories/cart.repository';
+import { VendorModule } from '../vendor/vendor.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CartItem, MenuItem]),
     MenuModule,
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
+    VendorModule, // Import VendorModule to get access to VendorService
   ],
   controllers: [
     CartController,

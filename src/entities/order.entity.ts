@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { IsEnum, IsOptional, IsBoolean, IsNumber, IsString, IsDateString, Min, Max } from 'class-validator';
 import { BaseEntity } from './base.entity';
+import { DeliveryProvider } from './delivery.entity';
 
 export enum OrderStatus {
   NEW = 'NEW',
@@ -63,10 +64,9 @@ export class Order extends BaseEntity {
   @IsString()
   delivery_address_id: string;
 
-  @Column({ type: 'varchar', nullable: true })
-  @IsOptional()
-  @IsString()
-  delivery_provider?: string;
+  @Column({ type: 'enum', enum: DeliveryProvider, nullable: true })
+  @IsEnum(DeliveryProvider)
+  delivery_provider?: DeliveryProvider
 
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.NEW })
   @IsEnum(OrderStatus)
