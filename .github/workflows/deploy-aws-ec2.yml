@@ -63,7 +63,6 @@ jobs:
         target: "/home/${{ secrets.EC2_USERNAME }}/rambini-backend/"
         rm: true
         strip_components: 0
-        excludes: "node_modules,*.log,.git,.github,coverage,*.md"
 
     - name: Deploy to Server
       uses: appleboy/ssh-action@v1.0.3
@@ -72,7 +71,7 @@ jobs:
         username: ${{ secrets.EC2_USERNAME }}
         key: ${{ secrets.EC2_SSH_KEY }}
         port: ${{ secrets.EC2_PORT || 22 }}
-        command_timeout: 30m
+        command_timeout: 15m
         script: |
           echo "🚀 Starting deployment for ${{ github.ref_name }} branch..."
           
@@ -88,16 +87,7 @@ jobs:
           
           # Install production dependencies only (no build needed)
           echo "📦 Installing production dependencies..."
-          
-          # Set npm registry to use faster mirror if available
-          npm config set registry https://registry.npmjs.org/
-          
-          # Configure npm for faster installations
-          npm config set audit false
-          npm config set fund false
-          
-          # Use npm install with optimized flags for faster installation
-          npm install --production --no-audit --no-fund --prefer-offline --no-optional
+          npm ci --production
           
           # Create logs directory
           mkdir -p logs
