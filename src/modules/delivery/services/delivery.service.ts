@@ -2,10 +2,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException, Inject, for
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryRepository } from '../repositories/delivery.repository';
-import { ShipbubbleDeliveryService } from './shipbubble-delivery.service';
-import { UberDeliveryService } from './uber-delivery.service';
+import { DeliveryProviderFactoryService } from './delivery-provider-factory.service';
 import { Delivery, ShipmentStatus, DeliveryProvider, DeliveryTracking } from 'src/entities';
-import { DeliveryProviderInterface } from '../interfaces/delivery-provider.interface';
 import { AddressService } from '../../user/services/address.service';
 import {
   AddressValidationDto,
@@ -26,74 +24,79 @@ import { DeliveryResponseDto } from '../dto';
 @Injectable()
 export class DeliveryService {
   private readonly logger = new Logger(DeliveryService.name);
-  private readonly deliveryProviders: Map<DeliveryProvider, DeliveryProviderInterface>;
 
   constructor(
     private readonly deliveryRepository: DeliveryRepository,
-    private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
-    private readonly uberDeliveryService: UberDeliveryService,
+    private readonly providerFactory: DeliveryProviderFactoryService,
     @Inject(forwardRef(() => AddressService))
     private readonly addressService: AddressService,
     @InjectRepository(DeliveryTracking)
     private readonly deliveryTrackingRepository: Repository<DeliveryTracking>,
-  ) {
-    // Initialize delivery providers
-    this.deliveryProviders = new Map();
-    this.deliveryProviders.set(DeliveryProvider.SHIPBUBBLE, this.shipbubbleDeliveryService);
-    this.deliveryProviders.set(DeliveryProvider.UBER, this.uberDeliveryService);
+  ) {}
+
+  /**
+   * Get appropriate delivery provider based on country
+   */
+  private getProviderByCountry(country: string) {
+    return this.providerFactory.getProviderByCountry(country);
   }
 
   /**
-   * Validate delivery address
-   * @param provider Delivery provider
-   * @param address Address to validate
-   * @returns Promise<AddressValidationResult>
+   * Validate delivery address based on country
+   * @param country Country code
+   * @param address Address to validate (with additional fields for Shipbubble)
+   * @returns Promise<AddressValidationResponseDto>
    */
   async validateAddress(
-    provider: DeliveryProvider,
-    address: AddressValidationDto,
+    country: string,
+    address: AddressValidationDto & { name: string; email: string; phone: string },
   ): Promise<AddressValidationResponseDto> {
-    const deliveryProvider = this.deliveryProviders.get(provider);
-    if (!deliveryProvider) {
-      throw new BadRequestException(`Unsupported delivery provider: ${provider}`);
+    const provider = this.getProviderByCountry(country);
+    
+    if (!provider) {
+      throw new BadRequestException(`No delivery provider available for country: ${country}`);
     }
 
-    return await deliveryProvider.validateAddress(address);
+    return await provider.validateAddress(address);
   }
 
   /**
-   * Get delivery rates
-   * @param provider Delivery provider
+   * Get delivery rates based on destination country
    * @param rateRequest Rate request parameters
-   * @returns Promise<DeliveryRate[]>
+   * @returns Promise<DeliveryRateResponseDto[]>
    */
   async getDeliveryRates(
-    provider: DeliveryProvider,
     rateRequest: DeliveryRateRequestDto,
   ): Promise<DeliveryRateResponseDto[]> {
-    const deliveryProvider = this.deliveryProviders.get(provider);
-    if (!deliveryProvider) {
-      throw new BadRequestException(`Unsupported delivery provider: ${provider}`);
+    const country = rateRequest.destination.country;
+    const provider = this.getProviderByCountry(country);
+    
+    if (!provider) {
+      throw new BadRequestException(`No delivery provider available for country: ${country}`);
     }
 
-    return await deliveryProvider.getDeliveryRates(rateRequest);
+    // Use legacy method for backward compatibility
+    if ('getDeliveryRates' in provider && typeof provider.getDeliveryRates === 'function') {
+      return await provider.getDeliveryRates(rateRequest);
+    }
+
+    throw new BadRequestException(`Provider does not support legacy rate calculation`);
   }
 
   /**
    * Create a delivery for an order
    * @param orderId Order ID
-   * @param provider Delivery provider
    * @param shipmentData Shipment creation data
    * @param userInfo User information for address validation
    * @returns Promise<DeliveryResponseDto>
    */
   async createDelivery(
     orderId: string,
-    provider: DeliveryProvider,
     shipmentData: CreateShipmentDto,
     userInfo?: { name: string; email: string; phone: string },
   ): Promise<DeliveryResponseDto> {
-    this.logger.log(`Creating delivery for order ${orderId} with provider ${provider}`);
+    const country = shipmentData.destination.country;
+    this.logger.log(`Creating delivery for order ${orderId} in country ${country}`);
 
     // Check if delivery already exists for this order
     const existingDelivery = await this.deliveryRepository.findByOrderId(orderId);
@@ -101,54 +104,65 @@ export class DeliveryService {
       throw new BadRequestException('Delivery already exists for this order');
     }
 
-    const deliveryProvider = this.deliveryProviders.get(provider);
+    const deliveryProvider = this.getProviderByCountry(country);
     if (!deliveryProvider) {
-      throw new BadRequestException(`Unsupported delivery provider: ${provider}`);
+      throw new BadRequestException(`No delivery provider available for country: ${country}`);
     }
+
+    // Determine provider type for database storage
+    const providerType = this.providerFactory.isShipbubbleCountry(country) 
+      ? DeliveryProvider.SHIPBUBBLE 
+      : DeliveryProvider.UBER;
 
     // Note: Address validation should be done separately before creating delivery
     // The delivery service assumes the address has already been validated
     // Use the validateAddressForDelivery method in AddressService before calling this method
 
-    // Get delivery rates to find the selected rate
-    const rates = await deliveryProvider.getDeliveryRates({
-      origin: shipmentData.origin,
-      destination: shipmentData.destination,
-      package: shipmentData.package,
-      couriers: [shipmentData.courier],
-    });
+    // Get delivery rates to find the selected rate (legacy support)
+    if ('getDeliveryRates' in deliveryProvider && typeof deliveryProvider.getDeliveryRates === 'function') {
+      const rates = await deliveryProvider.getDeliveryRates({
+        origin: shipmentData.origin,
+        destination: shipmentData.destination,
+        package: shipmentData.package,
+        couriers: [shipmentData.courier],
+      });
 
-    const selectedRate = rates.find(rate => rate.rateId === shipmentData.rateId);
-    if (!selectedRate) {
-      throw new BadRequestException('Selected rate not found');
+      const selectedRate = rates.find(rate => rate.rateId === shipmentData.rateId);
+      if (!selectedRate) {
+        throw new BadRequestException('Selected rate not found');
+      }
+
+      // Create shipment with provider (legacy support)
+      if ('createShipment' in deliveryProvider && typeof deliveryProvider.createShipment === 'function') {
+        const shipmentResult = await deliveryProvider.createShipment(shipmentData);
+        if (!shipmentResult.success) {
+          throw new BadRequestException(shipmentResult.error || 'Failed to create shipment');
+        }
+
+        // Create delivery record
+        const delivery = await this.deliveryRepository.create({
+          order_id: orderId,
+          provider: providerType,
+          tracking_number: shipmentResult.trackingNumber!,
+          cost: selectedRate.amount,
+          currency: selectedRate.currency,
+          courier_name: selectedRate.courierName,
+          service_type: selectedRate.serviceName,
+          rate_id: shipmentData.rateId,
+          reference_number: shipmentResult.reference,
+          label_url: shipmentResult.labelUrl,
+          estimated_delivery: new Date(Date.now() + selectedRate.estimatedDays * 24 * 60 * 60 * 1000),
+          origin_address: shipmentData.origin,
+          destination_address: shipmentData.destination,
+          package_details: shipmentData.package,
+          status: ShipmentStatus.PENDING,
+        });
+
+        return this.mapToDeliveryResponse(delivery);
+      }
     }
 
-    // Create shipment with provider
-    const shipmentResult = await deliveryProvider.createShipment(shipmentData);
-    if (!shipmentResult.success) {
-      throw new BadRequestException(shipmentResult.error || 'Failed to create shipment');
-    }
-
-    // Create delivery record
-    const delivery = await this.deliveryRepository.create({
-      order_id: orderId,
-      provider,
-      tracking_number: shipmentResult.trackingNumber!,
-      cost: selectedRate.amount,
-      currency: selectedRate.currency,
-      courier_name: selectedRate.courierName,
-      service_type: selectedRate.serviceName,
-      rate_id: shipmentData.rateId,
-      reference_number: shipmentResult.reference,
-      label_url: shipmentResult.labelUrl,
-      estimated_delivery: new Date(Date.now() + selectedRate.estimatedDays * 24 * 60 * 60 * 1000),
-      origin_address: shipmentData.origin,
-      destination_address: shipmentData.destination,
-      package_details: shipmentData.package,
-      status: ShipmentStatus.PENDING,
-    });
-
-    return this.mapToDeliveryResponse(delivery);
+    throw new BadRequestException('Provider does not support legacy shipment creation');
   }
 
   /**
@@ -162,10 +176,10 @@ export class DeliveryService {
       throw new NotFoundException('Delivery not found');
     }
 
-    const deliveryProvider = this.deliveryProviders.get(delivery.provider);
-    if (!deliveryProvider) {
-      throw new BadRequestException(`Unsupported delivery provider: ${delivery.provider}`);
-    }
+    // Get provider based on the stored provider type
+    const deliveryProvider = delivery.provider === DeliveryProvider.SHIPBUBBLE 
+      ? this.providerFactory.getShipbubbleProvider()
+      : this.providerFactory.getUberProvider();
 
     const trackingData = await deliveryProvider.trackShipment(trackingNumber);
 
@@ -175,10 +189,21 @@ export class DeliveryService {
       await this.deliveryRepository.updateStatus(delivery.id, newStatus);
       
       // Add tracking event
-      await this.addTrackingEvent(delivery.id, trackingData.status, trackingData.statusDescription, trackingData.currentLocation);
+      await this.addTrackingEvent(delivery.id, trackingData.status, 'Status updated', trackingData.currentLocation);
     }
 
-    return trackingData;
+    // Convert to standard format
+    return {
+      success: trackingData.success,
+      trackingNumber: trackingData.trackingNumber,
+      status: trackingData.status,
+      statusDescription: 'Tracking information retrieved',
+      currentLocation: trackingData.currentLocation,
+      events: trackingData.events || [],
+      estimatedDelivery: trackingData.estimatedDelivery,
+      courier: 'courier',
+      service: 'service',
+    };
   }
 
   /**
@@ -196,10 +221,10 @@ export class DeliveryService {
       throw new BadRequestException('Cannot cancel delivered delivery');
     }
 
-    const deliveryProvider = this.deliveryProviders.get(delivery.provider);
-    if (!deliveryProvider) {
-      throw new BadRequestException(`Unsupported delivery provider: ${delivery.provider}`);
-    }
+    // Get provider based on the stored provider type
+    const deliveryProvider = delivery.provider === DeliveryProvider.SHIPBUBBLE 
+      ? this.providerFactory.getShipbubbleProvider()
+      : this.providerFactory.getUberProvider();
 
     const cancelled = await deliveryProvider.cancelShipment(trackingNumber);
     if (cancelled) {
@@ -215,17 +240,17 @@ export class DeliveryService {
    * @param provider Delivery provider
    * @param payload Webhook payload
    * @param signature Webhook signature
-   * @returns Promise<WebhookResult>
+   * @returns Promise<DeliveryWebhookDto>
    */
   async processWebhook(
     provider: DeliveryProvider,
     payload: any,
     signature: string,
   ): Promise<DeliveryWebhookDto> {
-    const deliveryProvider = this.deliveryProviders.get(provider);
-    if (!deliveryProvider) {
-      throw new BadRequestException(`Unsupported delivery provider: ${provider}`);
-    }
+    // Get provider based on the provider type
+    const deliveryProvider = provider === DeliveryProvider.SHIPBUBBLE 
+      ? this.providerFactory.getShipbubbleProvider()
+      : this.providerFactory.getUberProvider();
 
     const webhookResult = await deliveryProvider.processWebhook(payload, signature);
     
@@ -377,31 +402,71 @@ export class DeliveryService {
   }
 
   /**
-   * Get package categories for shipping
+   * Get package categories for shipping (Shipbubble-specific)
    * @returns Promise<ShipbubblePackageCategoriesResponseDto>
    */
   async getPackageCategories(): Promise<ShipbubblePackageCategoriesResponseDto> {
     this.logger.log('Getting package categories from Shipbubble');
-    return await this.shipbubbleDeliveryService.getPackageCategories();
+    const shipbubbleProvider = this.providerFactory.getShipbubbleProvider();
+    return await shipbubbleProvider.getPackageCategories();
   }
 
   /**
-   * Get package dimensions for shipping
+   * Get package dimensions for shipping (Shipbubble-specific)
    * @returns Promise<ShipbubblePackageDimensionsResponseDto>
    */
   async getPackageDimensions(): Promise<ShipbubblePackageDimensionsResponseDto> {
     this.logger.log('Getting package dimensions from Shipbubble');
-    return await this.shipbubbleDeliveryService.getPackageDimensions();
+    const shipbubbleProvider = this.providerFactory.getShipbubbleProvider();
+    return await shipbubbleProvider.getPackageDimensions();
   }
 
   /**
-   * Create shipment label using request token from rates API
+   * Create shipment label using request token from rates API (Shipbubble-specific)
    * @param shipmentRequest Shipment creation request
    * @returns Promise<ShipbubbleCreateShipmentResponseDto>
    */
   async createShipmentLabel(shipmentRequest: ShipbubbleCreateShipmentRequestDto): Promise<ShipbubbleCreateShipmentResponseDto> {
     this.logger.log(`Creating shipment label with request token: ${shipmentRequest.request_token}`);
-    return await this.shipbubbleDeliveryService.createShipmentLabel(shipmentRequest);
+    const shipbubbleProvider = this.providerFactory.getShipbubbleProvider();
+    return await shipbubbleProvider.createShipmentLabel(shipmentRequest);
+  }
+
+  /**
+   * Fetch shipping rates (Shipbubble-specific)
+   * @param ratesRequest Shipbubble-specific rates request
+   * @returns Promise<any>
+   */
+  async fetchShippingRates(ratesRequest: any): Promise<any> {
+    this.logger.log('Fetching shipping rates from Shipbubble');
+    const shipbubbleProvider = this.providerFactory.getShipbubbleProvider();
+    return await shipbubbleProvider.fetchShippingRates(ratesRequest);
+  }
+
+  /**
+   * Get supported countries
+   * @returns string[]
+   */
+  getSupportedCountries(): string[] {
+    return this.providerFactory.getSupportedCountries();
+  }
+
+  /**
+   * Check if country is supported
+   * @param country Country code
+   * @returns boolean
+   */
+  isCountrySupported(country: string): boolean {
+    return this.providerFactory.isCountrySupported(country);
+  }
+
+  /**
+   * Get provider name for a country
+   * @param country Country code
+   * @returns string
+   */
+  getProviderNameByCountry(country: string): string {
+    return this.providerFactory.getProviderNameByCountry(country);
   }
 
   /**

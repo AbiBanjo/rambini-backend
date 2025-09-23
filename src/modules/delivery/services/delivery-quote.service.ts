@@ -79,19 +79,17 @@ export class DeliveryQuoteService {
     try {
       // First, validate addresses to get address codes
       const originValidation = await this.shipbubbleDeliveryService.validateAddress({
+        name: order.vendor?.name || 'Vendor',
+        email: order.vendor?.email || 'vendor@example.com',
+        phone: order.vendor?.phone || '+1234567890',
         address: order.vendor?.address || 'Vendor Address',
-        city: order.vendor?.city || 'Lagos',
-        state: order.vendor?.state || 'Lagos',
-        country: 'NG',
-        postalCode: order.vendor?.postal_code,
       }) as any;
 
       const destinationValidation = await this.shipbubbleDeliveryService.validateAddress({
+        name: order.customer?.name || 'Customer',
+        email: order.customer?.email || 'customer@example.com',
+        phone: order.customer?.phone || '+1234567890',
         address: order.delivery_address?.full_address || 'Customer Address',
-        city: order.delivery_address?.city || 'Lagos',
-        state: order.delivery_address?.state || 'Lagos',
-        country: 'NG',
-        postalCode: order.delivery_address?.postal_code,
       }) as any;
 
       if (!originValidation.success || !destinationValidation.success) {

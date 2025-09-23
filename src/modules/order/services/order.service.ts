@@ -644,7 +644,7 @@ export class OrderService {
       },
     };
 
-    const rates = await this.deliveryService.getDeliveryRates(provider, rateRequest);
+    const rates = await this.deliveryService.getDeliveryRates( rateRequest);
     
     if (!rates || rates.length === 0) {
       throw new Error('No delivery rates available');

@@ -17,7 +17,6 @@ export enum AddressType {
 
 @Entity('addresses')
 @Index(['user_id'])
-@Index(['user_id', 'is_default'], { unique: true })
 @Index(['latitude', 'longitude'])
 export class Address extends BaseEntity {
   @Column({ type: 'varchar' })

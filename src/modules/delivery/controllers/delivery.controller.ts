@@ -35,20 +35,20 @@ import {
 export class DeliveryController {
   constructor(private readonly deliveryService: DeliveryService) {}
 
-  @Post('validate-address')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Validate delivery address' })
-  @ApiResponse({
-    status: 200,
-    description: 'Address validation result',
-    type: AddressValidationResponseDto,
-  })
-  async validateAddress(
-    @Body() addressValidationDto: AddressValidationDto,
-    @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
-  ): Promise<AddressValidationResponseDto> {
-    return await this.deliveryService.validateAddress(provider, addressValidationDto);
-  }
+  // @Post('validate-address')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({ summary: 'Validate delivery address' })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Address validation result',
+  //   type: AddressValidationResponseDto,
+  // })
+  // async validateAddress(
+  //   @Body() addressValidationDto: AddressValidationDto,
+  //   @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
+  // ): Promise<AddressValidationResponseDto> {
+  //   return await this.deliveryService.validateAddress(provider, addressValidationDto);
+  // }
 
   @Post('rates')
   @HttpCode(HttpStatus.OK)
@@ -58,12 +58,12 @@ export class DeliveryController {
     description: 'Delivery rates',
     type: [DeliveryRateResponseDto],
   })
-  async getDeliveryRates(
-    @Body() rateRequest: DeliveryRateRequestDto,
-    @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
-  ): Promise<DeliveryRateResponseDto[]> {
-    return await this.deliveryService.getDeliveryRates(provider, rateRequest);
-  }
+  // async getDeliveryRates(
+  //   @Body() rateRequest: DeliveryRateRequestDto,
+  //   @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
+  // ): Promise<DeliveryRateResponseDto[]> {
+  //   return await this.deliveryService.getDeliveryRates(provider, rateRequest);
+  // }
 
   @Post('create')
   @HttpCode(HttpStatus.CREATED)
@@ -73,19 +73,19 @@ export class DeliveryController {
     description: 'Delivery created successfully',
     type: DeliveryResponseDto,
   })
-  async createDelivery(
-    @Body() createDeliveryDto: {
-      orderId: string;
-      provider: DeliveryProvider;
-      shipmentData: CreateShipmentDto;
-    },
-  ): Promise<DeliveryResponseDto> {
-    return await this.deliveryService.createDelivery(
-      createDeliveryDto.orderId,
-      createDeliveryDto.provider,
-      createDeliveryDto.shipmentData,
-    );
-  }
+  // async createDelivery(
+  //   @Body() createDeliveryDto: {
+  //     orderId: string;
+  //     provider: DeliveryProvider;
+  //     shipmentData: CreateShipmentDto;
+  //   },
+  // ): Promise<DeliveryResponseDto> {
+  //   return await this.deliveryService.createDelivery(
+  //     createDeliveryDto.orderId,
+  //     createDeliveryDto.provider,
+  //     createDeliveryDto.shipmentData,
+  //   );
+  // }
 
   @Get('track/:trackingNumber')
   @ApiOperation({ summary: 'Track delivery' })

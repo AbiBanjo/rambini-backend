@@ -2,8 +2,8 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { DeliveryProviderInterface } from '../interfaces/delivery-provider.interface';
-import { EnhancedDeliveryProviderInterface, StoreLocation, DeliveryQuoteDetails, ProofOfDelivery } from '../interfaces/enhanced-delivery-provider.interface';
+import { UberProviderInterface } from '../interfaces/uber-provider.interface';
+import { StoreLocation, DeliveryQuoteDetails, ProofOfDelivery } from '../interfaces/enhanced-delivery-provider.interface';
 import {
   AddressValidationDto,
   DeliveryRateRequestDto,
@@ -26,7 +26,7 @@ import {
 } from '../dto';
 
 @Injectable()
-export class UberDeliveryService implements DeliveryProviderInterface, EnhancedDeliveryProviderInterface {
+export class UberDeliveryService implements UberProviderInterface {
   private readonly logger = new Logger(UberDeliveryService.name);
   private readonly baseUrl = 'https://api.uber.com/v1';
   private readonly clientId: string;
@@ -46,6 +46,20 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     if (!this.clientId || !this.clientSecret || !this.customerId) {
       throw new Error('UBER_CLIENT_ID, UBER_CLIENT_SECRET, and UBER_CUSTOMER_ID are required');
     }
+  }
+
+  /**
+   * Get provider name
+   */
+  getProviderName(): string {
+    return 'Uber Direct';
+  }
+
+  /**
+   * Get supported countries (All countries except Nigeria)
+   */
+  getSupportedCountries(): string[] {
+    return ['US', 'CA', 'GB', 'AU', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'CH', 'AT', 'SE', 'NO', 'DK', 'FI']; // Add more as needed
   }
 
   /**
@@ -255,6 +269,7 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
+  // Legacy method for backward compatibility - will be deprecated
   async getDeliveryRates(rateRequest: DeliveryRateRequestDto): Promise<DeliveryRateResponseDto[]> {
     try {
       // Get store locations for the pickup area
@@ -294,6 +309,7 @@ export class UberDeliveryService implements DeliveryProviderInterface, EnhancedD
     }
   }
 
+  // Legacy method for backward compatibility - will be deprecated
   async createShipment(shipmentData: CreateShipmentDto): Promise<CreateShipmentResponseDto> {
     try {
       // Get store locations for the pickup area

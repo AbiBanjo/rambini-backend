@@ -2,8 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { DeliveryProviderInterface } from '../interfaces/delivery-provider.interface';
-import { EnhancedDeliveryProviderInterface } from '../interfaces/enhanced-delivery-provider.interface';
+import { ShipbubbleProviderInterface } from '../interfaces/shipbubble-provider.interface';
 import {
   AddressValidationDto,
   DeliveryRateRequestDto,
@@ -23,7 +22,7 @@ import {
 } from '../dto';
 
 @Injectable()
-export class ShipbubbleDeliveryService implements DeliveryProviderInterface, EnhancedDeliveryProviderInterface {
+export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
   private readonly logger = new Logger(ShipbubbleDeliveryService.name);
   private readonly baseUrl = 'https://api.shipbubble.com/v1';
   private readonly apiKey: string;
@@ -38,57 +37,21 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-// not part of the api
-  async validateAddress(address: AddressValidationDto): Promise<AddressValidationResponseDto> {
-    try {
-      this.logger.log(`Validating address: ${address.address}, ${address.city}, ${address.state}`);
-
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/addresses/validate`,
-          {
-            address: address.address,
-            city: address.city,
-            state: address.state,
-            country: address.country,
-            postal_code: address.postalCode,
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${this.apiKey}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
-      );
-
-      const data = response.data;
-
-      if (data.success) {
-        return {
-          success: true,
-          isValid: true,
-          normalizedAddress: `${data.data.address}, ${data.data.city}, ${data.data.state}, ${data.data.country}`,
-        };
-      } else {
-        return {
-          success: false,
-          isValid: false,
-          error: data.message || 'Address validation failed',
-          suggestions: data.suggestions || [],
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Address validation failed: ${error.message}`);
-      return {
-        success: false,
-        isValid: false,
-        error: 'Address validation service unavailable',
-      };
-    }
+  /**
+   * Get provider name
+   */
+  getProviderName(): string {
+    return 'Shipbubble';
   }
 
-  async validateAddressLegacy(addressData: {
+  /**
+   * Get supported countries (Nigeria only)
+   */
+  getSupportedCountries(): string[] {
+    return ['NG', 'Nigeria'];
+  }
+
+  async validateAddress(addressData: {
     name: string;
     email: string;
     phone: string;
@@ -168,73 +131,74 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
   }
 
  
-  async getDeliveryRates(rateRequest: DeliveryRateRequestDto): Promise<DeliveryRateResponseDto[]> {
-    try {
-      this.logger.log(`Getting delivery rates from ${rateRequest.origin.city} to ${rateRequest.destination.city}`);
+  // Legacy method for backward compatibility - will be deprecated
+  // async getDeliveryRates(rateRequest: DeliveryRateRequestDto): Promise<DeliveryRateResponseDto[]> {
+  //   try {
+  //     this.logger.log(`Getting delivery rates from ${rateRequest.origin.city} to ${rateRequest.destination.city}`);
 
-      const requestData = {
-        origin: {
-          address: rateRequest.origin.address,
-          city: rateRequest.origin.city,
-          state: rateRequest.origin.state,
-          country: rateRequest.origin.country,
-          postal_code: rateRequest.origin.postalCode,
-        },
-        destination: {
-          address: rateRequest.destination.address,
-          city: rateRequest.destination.city,
-          state: rateRequest.destination.state,
-          country: rateRequest.destination.country,
-          postal_code: rateRequest.destination.postalCode,
-        },
-        package: {
-          weight: rateRequest.package.weight,
-          length: rateRequest.package.length,
-          width: rateRequest.package.width,
-          height: rateRequest.package.height,
-          value: rateRequest.package.value,
-        },
-        couriers: rateRequest.couriers,
-      };
+  //     const requestData = {
+  //       origin: {
+  //         address: rateRequest.origin.address,
+  //         city: rateRequest.origin.city,
+  //         state: rateRequest.origin.state,
+  //         country: rateRequest.origin.country,
+  //         postal_code: rateRequest.origin.postalCode,
+  //       },
+  //       destination: {
+  //         address: rateRequest.destination.address,
+  //         city: rateRequest.destination.city,
+  //         state: rateRequest.destination.state,
+  //         country: rateRequest.destination.country,
+  //         postal_code: rateRequest.destination.postalCode,
+  //       },
+  //       package: {
+  //         weight: rateRequest.package.weight,
+  //         length: rateRequest.package.length,
+  //         width: rateRequest.package.width,
+  //         height: rateRequest.package.height,
+  //         value: rateRequest.package.value,
+  //       },
+  //       couriers: rateRequest.couriers,
+  //     };
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/rates`,
-          requestData,
-          {
-            headers: {
-              'Authorization': `Bearer ${this.apiKey}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
-      );
+  //     const response = await firstValueFrom(
+  //       this.httpService.post(
+  //         `${this.baseUrl}/rates`,
+  //         requestData,
+  //         {
+  //           headers: {
+  //             'Authorization': `Bearer ${this.apiKey}`,
+  //             'Content-Type': 'application/json',
+  //           },
+  //         },
+  //       ),
+  //     );
 
-      const data = response.data;
+  //     const data = response.data;
 
-      if (data.success && data.data) {
-        return data.data.map((rate: any) => ({
-          courier: rate.courier_code,
-          courierName: rate.courier_name,
-          service: rate.service_code,
-          serviceName: rate.service_name,
-          rateId: rate.rate_id,
-          amount: parseFloat(rate.amount),
-          currency: rate.currency || 'NGN',
-          estimatedDays: rate.estimated_days || 1,
-          features: rate.features || [],
-        }));
-      } else {
-        throw new BadRequestException(data.message || 'Failed to get delivery rates');
-      }
-    } catch (error) {
-      this.logger.error(`Failed to get delivery rates: ${error.message}`);
-      if (error.response?.data?.message) {
-        throw new BadRequestException(error.response.data.message);
-      }
-      throw new BadRequestException('Failed to get delivery rates');
-    }
-  }
+  //     if (data.success && data.data) {
+  //       return data.data.map((rate: any) => ({
+  //         courier: rate.courier_code,
+  //         courierName: rate.courier_name,
+  //         service: rate.service_code,
+  //         serviceName: rate.service_name,
+  //         rateId: rate.rate_id,
+  //         amount: parseFloat(rate.amount),
+  //         currency: rate.currency || 'NGN',
+  //         estimatedDays: rate.estimated_days || 1,
+  //         features: rate.features || [],
+  //       }));
+  //     } else {
+  //       throw new BadRequestException(data.message || 'Failed to get delivery rates');
+  //     }
+  //   } catch (error) {
+  //     this.logger.error(`Failed to get delivery rates: ${error.message}`);
+  //     if (error.response?.data?.message) {
+  //       throw new BadRequestException(error.response.data.message);
+  //     }
+  //     throw new BadRequestException('Failed to get delivery rates');
+  //   }
+  // }
 
 
   async fetchShippingRates(ratesRequest: ShipbubbleShippingRatesRequestDto): Promise<ShipbubbleShippingRatesResponseDto> {
@@ -291,75 +255,75 @@ export class ShipbubbleDeliveryService implements DeliveryProviderInterface, Enh
     }
   }
 
-  // not part 
-  async createShipment(shipmentData: CreateShipmentDto): Promise<CreateShipmentResponseDto> {
-    try {
-      this.logger.log(`Creating shipment with rate ID: ${shipmentData.rateId}`);
+  // Legacy method for backward compatibility - will be deprecated
+  // async createShipment(shipmentData: CreateShipmentDto): Promise<CreateShipmentResponseDto> {
+  //   try {
+  //     this.logger.log(`Creating shipment with rate ID: ${shipmentData.rateId}`);
 
-      const requestData = {
-        origin: {
-          address: shipmentData.origin.address,
-          city: shipmentData.origin.city,
-          state: shipmentData.origin.state,
-          country: shipmentData.origin.country,
-          postal_code: shipmentData.origin.postalCode,
-        },
-        destination: {
-          address: shipmentData.destination.address,
-          city: shipmentData.destination.city,
-          state: shipmentData.destination.state,
-          country: shipmentData.destination.country,
-          postal_code: shipmentData.destination.postalCode,
-        },
-        package: {
-          weight: shipmentData.package.weight,
-          length: shipmentData.package.length,
-          width: shipmentData.package.width,
-          height: shipmentData.package.height,
-          value: shipmentData.package.value,
-        },
-        courier: shipmentData.courier,
-        rate_id: shipmentData.rateId,
-        reference: shipmentData.reference,
-        description: shipmentData.description,
-      };
+  //     const requestData = {
+  //       origin: {
+  //         address: shipmentData.origin.address,
+  //         city: shipmentData.origin.city,
+  //         state: shipmentData.origin.state,
+  //         country: shipmentData.origin.country,
+  //         postal_code: shipmentData.origin.postalCode,
+  //       },
+  //       destination: {
+  //         address: shipmentData.destination.address,
+  //         city: shipmentData.destination.city,
+  //         state: shipmentData.destination.state,
+  //         country: shipmentData.destination.country,
+  //         postal_code: shipmentData.destination.postalCode,
+  //       },
+  //       package: {
+  //         weight: shipmentData.package.weight,
+  //         length: shipmentData.package.length,
+  //         width: shipmentData.package.width,
+  //         height: shipmentData.package.height,
+  //         value: shipmentData.package.value,
+  //       },
+  //       courier: shipmentData.courier,
+  //       rate_id: shipmentData.rateId,
+  //       reference: shipmentData.reference,
+  //       description: shipmentData.description,
+  //     };
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/shipments`,
-          requestData,
-          {
-            headers: {
-              'Authorization': `Bearer ${this.apiKey}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
-      );
+  //     const response = await firstValueFrom(
+  //       this.httpService.post(
+  //         `${this.baseUrl}/shipments`,
+  //         requestData,
+  //         {
+  //           headers: {
+  //             'Authorization': `Bearer ${this.apiKey}`,
+  //             'Content-Type': 'application/json',
+  //           },
+  //         },
+  //       ),
+  //     );
 
-      const data = response.data;
+  //     const data = response.data;
 
-      if (data.success && data.data) {
-        return {
-          success: true,
-          trackingNumber: data.data.tracking_number,
-          labelUrl: data.data.label_url,
-          reference: data.data.reference,
-        };
-      } else {
-        return {
-          success: false,
-          error: data.message || 'Failed to create shipment',
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Failed to create shipment: ${error.message}`);
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Failed to create shipment',
-      };
-    }
-  }
+  //     if (data.success && data.data) {
+  //       return {
+  //         success: true,
+  //         trackingNumber: data.data.tracking_number,
+  //         labelUrl: data.data.label_url,
+  //         reference: data.data.reference,
+  //       };
+  //     } else {
+  //       return {
+  //         success: false,
+  //         error: data.message || 'Failed to create shipment',
+  //       };
+  //     }
+  //   } catch (error) {
+  //     this.logger.error(`Failed to create shipment: ${error.message}`);
+  //     return {
+  //       success: false,
+  //       error: error.response?.data?.message || 'Failed to create shipment',
+  //     };
+  //   }
+  // }
 
   async trackShipment(trackingNumber: string): Promise<ShipmentTrackingResponseDto> {
     try {
