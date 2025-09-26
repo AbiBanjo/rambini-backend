@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { OrderRepository } from '../repositories/order.repository';
 import { CartService } from 'src/modules/cart/services/cart.service';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
@@ -6,6 +6,7 @@ import { AddressService } from 'src/modules/user/services/address.service';
 import { PaymentService } from 'src/modules/payment/services/payment.service';
 import { DeliveryService } from 'src/modules/delivery/services/delivery.service';
 import { DeliveryProviderSelectorService } from 'src/modules/delivery/services/delivery-provider-selector.service';
+import { DeliveryQuoteService } from 'src/modules/delivery/services/delivery-quote.service';
 import { VendorService } from 'src/modules/vendor/services/vendor.service';
 import { 
   CreateOrderDto, 
@@ -14,9 +15,13 @@ import {
   OrderItemResponseDto,
   OrderFilterDto,
   CalculateOrderCostDto,
-  OrderCostResponseDto
+  OrderCostResponseDto,
+  OrderPaymentResponseDto
 } from '../dto';
-import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, PaymentMethod, DeliveryProvider } from 'src/entities';
+import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, PaymentMethod, DeliveryProvider, Currency, PaymentTransactionStatus } from 'src/entities';
+import { ShipbubblePackageCategoryDto } from '@/modules/delivery/dto/delivery-rate.dto';
+import { getCurrencyForCountry } from 'src/utils/currency-mapper';
+
 
 @Injectable()
 export class OrderService {
@@ -27,20 +32,41 @@ export class OrderService {
     private readonly cartService: CartService,
     private readonly menuItemRepository: MenuItemRepository,
     private readonly addressService: AddressService,
+    @Inject(forwardRef(() => PaymentService))
     private readonly paymentService: PaymentService,
     private readonly deliveryService: DeliveryService,
     private readonly deliveryProviderSelector: DeliveryProviderSelectorService,
+    private readonly deliveryQuoteService: DeliveryQuoteService,
     private readonly vendorService: VendorService,
   ) {}
 
-  async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto> {
-    this.logger.log(`Creating order for customer ${customerId} with cart items: ${createOrderDto.cart_item_ids.join(', ')}`);
+  async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto | OrderPaymentResponseDto> {
+    this.logger.log(`Creating order for customer ${customerId} with cart items: ${createOrderDto.vendor_id}`);
+
+       // get vendor currency
+       const vendor = await this.vendorService.getVendorById(createOrderDto.vendor_id);
+      //  check if vendor exists
+      if (!vendor) {
+        throw new NotFoundException('Vendor not found');
+      }
+
+      // if vendor is not active
+      if (!vendor.is_active) {
+        throw new BadRequestException('Vendor is not active');
+      }
+
+      // get vendor currency from vendor country
+      const vendorCurrency = getCurrencyForCountry(vendor.address.country);
 
     // Validate delivery address if there is one and get country for provider selection
     let deliveryAddress = null;
     let selectedDeliveryProvider = null;
     
-    if(createOrderDto.delivery_address_id){	
+    if (createOrderDto.order_type === OrderType.DELIVERY) {
+      if (!createOrderDto.delivery_address_id) {
+        throw new BadRequestException('Delivery address is required for delivery orders');
+      }
+      
       deliveryAddress = await this.addressService.getAddressById(customerId, createOrderDto.delivery_address_id);
       if (!deliveryAddress) {
         throw new NotFoundException('Delivery address not found');
@@ -51,8 +77,17 @@ export class OrderService {
       this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for country: ${deliveryAddress.country}`);
     }
 
+ 
+
+    // get all cart items for this vendor
+    const {  items } = await this.cartService.getCartByVendor(customerId, createOrderDto.vendor_id);
+
+    // get all cart item ids for this vendor
+    const cartItemIds = items.map(item => item.id);
     // Validate cart items for checkout
-    const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, createOrderDto.cart_item_ids);
+    const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, cartItemIds);
+
+    this.logger.log(`Cart validation: ${JSON.stringify(cartValidation)}`);
     
     if (!cartValidation.is_valid) {
       throw new BadRequestException(`Cart validation failed: ${cartValidation.issues.join(', ')}`);
@@ -60,26 +95,27 @@ export class OrderService {
 
     const { cartItems, vendorId, subtotal } = cartValidation;
 
-    // Validate that vendor exists and is active
-    await this.validateVendorExistsAndActive(vendorId);
-
     // Calculate fees and totals
     const deliveryFee = this.calculateDeliveryFee(createOrderDto.order_type, subtotal);
-    const serviceFee = this.calculateServiceFee(subtotal);
-    const taxAmount = this.calculateTaxAmount(subtotal);
-    const discountAmount = 0; // No discounts for now
-    const commissionAmount = this.calculateCommissionAmount(subtotal);
-    const totalAmount = subtotal + deliveryFee + serviceFee + taxAmount - discountAmount;
 
-    // Generate order number
+    this.logger.log(`Delivery fee: ${deliveryFee}`);
+  
+    const totalAmount = subtotal + deliveryFee
+
+    // Determine currency based on delivery address or use provided currency
+    let orderCurrency = vendorCurrency;
+    
+
+    // Generate order number (UUID-based - no race conditions!)
     const orderNumber = await this.orderRepository.generateOrderNumber();
-
+    this.logger.log(`Order number: ${orderNumber}`);
+    
     // Create order
     const order = await this.orderRepository.create({
       order_number: orderNumber,
       customer_id: customerId,
       vendor_id: vendorId,
-      delivery_address_id: createOrderDto.delivery_address_id,
+      delivery_address_id: createOrderDto.order_type === OrderType.PICKUP ? null : createOrderDto.delivery_address_id,
       delivery_provider: selectedDeliveryProvider,
       order_status: OrderStatus.NEW,
       order_type: createOrderDto.order_type,
@@ -87,14 +123,13 @@ export class OrderService {
       payment_status: PaymentStatus.PENDING,
       subtotal,
       delivery_fee: deliveryFee,
-      service_fee: serviceFee,
-      tax_amount: taxAmount,
-      discount_amount: discountAmount,
-      commission_amount: commissionAmount,
       total_amount: totalAmount,
+      currency: orderCurrency,
       special_instructions: createOrderDto.delivery_instructions,
       vendor_notes: createOrderDto.vendor_notes,
     });
+
+    this.logger.log(`Order created: ${order.id}`);
 
     // Create order items from cart items
     for (const cartItem of cartItems) {
@@ -107,16 +142,14 @@ export class OrderService {
       });
     }
 
-    // Remove cart items that were used in the order
-    await this.cartService.removeCartItems(customerId, createOrderDto.cart_item_ids);
-
-    // Process payment based on payment method
+    this.logger.log(`Order items created: ${order.id}`);
     try {
       if (createOrderDto.payment_method === PaymentMethod.WALLET) {
         // For wallet payments, process immediately
         await this.paymentService.processPayment({
           order_id: order.id,
           payment_method: createOrderDto.payment_method,
+          currency: orderCurrency,
         });
 
         // Update order payment status to paid
@@ -124,18 +157,30 @@ export class OrderService {
           payment_status: PaymentStatus.PAID,
         });
       } else {
-        // For external payments, create payment record but don't process yet
-        // The payment will be processed when the user completes payment on external platform
-        await this.paymentService.processPayment({
+        this.logger.log(`Processing payment for order ${order.id}`);
+        const paymentResult =  await this.paymentService.processPayment({
           order_id: order.id,
           payment_method: createOrderDto.payment_method,
+          currency: orderCurrency,
         });
+
+        this.logger.log(`Payment result: ${JSON.stringify(paymentResult)}`);
+
+        return {
+          payment_url: paymentResult?.payment_url,
+          external_payment_reference: paymentResult?.external_reference,
+          payment_processing_status: paymentResult?.status as PaymentTransactionStatus,
+        }
       }
     } catch (error) {
       this.logger.error(`Payment processing failed for order ${order.id}: ${error.message}`);
       // Don't fail the order creation, just log the error
-      // The order can still be created and payment can be retried
+      // return the order with payment processing status as failed
+      throw new BadRequestException(`Payment processing failed for order ${order.id}: ${error.message}`);
     }
+
+    // make all user cart items inactive for the vendor for this order
+    await this.cartService.makeCartItemsInactiveForVendor(customerId, vendorId, order.id);
 
     // Get complete order with relations
     const completeOrder = await this.orderRepository.findById(order.id);
@@ -165,10 +210,13 @@ export class OrderService {
       throw new NotFoundException('Vendor not found');
     }
 
-    // Validate delivery address if provided for delivery orders
-    let deliveryAddress = null;
+
+    // Initialize delivery fee and provider
+    let deliveryFee = 0;
     let selectedDeliveryProvider = null;
-    
+    let deliveryAddress = null;
+
+    // Handle delivery orders
     if (calculateOrderCostDto.order_type === OrderType.DELIVERY) {
       if (!calculateOrderCostDto.delivery_address_id) {
         throw new BadRequestException('Delivery address is required for delivery orders');
@@ -179,44 +227,37 @@ export class OrderService {
         throw new NotFoundException('Delivery address not found');
       }
       
-      // Select delivery provider based on vendor's country (not customer's delivery address)
+      // Select delivery provider based on vendor's country
       selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(vendor.address.country);
       this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for vendor country: ${vendor.address.country}`);
+
+      try {
+        // Validate and get delivery quotes
+        const deliveryQuoteResult = await this.getDeliveryQuoteForOrder(
+          vendor,
+          deliveryAddress,
+          cartItems,
+          subtotal,
+          selectedDeliveryProvider
+        );
+        
+        deliveryFee = deliveryQuoteResult.lowestFee;
+        this.logger.log(`Delivery fee calculated: ${deliveryFee} via ${selectedDeliveryProvider}`);
+
+        // save the delivery quote to db??
+
+        
+      } catch (error) {
+        throw new BadRequestException('Failed to get delivery quotes');
+      }
     }
 
-    // Calculate fees and totals
-    let deliveryFee = 0;
-    
-    if (calculateOrderCostDto.order_type === OrderType.DELIVERY && selectedDeliveryProvider) {
-      // Calculate actual delivery fee using delivery service
-      try {
-        deliveryFee = await this.calculateActualDeliveryFee(
-          selectedDeliveryProvider,
-          vendor.address,
-          deliveryAddress
-        );
-      } catch (error) {
-        this.logger.warn(`Failed to calculate actual delivery fee: ${error.message}. Using fallback calculation.`);
-        throw new BadRequestException('Failed to calculate actual delivery fee');
-        // deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
-      }
-    } 
-    // else {
-    //   deliveryFee = this.calculateDeliveryFee(calculateOrderCostDto.order_type, subtotal);
-    // }
-    
-    const serviceFee = this.calculateServiceFee(subtotal);
-    const taxAmount = this.calculateTaxAmount(subtotal);
-    const discountAmount = 0; // No discounts for now
-    const totalAmount = subtotal + deliveryFee + serviceFee + taxAmount - discountAmount;
+    const totalAmount = Number(subtotal) + Number(deliveryFee) 
 
     // Prepare response
     const response: OrderCostResponseDto = {
       subtotal,
       delivery_fee: deliveryFee,
-      service_fee: serviceFee,
-      tax_amount: taxAmount,
-      discount_amount: discountAmount,
       total_amount: totalAmount,
       order_type: calculateOrderCostDto.order_type,
       delivery_provider: selectedDeliveryProvider,
@@ -515,24 +556,15 @@ export class OrderService {
   }
 
 
-
-  /**
-   * Validates that a vendor exists and is active
-   * @param vendorId The vendor ID to validate
-   * @throws NotFoundException if vendor not found
-   * @throws BadRequestException if vendor is not active
-   */
   private async validateVendorExistsAndActive(vendorId: string): Promise<void> {
-    // Since we don't have direct access to VendorService, we'll validate through the menu items
-    // This is a reasonable approach since we've already validated the menu items exist
-    // and they must have valid vendor_id values
-    if (!vendorId || vendorId.trim() === '') {
-      throw new BadRequestException('Invalid vendor ID provided');
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found');
     }
-    
-    // Additional validation could be added here if we had access to VendorService
-    // For now, we rely on the foreign key constraints and the fact that menu items
-    // must have valid vendor_id values
+    if (!vendor.is_active) {
+      throw new BadRequestException('Vendor is not active');
+    }
+   
   }
 
   private mapToOrderResponse(order: Order): OrderResponseDto {
@@ -550,11 +582,8 @@ export class OrderService {
       payment_reference: order.payment_reference,
       subtotal: order.subtotal,
       delivery_fee: order.delivery_fee,
-      service_fee: order.service_fee,
-      tax_amount: order.tax_amount,
-      discount_amount: order.discount_amount,
-      commission_amount: order.commission_amount,
       total_amount: order.total_amount,
+      currency: order.currency,
       estimated_prep_time_minutes: order.estimated_prep_time_minutes,
       estimated_delivery_time: order.estimated_delivery_time,
       order_ready_at: order.order_ready_at,
@@ -602,7 +631,204 @@ export class OrderService {
   }
 
   /**
-   * Calculate actual delivery fee using delivery service
+   * Get delivery quote for order and save to database
+   * @param vendor Vendor information
+   * @param deliveryAddress Customer delivery address
+   * @param cartItems Cart items
+   * @param subtotal Order subtotal
+   * @param provider Selected delivery provider
+   * @returns Promise<{lowestFee: number, quotes: any[]}>
+   */
+  private async getDeliveryQuoteForOrder(
+    vendor: any,
+    deliveryAddress: any,
+    cartItems: any[],
+    subtotal: number,
+    provider: DeliveryProvider
+  ): Promise<{lowestFee: number, quotes: any[], requestToken?: string}> {
+    this.logger.log(`Getting delivery quotes for provider: ${provider}`);
+
+    // Validate addresses and get address codes for Shipbubble
+    if (provider === DeliveryProvider.SHIPBUBBLE) {
+      return await this.getShipbubbleQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal);
+    } else if (provider === DeliveryProvider.UBER) {
+      return await this.getUberQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal);
+    }
+
+    throw new Error(`Unsupported delivery provider: ${provider}`);
+  }
+
+  /**
+   * Get Shipbubble delivery quote
+   */
+  private async getShipbubbleQuoteForOrder(
+    vendor: any,
+    deliveryAddress: any,
+    cartItems: any[],
+    subtotal: number
+  ): Promise<{lowestFee: number, quotes: any[], requestToken: string}> {
+    const shipbubbleService = this.deliveryService['providerFactory'].getShipbubbleProvider();
+
+    // Validate vendor address and get/save address code
+    const vendorAddressValidation = await shipbubbleService.validateAddress({
+      name: vendor.business_name || 'Vendor',
+      email: vendor.email || 'vendor@example.com',
+      phone: vendor.phone || '+2348000000000',
+      address: `${vendor.address.address_line_1}, ${vendor.address.city}, ${vendor.address.state}`,
+      latitude: vendor.address.latitude,
+      longitude: vendor.address.longitude,
+    });
+
+    if (!vendorAddressValidation.success || !vendorAddressValidation.data) {
+      throw new Error('Vendor address validation failed');
+    }
+
+    // Update vendor address with Shipbubble address code if needed
+    if (vendorAddressValidation.data.address_code) {
+      await this.addressService.updateAddressCode(vendor.address.id, vendorAddressValidation.data.address_code);
+    }
+
+    // Validate customer delivery address and get/save address code
+    const customerAddressValidation = await shipbubbleService.validateAddress({
+      name: 'Customer', // We'll need to get customer name from user service
+      email: 'customer@example.com', // We'll need to get customer email
+      phone: '+2348000000000', // We'll need to get customer phone
+      address: `${deliveryAddress.address_line_1}, ${deliveryAddress.city}, ${deliveryAddress.state}`,
+      latitude: deliveryAddress.latitude,
+      longitude: deliveryAddress.longitude,
+    });
+
+    if (!customerAddressValidation.success || !customerAddressValidation.data) {
+      throw new Error('Customer address validation failed');
+    }
+
+    // Update customer address with Shipbubble address code if needed
+    if (customerAddressValidation.data.address_code) {
+      await this.addressService.updateAddressCode(deliveryAddress.id, customerAddressValidation.data.address_code);
+    }
+
+    // Get package categories
+    const categories = await shipbubbleService.getPackageCategories();
+    // choose food category
+    const foodCategory = categories.data?.find((category: ShipbubblePackageCategoryDto) => category.category.toLowerCase() === 'ood');
+    const categoryId = foodCategory?.category_id || categories.data?.[0]?.category_id || 1;
+
+    // Calculate package dimensions based on cart items
+    const packageDimensions = this.calculatePackageDimensions(cartItems);
+
+    // Prepare Shipbubble rates request
+    const ratesRequest = {
+      sender_address_code: vendorAddressValidation.data.address_code,
+      reciever_address_code: customerAddressValidation.data.address_code,
+      category_id: categoryId,
+      package_items: cartItems.map(item => ({
+        name: item.menu_item?.name || 'Food Item',
+        description: item.menu_item?.description || 'Food delivery',
+        unit_weight: (item.quantity * 0.5).toString(), // Estimate 0.5kg per item
+        unit_amount: item.unit_price.toString(),
+        quantity: item.quantity.toString(),
+      })),
+      package_dimension: packageDimensions,
+      pickup_date: new Date().toISOString().split('T')[0], // Today's date
+    };
+
+    // Fetch rates from Shipbubble
+    const ratesResponse = await shipbubbleService.fetchShippingRates(ratesRequest);
+
+    // Find the lowest fee
+    const lowestFee = ratesResponse.couriers.reduce((min, courier) => 
+      courier.total < min ? courier.total : min, 
+      ratesResponse.couriers[0]?.total || 0
+    );
+
+    this.logger.log(`Shipbubble lowest delivery fee: ${lowestFee}`);
+
+    // return request token too for later use
+    const requestToken = ratesResponse.request_token;
+    return {
+      lowestFee,
+      quotes: ratesResponse.couriers,
+      requestToken,
+    };
+  }
+
+  /**
+   * Get Uber delivery quote
+   */
+  private async getUberQuoteForOrder(
+    vendor: any,
+    deliveryAddress: any,
+    cartItems: any[],
+    subtotal: number
+  ): Promise<{lowestFee: number, quotes: any[]}> {
+    const uberService = this.deliveryService['providerFactory'].getUberProvider();
+
+    // Prepare Uber Direct quote request
+    const quoteRequest = {
+      pickup_address: JSON.stringify({
+        street_address: [vendor.address.address_line_1],
+        city: vendor.address.city,
+        state: vendor.address.state,
+        zip_code: vendor.address.postal_code || '100001',
+        country: vendor.address.country,
+      }),
+      dropoff_address: JSON.stringify({
+        street_address: [deliveryAddress.address_line_1],
+        city: deliveryAddress.city,
+        state: deliveryAddress.state,
+        zip_code: deliveryAddress.postal_code || '100001',
+        country: deliveryAddress.country,
+      }),
+      pickup_phone_number: vendor.phone || '+1234567890',
+      dropoff_phone_number: '+1234567890', // We'll need to get customer phone
+      manifest_total_value: Math.round(subtotal * 100), // Convert to cents
+      pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
+      pickup_deadline_dt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
+      dropoff_ready_dt: new Date(Date.now() + 45 * 60 * 1000).toISOString(), // 45 minutes from now
+      dropoff_deadline_dt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
+    };
+
+    // Create quote with Uber Direct
+    const quoteResponse = await uberService.createDeliveryQuote(quoteRequest);
+
+    // Convert fee from cents to naira (assuming USD to NGN conversion or direct NGN)
+    const deliveryFee = quoteResponse.fee / 100;
+
+    this.logger.log(`Uber Direct delivery fee: ${deliveryFee}`);
+
+    return {
+      lowestFee: deliveryFee,
+      quotes: [quoteResponse],
+    };
+  }
+
+  /**
+   * Calculate package dimensions based on cart items
+   */
+  private calculatePackageDimensions(cartItems: any[]): {length: number, width: number, height: number} {
+    const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+    
+    // Base dimensions for food delivery
+    let length = 30; // cm
+    let width = 30;  // cm
+    let height = 15; // cm
+
+    // Scale dimensions based on quantity
+    if (totalQuantity > 5) {
+      length = 40;
+      width = 40;
+      height = 20;
+    } else if (totalQuantity > 10) {
+      length = 50;
+      width = 40;
+      height = 25;
+    }
+
+    return { length, width, height };
+  }
+
+  /**
+   * Calculate actual delivery fee using delivery service (legacy method)
    * @param provider Delivery provider
    * @param originAddress Vendor address
    * @param destinationAddress Customer address

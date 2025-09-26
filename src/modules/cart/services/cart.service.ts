@@ -30,25 +30,34 @@ export class CartService {
       throw new BadRequestException(`Menu item "${menuItem.name}" is not available for ordering`);
     }
 
-    // Check if item already exists in cart
-    const existingCartItem = await this.cartRepository.findByUserAndMenuItem(userId, addToCartDto.menu_item_id);
+    // Check if item already exists in cart and is active (using vendor_id to match unique constraint)
+    const existingActiveCartItem = await this.cartRepository.findByUserMenuItemAndVendor(userId, addToCartDto.menu_item_id, menuItem.vendor_id, true);
+    this.logger.log(`Existing active cart item: ${JSON.stringify(existingActiveCartItem)}`);
     
-    if (existingCartItem) {
-      // Update existing cart item
-      const newQuantity = existingCartItem.quantity + addToCartDto.quantity;
-
-      existingCartItem.updateQuantity(newQuantity);
+    if (existingActiveCartItem) {
+      // Update existing active cart item
+      const newQuantity = Number(existingActiveCartItem.quantity) + Number(addToCartDto.quantity);
       
+      // Calculate the new total price using the unit price from menu item (to ensure consistency)
+      const unitPrice = Number(menuItem.price);
+      const newTotalPrice = unitPrice * newQuantity;
 
-      const updatedCartItem = await this.cartRepository.update(existingCartItem.id, {
-        quantity: existingCartItem.quantity
+      existingActiveCartItem.updateQuantity(newQuantity);
+      
+      const updatedCartItem = await this.cartRepository.update(existingActiveCartItem.id, {
+        quantity: newQuantity,
+        unit_price: unitPrice,
+        total_price: newTotalPrice
       });
-      this.logger.log(`Updated existing cart item ${updatedCartItem.id} with quantity ${newQuantity}`);
+      this.logger.log(`Updated existing cart item ${updatedCartItem.id} with quantity ${newQuantity} and total price ${newTotalPrice}`);
 
       console.log('updatedCartItem', updatedCartItem);
       
       return this.mapToCartItemResponse(updatedCartItem);
     }
+
+
+    this.logger.log(`Creating new cart item`);
 
     // Create new cart item
     const cartItem = await this.cartRepository.create({
@@ -56,8 +65,8 @@ export class CartService {
       menu_item_id: addToCartDto.menu_item_id,
       vendor_id: menuItem.vendor_id,
       quantity: addToCartDto.quantity,
-      unit_price: menuItem.price,
-      total_price: menuItem.price * addToCartDto.quantity,
+      unit_price: Number(menuItem.price),
+      total_price: Number(menuItem.price) * Number(addToCartDto.quantity),
     });
 
     // ensure vendor details are added
@@ -192,7 +201,7 @@ export class CartService {
       const missingIds = cartItemIds.filter(id => !foundIds.includes(id));
       throw new NotFoundException(`Cart items not found: ${missingIds.join(', ')}`);
     }
-    
+    this.logger.log(`Found ${cartItems.length} cart items for user ${userId}: ${cartItemIds.join(', ')}`);
     return cartItems;
   }
 
@@ -382,4 +391,11 @@ export class CartService {
 
     this.logger.log(`Successfully removed ${cartItemIds.length} cart items`);
   }
+
+  async makeCartItemsInactiveForVendor(userId: string, vendorId: string, orderId: string): Promise<void> {
+    this.logger.log(`Making cart items inactive for vendor ${vendorId} for order ${orderId}`);
+    await this.cartRepository.makeCartItemsInactiveForVendor(userId, vendorId, orderId);
+  }
+
+
 } 

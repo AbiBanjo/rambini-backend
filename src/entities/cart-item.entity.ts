@@ -13,7 +13,6 @@ import { MenuItem } from './menu-item.entity';
 import { Vendor } from './vendor.entity';
 
 @Entity('cart_items')
-@Index(['user_id', 'menu_item_id', 'vendor_id'], { unique: true })
 export class CartItem extends BaseEntity {
   @Column({ type: 'varchar' })
   @IsString()
@@ -47,23 +46,23 @@ export class CartItem extends BaseEntity {
   is_active: boolean;
 
   // Relationships
-  @ManyToOne('MenuItem', { onDelete: 'CASCADE' })
+  @ManyToOne(() => MenuItem, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'menu_item_id' })
   menu_item: MenuItem;
 
-  @ManyToOne('Vendor', { onDelete: 'CASCADE' })
+  @ManyToOne(() => Vendor, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'vendor_id' })
   vendor: Vendor;
 
   // total price can be calculated automatically 
   @BeforeInsert()
   calculateTotalPrice() {
-    this.total_price = this.unit_price * this.quantity;
+    this.total_price = Number(this.unit_price) * Number(this.quantity);
   }
 
   @BeforeUpdate()
   calculateTotalPriceOnUpdate() {
-    this.total_price = this.unit_price * this.quantity;
+    this.total_price = Number(this.unit_price) * Number(this.quantity);
   }
 
   // Computed properties
@@ -81,6 +80,6 @@ export class CartItem extends BaseEntity {
   }
 
   calculateTotal(): void {
-    this.total_price = this.unit_price * this.quantity;
+    this.total_price = Number(this.unit_price )* Number(this.quantity);
   }
 } 

@@ -1,14 +1,17 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus } from 'src/entities';
+import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus, PaymentStatus, OrderStatus, User } from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { WalletPaymentService } from './wallet-payment.service';
 import { StripePaymentService } from './stripe-payment.service';
 import { PaystackPaymentService } from './paystack-payment.service';
 import { MercuryPaymentService } from './mercury-payment.service';
 import { PaymentProviderInterface } from '../interfaces/payment-provider.interface';
-import { ProcessPaymentDto, PaymentResponseDto, PaymentWebhookDto } from '../dto';
+import { ProcessPaymentDto, PaymentResponseDto, PaymentWebhookDto, FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto';
+import { CartService } from '@/modules/cart/services/cart.service';
+import { OrderService } from '@/modules/order/services/order.service';
+import { getCurrencyForCountry } from '@/utils/currency-mapper';
 
 @Injectable()
 export class PaymentService {
@@ -23,23 +26,24 @@ export class PaymentService {
     private readonly stripePaymentService: StripePaymentService,
     private readonly paystackPaymentService: PaystackPaymentService,
     private readonly mercuryPaymentService: MercuryPaymentService,
+    private readonly cartService: CartService,
+    @Inject(forwardRef(() => OrderService))
+    private readonly orderService: OrderService,
   ) {
     // Initialize payment providers (excluding wallet as it's handled separately)
     this.paymentProviders = new Map();
     this.paymentProviders.set(PaymentMethod.STRIPE, this.stripePaymentService);
     this.paymentProviders.set(PaymentMethod.PAYSTACK, this.paystackPaymentService);
-    this.paymentProviders.set(PaymentMethod.MERCURY, this.mercuryPaymentService);
+    // this.paymentProviders.set(PaymentMethod.MERCURY, this.mercuryPaymentService);
   }
 
-  /**
-   * Process payment for an order
-   * @param processPaymentDto Payment processing data
-   * @returns Promise<PaymentResponseDto>
-   */
+ 
   async processPayment(processPaymentDto: ProcessPaymentDto): Promise<PaymentResponseDto> {
+    this.logger.log(`Processing payment for order ${processPaymentDto.order_id} with method ${processPaymentDto.payment_method}`);
     const { order_id, payment_method, metadata } = processPaymentDto;
+    
 
-    this.logger.log(`Processing payment for order ${order_id} with method ${payment_method}`);
+    this.logger.log(`Processing payment for order ${order_id} with method 2 ${payment_method}`);
 
     // Get order details
     const order = await this.orderRepository.findOne({
@@ -50,21 +54,30 @@ export class PaymentService {
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-
+    this.logger.log(`Order found: ${order.id}`);
+    this.logger.log(`Checking if payment already exists for this order`);
     // Check if payment already exists for this order
     const existingPayment = await this.paymentRepository.findByOrderId(order_id);
+
     if (existingPayment) {
+      this.logger.log(`Payment already exists for this order`);
       throw new BadRequestException('Payment already exists for this order');
     }
+    this.logger.log(`Payment not found for this order`);
 
-    // Get payment provider
-    const paymentProvider = this.paymentProviders.get(payment_method);
-    if (!paymentProvider) {
-      throw new BadRequestException(`Unsupported payment method: ${payment_method}`);
+    if (payment_method !== PaymentMethod.WALLET) {
+
+      const paymentProvider = this.paymentProviders.get(payment_method);
+
+      if (!paymentProvider) {
+        throw new BadRequestException(`Unsupported payment method: ${payment_method}`);
+      }
     }
 
     // Generate payment reference
+    this.logger.log(`Generating payment reference`);
     const paymentReference = await this.paymentRepository.generatePaymentReference();
+    this.logger.log(`Payment reference: ${paymentReference}`);
 
     // Create payment record
     const payment = await this.paymentRepository.create({
@@ -89,11 +102,17 @@ export class PaymentService {
 
         return this.mapToPaymentResponse(walletPayment);
       } else {
+
+        const paymentProvider = this.paymentProviders.get(payment_method);
+        if (!paymentProvider) {
+          throw new BadRequestException(`Unsupported payment method: ${payment_method}`);
+        }
         // Process external payment
         const initiationResult = await paymentProvider.initializePayment(
           order.total_amount,
-          'NGN', // Default currency
+          order.currency || 'NGN', // Use order currency or default to NGN
           paymentReference,
+          order.customer.email,
           metadata,
         );
 
@@ -181,13 +200,13 @@ export class PaymentService {
    * @param provider Payment provider
    * @param payload Webhook payload
    * @param signature Webhook signature
-   * @returns Promise<PaymentResponseDto>
+   * @returns Promise<PaymentResponseDto | WalletFundingStatusDto>
    */
   async processWebhook(
     provider: PaymentProvider,
     payload: any,
     signature: string,
-  ): Promise<PaymentResponseDto> {
+  ): Promise<PaymentResponseDto | WalletFundingStatusDto> {
     this.logger.log(`Processing webhook for provider: ${provider}`);
 
     const paymentMethod = this.getPaymentMethodFromProvider(provider);
@@ -197,11 +216,78 @@ export class PaymentService {
       throw new BadRequestException(`Unsupported payment provider: ${provider}`);
     }
 
+    this.logger.log(`Processing webhook for provider: ${provider}`);
+    this.logger.log(`Payload: ${JSON.stringify(payload)}`);
+    this.logger.log(`Signature: ${signature}`);
+
     const webhookResult = await paymentProvider.processWebhook(payload, signature);
+
+    this.logger.log(`Webhook result: ${JSON.stringify(webhookResult)}`);
 
     if (!webhookResult.success) {
       throw new BadRequestException(webhookResult.error || 'Webhook processing failed');
     }
+
+    this.logger.log(`Finding payment by reference: ${webhookResult.reference}`);
+
+    // Check if this is a wallet funding transaction
+    const isWalletFunding = webhookResult.reference.startsWith('wallet_');
+
+    if (isWalletFunding) {
+      return await this.processWalletFundingWebhook(webhookResult);
+    } else {
+      return await this.processOrderPaymentWebhook(webhookResult);
+    }
+  }
+
+  /**
+   * Process wallet funding webhook
+   * @param webhookResult Webhook result
+   * @returns Promise<WalletFundingStatusDto>
+   */
+  private async processWalletFundingWebhook(webhookResult: any): Promise<WalletFundingStatusDto> {
+    this.logger.log(`Processing wallet funding webhook for reference: ${webhookResult.reference}`);
+
+    const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
+    if (!payment) {
+      throw new NotFoundException('Wallet funding transaction not found for webhook reference');
+    }
+
+    if (!payment.metadata?.wallet_funding) {
+      throw new BadRequestException('Payment is not a wallet funding transaction');
+    }
+
+    const newStatus = this.mapVerificationStatusToPaymentStatus(webhookResult.status);
+    
+    if (newStatus === PaymentTransactionStatus.COMPLETED) {
+      // Complete the wallet funding
+      return await this.walletPaymentService.completeFunding(
+        webhookResult.reference,
+        webhookResult.external_reference,
+        webhookResult.gateway_response,
+      );
+    } else if (newStatus === PaymentTransactionStatus.FAILED) {
+      // Mark payment as failed
+      payment.markAsFailed(
+        webhookResult.error || 'Payment failed',
+        webhookResult.gateway_response,
+      );
+      await this.paymentRepository.update(payment.id, payment);
+
+      return await this.walletPaymentService.getFundingStatus(webhookResult.reference);
+    }
+
+    // For other statuses, just return current status
+    return await this.walletPaymentService.getFundingStatus(webhookResult.reference);
+  }
+
+  /**
+   * Process order payment webhook
+   * @param webhookResult Webhook result
+   * @returns Promise<PaymentResponseDto>
+   */
+  private async processOrderPaymentWebhook(webhookResult: any): Promise<PaymentResponseDto> {
+    this.logger.log(`Processing order payment webhook for reference: ${webhookResult.reference}`);
 
     // Find payment by reference
     const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
@@ -209,6 +295,7 @@ export class PaymentService {
       throw new NotFoundException('Payment not found for webhook reference');
     }
 
+    this.logger.log(`Payment found: ${JSON.stringify(payment)}`);
     // Update payment status
     const newStatus = this.mapVerificationStatusToPaymentStatus(webhookResult.status);
     
@@ -219,9 +306,25 @@ export class PaymentService {
       await this.creditVendorForExternalPayment(payment);
     } else if (newStatus === PaymentTransactionStatus.FAILED) {
       payment.markAsFailed(webhookResult.error || 'Payment failed', webhookResult.gateway_response);
+      // update order status and payment status after failed payment  
+      await this.orderRepository.update(payment.order_id, {
+        payment_status: PaymentStatus.FAILED,
+        order_status: OrderStatus.CANCELLED
+      });
     }
 
     await this.paymentRepository.update(payment.id, payment);
+
+    // make all cart items in the order for this payment as inactive 
+    await this.cartService.makeCartItemsInactiveForVendor(payment.order.customer_id, payment.order.vendor_id, payment.order_id);
+
+    // update order status and payment status after successful payment
+    if (newStatus === PaymentTransactionStatus.COMPLETED) {
+      await this.orderRepository.update(payment.order_id, {
+        payment_status: PaymentStatus.PAID,
+        order_status: OrderStatus.CONFIRMED
+      });
+    }
 
     return this.mapToPaymentResponse(payment);
   }
@@ -299,6 +402,7 @@ export class PaymentService {
    * @param payment Payment record
    */
   private async creditVendorForExternalPayment(payment: any): Promise<void> {
+    this.logger.log(`Credit vendor for external payment: ${payment.id}`);
     if (payment.payment_method === PaymentMethod.WALLET) {
       return; // Already handled in wallet payment service
     }
@@ -308,7 +412,7 @@ export class PaymentService {
       this.logger.warn(`Order not found for payment ${payment.id}`);
       return;
     }
-
+    this.logger.log(`Order found for payment ${payment.id}: ${order.id}`);
     // Use wallet payment service to credit vendor
     await this.walletPaymentService['creditVendorWallet'](
       order.vendor_id,
@@ -316,6 +420,7 @@ export class PaymentService {
       order.id,
       payment.payment_reference,
     );
+    this.logger.log(`Vendor wallet credited: ${order.vendor_id}, amount: ${payment.amount}`);
   }
 
   /**
@@ -375,6 +480,138 @@ export class PaymentService {
       default:
         throw new BadRequestException(`Unsupported payment provider: ${provider}`);
     }
+  }
+
+  /**
+   * Initiate wallet funding
+   * @param userId User ID
+   * @param fundWalletDto Funding details
+   * @returns Promise<WalletFundingResponseDto>
+   */
+  async fundWallet(user: User, fundWalletDto: FundWalletDto,): Promise<WalletFundingResponseDto> {
+    const userId = user.id;
+    this.logger.log(`Funding wallet for user ${userId} with ${fundWalletDto.payment_method}`);
+  
+    if (fundWalletDto.payment_method === PaymentMethod.WALLET) {
+      throw new BadRequestException('Cannot fund wallet using wallet payment method');
+    }
+
+    fundWalletDto.email = user.email;
+    // get currency from user country 
+    fundWalletDto.currency = getCurrencyForCountry(user.country);
+
+    // Get payment provider for external payment methods
+    const provider = this.paymentProviders.get(fundWalletDto.payment_method);
+    if (!provider) {
+      throw new BadRequestException(`Payment provider not available for ${fundWalletDto.payment_method}`);
+    }
+
+    // Initiate funding through wallet payment service
+    const fundingResponse = await this.walletPaymentService.initiateFunding(userId, fundWalletDto);
+
+    // For external payment methods, we need to create the payment URL
+    try {
+      const paymentUrl = await provider.initializePayment(
+        fundWalletDto.amount,
+        fundWalletDto.currency,
+        fundingResponse.reference,
+        fundWalletDto.email, // email is optional
+        {
+          ...fundWalletDto.metadata,
+          wallet_funding: true,
+          funding_reference: fundingResponse.reference,
+          return_url: fundWalletDto.return_url,
+          cancel_url: fundWalletDto.cancel_url,
+        }
+      );
+
+      if (paymentUrl.success) {
+        fundingResponse.payment_url = paymentUrl.payment_url;
+        fundingResponse.external_reference = paymentUrl.external_reference;
+      }
+    } catch (error) {
+      this.logger.error(`Failed to create payment URL for wallet funding: ${error.message}`);
+      // Continue without payment URL - user can still complete payment manually
+    }
+
+    return fundingResponse;
+  }
+
+  /**
+   * Complete wallet funding after successful payment
+   * @param reference Funding reference
+   * @param externalReference External payment reference
+   * @param gatewayResponse Gateway response data
+   * @returns Promise<WalletFundingStatusDto>
+   */
+  async completeFunding(
+    reference: string,
+    externalReference?: string,
+    gatewayResponse?: any,
+  ): Promise<WalletFundingStatusDto> {
+    return await this.walletPaymentService.completeFunding(reference, externalReference, gatewayResponse);
+  }
+
+  /**
+   * Get wallet funding status
+   * @param reference Funding reference
+   * @returns Promise<WalletFundingStatusDto>
+   */
+  async getFundingStatus(reference: string): Promise<WalletFundingStatusDto> {
+    return await this.walletPaymentService.getFundingStatus(reference);
+  }
+
+  /**
+   * Verify wallet funding payment
+   * @param reference Funding reference
+   * @returns Promise<WalletFundingStatusDto>
+   */
+  async verifyFunding(reference: string): Promise<WalletFundingStatusDto> {
+    this.logger.log(`Verifying wallet funding: ${reference}`);
+
+    // Get funding status first
+    const fundingStatus = await this.walletPaymentService.getFundingStatus(reference);
+    
+    if (fundingStatus.status === PaymentTransactionStatus.COMPLETED) {
+      return fundingStatus;
+    }
+
+    if (fundingStatus.status === PaymentTransactionStatus.FAILED) {
+      throw new BadRequestException('Funding transaction failed');
+    }
+
+    // For pending transactions, verify with the payment provider
+    if (fundingStatus.payment_method !== PaymentMethod.WALLET) {
+      const provider = this.paymentProviders.get(fundingStatus.payment_method);
+      if (provider) {
+        try {
+          const verificationResult = await provider.verifyPayment(reference);
+          
+          if (verificationResult.status === 'completed') {
+            // Complete the funding
+            return await this.walletPaymentService.completeFunding(
+              reference,
+              verificationResult.external_reference,
+              verificationResult.gateway_response,
+            );
+          }
+        } catch (error) {
+          this.logger.error(`Failed to verify funding with provider: ${error.message}`);
+          throw new BadRequestException('Failed to verify funding status');
+        }
+      }
+    }
+
+    return fundingStatus;
+  }
+
+  /**
+   * Get user wallet balance
+   * @param userId User ID
+   * @returns Promise<WalletBalanceDto>
+   */
+  async getWalletBalance(userId: string): Promise<WalletBalanceDto> {
+    return await this.walletPaymentService.getWalletBalance(userId);
   }
 
   /**

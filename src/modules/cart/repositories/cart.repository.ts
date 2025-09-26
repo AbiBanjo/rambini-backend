@@ -24,9 +24,23 @@ export class CartRepository {
     });
   }
 
-  async findByUserAndMenuItem(userId: string, menuItemId: string): Promise<CartItem | null> {
+  async findByUserAndMenuItem(userId: string, menuItemId: string, isActive: boolean = true): Promise<CartItem | null> {
     return await this.cartItemRepository.findOne({
-      where: { user_id: userId, menu_item_id: menuItemId},
+      where: { user_id: userId, menu_item_id: menuItemId, is_active: isActive },
+      relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
+    });
+  }
+
+  async findByUserMenuItemAndVendor(userId: string, menuItemId: string, vendorId: string, isActive: boolean = true): Promise<CartItem | null> {
+    return await this.cartItemRepository.findOne({
+      where: { user_id: userId, menu_item_id: menuItemId, vendor_id: vendorId, is_active: isActive },
+      relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
+    });
+  }
+
+  async findByUserMenuItemAndVendorAnyStatus(userId: string, menuItemId: string, vendorId: string): Promise<CartItem | null> {
+    return await this.cartItemRepository.findOne({
+      where: { user_id: userId, menu_item_id: menuItemId, vendor_id: vendorId },
       relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
     });
   }
@@ -86,8 +100,10 @@ export class CartRepository {
     return (result.affected || 0) > 0;
   }
 
+ 
+
   async clearUserCart(userId: string): Promise<number> {
-    const result = await this.cartItemRepository.delete({ user_id: userId });
+    const result = await this.cartItemRepository.delete({ user_id: userId, is_active: true });
     return result.affected || 0;
   }
 
@@ -244,5 +260,10 @@ export class CartRepository {
       subtotal,
       is_empty: false,
     };
+  }
+
+
+  async makeCartItemsInactiveForVendor(userId: string, vendorId: string, orderId: string): Promise<void> {
+    await this.cartItemRepository.update({ user_id: userId, vendor_id: vendorId }, { is_active: false });
   }
 } 

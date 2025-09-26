@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Order, OrderItem, MenuItem, Vendor, User, Address } from 'src/entities';
+import { DeliveryQuote } from 'src/entities/delivery-quote.entity';
 import { CartModule } from 'src/modules/cart/cart.module';
 import { MenuModule } from 'src/modules/menu/menu.module';
 import { UserModule } from 'src/modules/user/user.module';
@@ -21,12 +22,12 @@ import { OrderRepository } from './repositories/order.repository';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, MenuItem, Vendor, User, Address]),
+    TypeOrmModule.forFeature([Order, OrderItem, MenuItem, Vendor, User, Address, DeliveryQuote]),
     CartModule,
     MenuModule,
     UserModule,
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
-    PaymentModule, // Import PaymentModule to get access to PaymentService
+    forwardRef(() => PaymentModule), // Import PaymentModule to get access to PaymentService
     DeliveryModule, // Import DeliveryModule to get access to DeliveryService
     VendorModule, // Import VendorModule to get access to VendorService
   ],

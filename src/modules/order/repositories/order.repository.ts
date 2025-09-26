@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Order, OrderItem, MenuItem, Vendor, User, Address, OrderStatus } from 'src/entities';
@@ -6,6 +6,8 @@ import { OrderFilterDto } from '../dto';
 
 @Injectable()
 export class OrderRepository {
+  private readonly logger = new Logger(OrderRepository.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -217,26 +219,11 @@ export class OrderRepository {
   }
 
   async generateOrderNumber(): Promise<string> {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    
-    // Get count of orders for today
-    const todayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-    
-    const todayOrderCount = await this.orderRepository.count({
-      where: {
-        created_at: {
-          $gte: todayStart,
-          $lt: todayEnd,
-        } as any,
-      },
-    });
-
-    const sequence = String(todayOrderCount + 1).padStart(4, '0');
-    return `ORD-${year}${month}${day}-${sequence}`;
+    // Generate UUID-based order number - simple and no race conditions!
+    const { v4: uuidv4 } = await import('uuid');
+    const orderNumber = `ORD-${uuidv4()}`;
+    this.logger.log(`Generated UUID-based order number: ${orderNumber}`);
+    return orderNumber;
   }
 
   private createOrderQueryBuilder(filterDto?: OrderFilterDto): SelectQueryBuilder<Order> {

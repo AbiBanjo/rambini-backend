@@ -11,8 +11,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { User } from 'src/entities';
 import { DeliveryService } from '../services/delivery.service';
 import { DeliveryProvider } from 'src/entities';
+import { IntializeDeliveryDto } from '../interfaces/intializeDeliveryDto';
 import {
   AddressValidationDto,
   AddressValidationResponseDto,
@@ -50,14 +53,14 @@ export class DeliveryController {
   //   return await this.deliveryService.validateAddress(provider, addressValidationDto);
   // }
 
-  @Post('rates')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get delivery rates' })
-  @ApiResponse({
-    status: 200,
-    description: 'Delivery rates',
-    type: [DeliveryRateResponseDto],
-  })
+  // @Post('rates')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({ summary: 'Get delivery rates' })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Delivery rates',
+  //   type: [DeliveryRateResponseDto],
+  // })
   // async getDeliveryRates(
   //   @Body() rateRequest: DeliveryRateRequestDto,
   //   @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
@@ -65,27 +68,6 @@ export class DeliveryController {
   //   return await this.deliveryService.getDeliveryRates(provider, rateRequest);
   // }
 
-  @Post('create')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create delivery for order' })
-  @ApiResponse({
-    status: 201,
-    description: 'Delivery created successfully',
-    type: DeliveryResponseDto,
-  })
-  // async createDelivery(
-  //   @Body() createDeliveryDto: {
-  //     orderId: string;
-  //     provider: DeliveryProvider;
-  //     shipmentData: CreateShipmentDto;
-  //   },
-  // ): Promise<DeliveryResponseDto> {
-  //   return await this.deliveryService.createDelivery(
-  //     createDeliveryDto.orderId,
-  //     createDeliveryDto.provider,
-  //     createDeliveryDto.shipmentData,
-  //   );
-  // }
 
   @Get('track/:trackingNumber')
   @ApiOperation({ summary: 'Track delivery' })
@@ -109,6 +91,36 @@ export class DeliveryController {
   async cancelDelivery(@Param('trackingNumber') trackingNumber: string): Promise<{ success: boolean }> {
     const success = await this.deliveryService.cancelDelivery(trackingNumber);
     return { success };
+  }
+
+  @Post('initialize')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Initialize delivery for order' })
+  @ApiResponse({
+    status: 200,
+    description: 'Delivery initialized successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        fee: { type: 'number', description: 'Delivery fee amount' },
+        delivery_id: { type: 'string', description: 'Delivery quote ID' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Failed to get delivery quotes' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Address or vendor not found' })
+  async initializeDelivery(
+    @GetUser() user: User,
+    @Body() initializeDto: IntializeDeliveryDto,
+  ): Promise<{ fee: number; delivery_id: string }> {
+    const userDetails = {
+      name: `${user.first_name} ${user.last_name}`,
+      email: user.email,
+      phone: user.phone_number,
+    };
+
+    return await this.deliveryService.intializeDelivery(user.id, userDetails, initializeDto);
   }
 
   @Get(':id')

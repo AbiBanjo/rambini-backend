@@ -8,6 +8,7 @@ import {
 import { IsEnum, IsOptional, IsNumber, IsString, IsDateString, IsJSON, Min } from 'class-validator';
 import { BaseEntity } from './base.entity';
 import { PaymentMethod } from './order.entity';
+import { Order } from './order.entity';
 
 export enum PaymentTransactionStatus {
   PENDING = 'PENDING',
@@ -32,9 +33,10 @@ export enum PaymentProvider {
 @Index(['status', 'created_at'])
 @Index(['provider', 'status'])
 export class Payment extends BaseEntity {
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', nullable: true })
+  @IsOptional()
   @IsString()
-  order_id: string;
+  order_id?: string;
 
   @Column({ type: 'varchar', unique: true })
   @IsString()
@@ -108,9 +110,9 @@ export class Payment extends BaseEntity {
   metadata?: Record<string, any>;
 
   // Relationships
-  @ManyToOne('Order', { onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: any;
+  order: Order;
 
   // Virtual properties
   get is_pending(): boolean {

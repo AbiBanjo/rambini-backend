@@ -31,6 +31,7 @@ export class StripePaymentService implements PaymentProviderInterface {
     amount: number,
     currency: string,
     reference: string,
+    email?: string,
     metadata?: Record<string, any>
   ): Promise<PaymentInitiationResult> {
     try {

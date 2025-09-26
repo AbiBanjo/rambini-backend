@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/entities';
+import { OrderStatus, OrderType, PaymentMethod, PaymentStatus, Currency, PaymentTransactionStatus } from 'src/entities';
 
 export class OrderItemResponseDto {
   @ApiProperty({ description: 'Order item ID' })
@@ -73,20 +73,11 @@ export class OrderResponseDto {
   @ApiProperty({ description: 'Delivery fee' })
   delivery_fee: number;
 
-  @ApiProperty({ description: 'Service fee' })
-  service_fee: number;
-
-  @ApiProperty({ description: 'Tax amount' })
-  tax_amount: number;
-
-  @ApiProperty({ description: 'Discount amount' })
-  discount_amount: number;
-
-  @ApiProperty({ description: 'Commission amount' })
-  commission_amount: number;
-
   @ApiProperty({ description: 'Total amount' })
   total_amount: number;
+
+  @ApiProperty({ description: 'Order currency', enum: Currency })
+  currency: Currency;
 
   @ApiPropertyOptional({ description: 'Estimated preparation time in minutes' })
   estimated_prep_time_minutes?: number;
@@ -145,3 +136,16 @@ export class OrderResponseDto {
     longitude?: number;
   };
 } 
+
+
+export class OrderPaymentResponseDto {
+  @ApiProperty({ description: 'Payment URL' })
+  payment_url: string;
+
+  @ApiProperty({ description: 'External payment reference' })
+  external_payment_reference: string;
+
+  @ApiProperty({ description: 'Payment processing status' })
+  payment_processing_status: PaymentTransactionStatus;
+
+}

@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Payment, PaymentTransactionStatus, PaymentMethod } from 'src/entities';
 
 @Injectable()
 export class PaymentRepository {
+  private readonly logger = new Logger(PaymentRepository.name);
+
   constructor(
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
@@ -27,6 +29,10 @@ export class PaymentRepository {
       where: { payment_reference: paymentReference },
       relations: ['order', 'order.customer', 'order.vendor'],
     });
+  }
+
+  async findByReference(reference: string): Promise<Payment | null> {
+    return await this.findByPaymentReference(reference);
   }
 
   async findByOrderId(orderId: string): Promise<Payment | null> {
@@ -151,26 +157,11 @@ export class PaymentRepository {
   }
 
   async generatePaymentReference(): Promise<string> {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    
-    // Get count of payments for today
-    const todayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-    
-    const todayPaymentCount = await this.paymentRepository.count({
-      where: {
-        created_at: {
-          $gte: todayStart,
-          $lt: todayEnd,
-        } as any,
-      },
-    });
-
-    const sequence = String(todayPaymentCount + 1).padStart(4, '0');
-    return `PAY-${year}${month}${day}-${sequence}`;
+    // Generate UUID-based payment reference - simple and no race conditions!
+    const { v4: uuidv4 } = await import('uuid');
+    const paymentReference = `PAY-${uuidv4()}`;
+    this.logger.log(`Generated UUID-based payment reference: ${paymentReference}`);
+    return paymentReference;
   }
 
   async findPendingPayments(limit?: number): Promise<Payment[]> {

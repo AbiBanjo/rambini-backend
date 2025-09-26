@@ -8,13 +8,15 @@ export class PaystackPaymentService implements PaymentProviderInterface {
   private readonly logger = new Logger(PaystackPaymentService.name);
   private readonly paystackSecretKey: string;
   private readonly paystackPublicKey: string;
-  private readonly paystackWebhookSecret: string;
+  private readonly pay: string;
   private readonly paystackBaseUrl: string = 'https://api.paystack.co';
+  private readonly paystackCallbackUrl: string;
 
   constructor() {
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
     this.paystackPublicKey = process.env.PAYSTACK_PUBLIC_KEY || '';
-    this.paystackWebhookSecret = process.env.PAYSTACK_WEBHOOK_SECRET || '';
+    this.pay = process.env.PAYSTACK_WEBHOOK_SECRET || '';
+    this.paystackCallbackUrl = process.env.PAYSTACK_CALLBACK_URL || `${process.env.APP_URL}/payment/callback`
     
     if (!this.paystackSecretKey) {
       this.logger.warn('Paystack secret key not configured');
@@ -25,6 +27,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     amount: number,
     currency: string,
     reference: string,
+    email?: string,
     metadata?: Record<string, any>
   ): Promise<PaymentInitiationResult> {
     try {
@@ -34,7 +37,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
         throw new BadRequestException('Paystack configuration missing');
       }
 
-      const transaction = await this.createPaystackTransaction(amount, currency, reference, metadata);
+      const transaction = await this.createPaystackTransaction(amount, currency, reference,email);
 
       if (!transaction.status) {
         throw new Error('Failed to initialize payment with Paystack');
@@ -107,7 +110,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     try {
       this.logger.log('Processing Paystack webhook');
 
-      if (!this.paystackWebhookSecret) {
+      if (!this.paystackSecretKey) {
         throw new BadRequestException('Paystack webhook secret not configured');
       }
 
@@ -118,6 +121,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
       }
 
       const event = payload;
+      this.logger.log(`Paystack webhook event: ${JSON.stringify(event)}`);
 
       let status: 'pending' | 'completed' | 'failed' | 'cancelled';
       let reference: string;
@@ -153,6 +157,11 @@ export class PaystackPaymentService implements PaymentProviderInterface {
             error: `Unhandled event type: ${event.event}`,
           };
       }
+
+      this.logger.log(`Paystack webhook reference: ${reference}`);
+      this.logger.log(`Paystack webhook status: ${status}`);
+      this.logger.log(`Paystack webhook amount: ${amount}`);
+      this.logger.log(`Paystack webhook event: ${JSON.stringify(event)}`);
 
       return {
         success: true,
@@ -214,6 +223,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     amount: number,
     currency: string,
     reference: string,
+    email?: string,
     metadata?: Record<string, any>
   ): Promise<any> {
     const url = `${this.paystackBaseUrl}/transaction/initialize`;
@@ -221,12 +231,13 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     const requestBody = {
       amount: Math.round(amount * 100), // Convert to kobo
       currency: currency.toUpperCase(),
+      email: email,
       reference: reference,
       metadata: {
         payment_reference: reference,
         ...metadata,
       },
-      callback_url: process.env.PAYSTACK_CALLBACK_URL || `${process.env.APP_URL}/payment/callback`,
+      callback_url: this.paystackCallbackUrl,
     };
 
     const response = await this.makePaystackRequest('POST', url, requestBody);
@@ -243,7 +254,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
   private verifyWebhookSignature(payload: any, signature: string): boolean {
     try {
       const hash = crypto
-        .createHmac('sha512', this.paystackWebhookSecret)
+        .createHmac('sha512', this.paystackSecretKey)
         .update(JSON.stringify(payload))
         .digest('hex');
       

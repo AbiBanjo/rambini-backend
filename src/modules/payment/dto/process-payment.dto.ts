@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsEnum, IsOptional, IsNumber, Min, IsObject } from 'class-validator';
-import { PaymentMethod } from 'src/entities';
+import { Currency, PaymentMethod } from 'src/entities';
 
 export class ProcessPaymentDto {
   @ApiProperty({ description: 'Order ID to process payment for' })
@@ -10,6 +10,10 @@ export class ProcessPaymentDto {
   @ApiProperty({ description: 'Payment method', enum: PaymentMethod })
   @IsEnum(PaymentMethod)
   payment_method: PaymentMethod;
+
+  @ApiProperty({ description: 'Currency', enum: Currency })
+  @IsString()
+  currency : Currency
 
   @ApiPropertyOptional({ description: 'Additional payment metadata' })
   @IsOptional()

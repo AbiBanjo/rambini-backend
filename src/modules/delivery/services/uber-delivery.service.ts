@@ -48,25 +48,17 @@ export class UberDeliveryService implements UberProviderInterface {
     }
   }
 
-  /**
-   * Get provider name
-   */
+
   getProviderName(): string {
     return 'Uber Direct';
   }
 
-  /**
-   * Get supported countries (All countries except Nigeria)
-   */
+
   getSupportedCountries(): string[] {
     return ['US', 'CA', 'GB', 'AU', 'FR', 'DE', 'ES', 'IT', 'NL', 'BE', 'CH', 'AT', 'SE', 'NO', 'DK', 'FI']; // Add more as needed
   }
 
-  /**
-   * Create a delivery quote using Uber Direct API
-   * @param quoteRequest Quote request parameters
-   * @returns Promise<UberDirectDeliveryQuoteResponseDto>
-   */
+
   async createDeliveryQuote(quoteRequest: UberDirectDeliveryQuoteRequestDto): Promise<UberDirectDeliveryQuoteResponseDto> {
     try {
       const token = await this.getAccessToken();
@@ -120,11 +112,7 @@ export class UberDeliveryService implements UberProviderInterface {
     }
   }
 
-  /**
-   * Get delivery details using Uber Direct API
-   * @param deliveryId Delivery ID
-   * @returns Promise<UberDirectDeliveryDetailsDto>
-   */
+
   async getDelivery(deliveryId: string): Promise<UberDirectDeliveryDetailsDto> {
     try {
       const token = await this.getAccessToken();

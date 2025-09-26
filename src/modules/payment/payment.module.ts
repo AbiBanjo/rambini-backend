@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { 
   Payment, 
@@ -23,6 +23,9 @@ import { MercuryPaymentService } from './services/mercury-payment.service';
 
 // Repositories
 import { PaymentRepository } from './repositories/payment.repository';
+import { CartModule } from '../cart/cart.module';
+import { OrderModule } from '../order/order.module';
+import { VendorModule } from '../vendor/vendor.module';
 
 @Module({
   imports: [
@@ -35,6 +38,9 @@ import { PaymentRepository } from './repositories/payment.repository';
       Vendor,
     ]),
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
+    CartModule,
+    forwardRef(() => OrderModule),
+    forwardRef(() => VendorModule),
   ],
   controllers: [
     PaymentController,

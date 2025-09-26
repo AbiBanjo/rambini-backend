@@ -27,15 +27,6 @@ export class OrderCostResponseDto {
   @ApiProperty({ description: 'Delivery fee' })
   delivery_fee: number;
 
-  @ApiProperty({ description: 'Service fee' })
-  service_fee: number;
-
-  @ApiProperty({ description: 'Tax amount' })
-  tax_amount: number;
-
-  @ApiProperty({ description: 'Discount amount' })
-  discount_amount: number;
-
   @ApiProperty({ description: 'Total amount' })
   total_amount: number;
 

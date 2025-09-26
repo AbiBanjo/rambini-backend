@@ -24,7 +24,7 @@ import {
 @Injectable()
 export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
   private readonly logger = new Logger(ShipbubbleDeliveryService.name);
-  private readonly baseUrl = 'https://api.shipbubble.com/v1';
+  private readonly baseUrl = 'https://api.shipbubble.com';
   private readonly apiKey: string;
 
   constructor(
@@ -33,7 +33,7 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
   ) {
     this.apiKey = this.configService.get<string>('SHIPBUBBLE_API_KEY');
     if (!this.apiKey) {
-      throw new Error('SHIPBUBBLE_API_KEY is required');
+      throw new BadRequestException('SHIPBUBBLE_API_KEY is required');
     }
   }
 

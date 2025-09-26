@@ -1,17 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEnum, IsOptional, IsArray, ArrayNotEmpty, ArrayMinSize } from 'class-validator';
-import { OrderType, PaymentMethod } from 'src/entities';
+import { IsString, IsEnum, IsOptional, IsArray, ArrayNotEmpty, ArrayMinSize, IsNotEmpty } from 'class-validator';
+import { OrderType, PaymentMethod, Currency } from 'src/entities';
 
 export class CreateOrderDto {
-  @ApiProperty({ description: 'Array of cart item IDs to checkout', type: [String] })
-  @IsArray()
-  @ArrayNotEmpty()
-  @ArrayMinSize(1)
-  @IsString({ each: true })
-  cart_item_ids: string[];
-
-  @ApiProperty({ description: 'Delivery address ID' })
+  @ApiProperty({ description: 'vendor id', type: String })
   @IsString()
+  @IsNotEmpty()
+  vendor_id: string;
+
+  @ApiPropertyOptional({ description: 'Delivery address ID (required for DELIVERY orders, not needed for PICKUP orders)' })
+  @IsString()
+  @IsOptional()
   delivery_address_id?: string;
 
   @ApiProperty({ description: 'Order type', enum: OrderType })
@@ -36,4 +35,5 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   preferred_delivery_time?: string;
+
 } 

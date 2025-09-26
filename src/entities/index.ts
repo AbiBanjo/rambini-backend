@@ -15,4 +15,5 @@ export * from './transaction.entity';
 export * from './vendor-application.entity';
 export * from './payment.entity';
 export * from './delivery.entity';
-export * from './delivery-tracking.entity'; 
+export * from './delivery-tracking.entity';
+export * from './delivery-quote.entity'; 

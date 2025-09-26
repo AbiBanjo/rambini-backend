@@ -47,7 +47,7 @@ export class OrderController {
   async createOrder(
     @GetUser() user: User,
     @Body() createOrderDto: CreateOrderDto,
-  ): Promise<OrderResponseDto> {
+  ) {
     return await this.orderService.createOrder(user.id, createOrderDto);
   }
 

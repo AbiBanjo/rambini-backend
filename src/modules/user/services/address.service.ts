@@ -637,4 +637,18 @@ export class AddressService {
   private toRadians(degrees: number): number {
     return degrees * (Math.PI / 180);
   }
+
+  /**
+   * Update address with Shipbubble address code
+   * @param addressId Address ID
+   * @param addressCode Shipbubble address code
+   * @returns Promise<void>
+   */
+  async updateAddressCode(addressId: string, addressCode: number): Promise<void> {
+    this.logger.log(`Updating address ${addressId} with Shipbubble address code: ${addressCode}`);
+    
+    await this.addressRepository.update(addressId, {
+      shipbubble_address_code: addressCode.toString(),
+    });
+  }
 } 

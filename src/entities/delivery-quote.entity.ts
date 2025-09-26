@@ -1,5 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Order } from './order.entity';
+import { DeliveryProvider } from './delivery.entity';
 
 export enum QuoteStatus {
   PENDING = 'pending',
@@ -7,11 +8,6 @@ export enum QuoteStatus {
   EXPIRED = 'expired',
   USED = 'used',
   CANCELLED = 'cancelled',
-}
-
-export enum QuoteProvider {
-  SHIPBUBBLE = 'shipbubble',
-  UBER = 'uber',
 }
 
 @Entity('delivery_quotes')
@@ -22,18 +18,19 @@ export class DeliveryQuote {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'order_id' })
+  @Column({ type: 'varchar' })
   order_id: string;
 
+  // Relationships
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order: Order;
 
   @Column({
     type: 'enum',
-    enum: QuoteProvider,
+    enum: DeliveryProvider ,
   })
-  provider: QuoteProvider;
+  provider: DeliveryProvider ;
 
   @Column({
     type: 'enum',
@@ -240,7 +237,7 @@ export class DeliveryQuote {
 
   // Get display information
   getDisplayName(): string {
-    if (this.provider === QuoteProvider.UBER) {
+    if (this.provider === DeliveryProvider .UBER) {
       return 'Uber Direct';
     }
     return this.courier_name || 'Unknown Courier';
@@ -261,4 +258,6 @@ export class DeliveryQuote {
     return 'Not available';
   }
 }
+
+export { DeliveryProvider };
 

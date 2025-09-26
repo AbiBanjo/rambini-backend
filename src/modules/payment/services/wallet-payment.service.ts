@@ -1,9 +1,11 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Wallet, Transaction, TransactionType, TransactionStatus, PaymentMethod, PaymentProvider, PaymentTransactionStatus } from 'src/entities';
+import { Wallet, Transaction, TransactionType, TransactionStatus, PaymentMethod, PaymentProvider, PaymentTransactionStatus, Currency } from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { Payment } from 'src/entities/payment.entity';
+import { VendorService } from '@/modules/vendor/services/vendor.service';
+import { FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto/wallet-funding.dto';
 
 @Injectable()
 export class WalletPaymentService {
@@ -15,6 +17,7 @@ export class WalletPaymentService {
     @InjectRepository(Transaction)
     private readonly transactionRepository: Repository<Transaction>,
     private readonly paymentRepository: PaymentRepository,
+    private readonly vendorService: VendorService,
   ) {}
 
   /**
@@ -52,15 +55,23 @@ export class WalletPaymentService {
     }
 
     // Create payment record
-    const paymentReference = await this.paymentRepository.generatePaymentReference();
-    const payment = await this.paymentRepository.create({
-      order_id: orderId,
-      payment_reference: paymentReference,
-      payment_method: PaymentMethod.WALLET,
-      provider: PaymentProvider.WALLET,
-      status: PaymentTransactionStatus.PROCESSING,
-      amount: amount,
-    });
+    // const paymentReference = await this.paymentRepository.generatePaymentReference();
+    // const payment = await this.paymentRepository.create({
+    //   order_id: orderId,
+    //   payment_reference: paymentReference,
+    //   payment_method: PaymentMethod.WALLET,
+    //   provider: PaymentProvider.WALLET,
+    //   status: PaymentTransactionStatus.PROCESSING,
+    //   amount: amount,
+    // });
+
+    // find payment with order id
+    const payment = await this.paymentRepository.findByOrderId(orderId);
+    if (!payment) {
+      throw new NotFoundException('Payment not found');
+    }
+
+    const paymentReference = payment.payment_reference;
 
     try {
       // Process wallet debit transaction
@@ -122,24 +133,40 @@ export class WalletPaymentService {
     paymentReference: string,
   ): Promise<void> {
     // Get vendor wallet
+    this.logger.log(`Getting vendor wallet for: ${vendorId}`);
+
+    // get vendor with vendor id
+    const vendor = await this.vendorService.getVendorById(vendorId);
+
     let vendorWallet = await this.walletRepository.findOne({
-      where: { user_id: vendorId },
+      where: { user_id: vendor.user_id },
     });
 
+    this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
+
     if (!vendorWallet) {
-      // Create vendor wallet if it doesn't exist
+      // Create vendor wallet if it doesn't exist\
+      this.logger.log(`Creating vendor wallet for: ${vendorId}`);
+
       vendorWallet = this.walletRepository.create({
-        user_id: vendorId,
+        user_id: vendor.user_id,
         balance: 0,
         is_active: true,
       });
       await this.walletRepository.save(vendorWallet);
     }
 
+    this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
+
     // Credit vendor wallet
     vendorWallet.credit(amount);
+
     await this.walletRepository.save(vendorWallet);
 
+    this.logger.log(`Vendor wallet credited: ${vendorWallet?.id}`);
+
+
+    this.logger.log(`Creating credit transaction record for: ${vendorWallet?.id}`);
     // Create credit transaction record
     const creditTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
@@ -153,9 +180,11 @@ export class WalletPaymentService {
       processed_at: new Date(),
     });
 
+
     await this.transactionRepository.save(creditTransaction);
 
     this.logger.log(`Vendor wallet credited: ${vendorId}, amount: ${amount}`);
+    return 
   }
 
   /**
@@ -259,5 +288,269 @@ export class WalletPaymentService {
     await this.paymentRepository.update(payment.id, payment);
 
     this.logger.log(`Wallet payment refunded: ${paymentId}, amount: ${refundAmount}`);
+  }
+
+  /**
+   * Initiate wallet funding with external payment method
+   * @param userId User ID
+   * @param fundWalletDto Funding details
+   * @returns Promise<WalletFundingResponseDto>
+   */
+  async initiateFunding(userId: string, fundWalletDto: FundWalletDto): Promise<WalletFundingResponseDto> {
+    this.logger.log(`Initiating wallet funding for user ${userId}, amount: ${fundWalletDto.amount}`);
+
+    // Get or create user wallet
+    let wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      wallet = this.walletRepository.create({
+        user_id: userId,
+        balance: 0,
+        currency: fundWalletDto.currency,
+        is_active: true,
+      });
+      await this.walletRepository.save(wallet);
+      this.logger.log(`Created new wallet for user ${userId}`);
+    }
+
+    if (!wallet.is_active) {
+      throw new BadRequestException('Wallet is not active');
+    }
+
+    // Generate funding reference
+    const fundingReference = await this.generateFundingReference();
+    this.logger.log(`Generated funding reference: ${fundingReference}`);
+
+    // Create payment record for wallet funding
+    const payment = await this.paymentRepository.create({
+      order_id: null, // No order for wallet funding
+      payment_reference: fundingReference,
+      payment_method: fundWalletDto.payment_method,
+      provider: this.getProviderFromPaymentMethod(fundWalletDto.payment_method),
+      status: PaymentTransactionStatus.PENDING,
+      amount: fundWalletDto.amount,
+      metadata: {
+        ...fundWalletDto.metadata,
+        wallet_funding: true,
+        user_id: userId,
+        return_url: fundWalletDto.return_url,
+        cancel_url: fundWalletDto.cancel_url,
+      },
+    });
+
+    // For wallet funding, we don't process immediately like order payments
+    // We return the payment details for external processing
+    const response: WalletFundingResponseDto = {
+      id: payment.id,
+      reference: fundingReference,
+      user_id: userId,
+      amount: fundWalletDto.amount,
+      currency: fundWalletDto.currency,
+      payment_method: fundWalletDto.payment_method,
+      status: payment.status,
+      created_at: payment.created_at,
+      message: 'Wallet funding initiated. Complete payment using the provided details.',
+    };
+
+    this.logger.log(`Wallet funding initiated: ${fundingReference}`);
+    return response;
+  }
+
+  /**
+   * Complete wallet funding after successful external payment
+   * @param paymentReference Payment reference
+   * @param externalReference External payment reference
+   * @param gatewayResponse Gateway response data
+   * @returns Promise<WalletFundingStatusDto>
+   */
+  async completeFunding(
+    paymentReference: string,
+    externalReference?: string,
+    gatewayResponse?: any,
+  ): Promise<WalletFundingStatusDto> {
+    this.logger.log(`Completing wallet funding for reference: ${paymentReference}`);
+
+    const payment = await this.paymentRepository.findByReference(paymentReference);
+    if (!payment) {
+      throw new NotFoundException('Funding transaction not found');
+    }
+
+    if (!payment.metadata?.wallet_funding) {
+      throw new BadRequestException('Payment is not a wallet funding transaction');
+    }
+
+    if (payment.is_completed) {
+      throw new BadRequestException('Funding already completed');
+    }
+
+    const userId = payment.metadata.user_id;
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('Wallet not found');
+    }
+
+    try {
+      // Credit the wallet
+      const balanceBefore = wallet.balance;
+      wallet.credit(payment.amount);
+      await this.walletRepository.save(wallet);
+
+      // Create credit transaction record
+      const creditTransaction = await this.transactionRepository.create({
+        wallet_id: wallet.id,
+        transaction_type: TransactionType.CREDIT,
+        amount: payment.amount,
+        balance_before: balanceBefore,
+        balance_after: wallet.balance,
+        description: `Wallet funding via ${payment.payment_method}`,
+        reference_id: paymentReference,
+        external_reference: externalReference,
+        status: TransactionStatus.COMPLETED,
+        processed_at: new Date(),
+        metadata: {
+          funding_type: 'wallet_topup',
+          payment_method: payment.payment_method,
+          gateway_response: gatewayResponse,
+        },
+      });
+
+      await this.transactionRepository.save(creditTransaction);
+
+      // Mark payment as completed
+      payment.markAsCompleted(externalReference, gatewayResponse);
+      await this.paymentRepository.update(payment.id, payment);
+
+      const response: WalletFundingStatusDto = {
+        id: payment.id,
+        reference: paymentReference,
+        amount: payment.amount,
+        currency: wallet.currency,
+        payment_method: payment.payment_method,
+        status: payment.status,
+        created_at: payment.created_at,
+        processed_at: payment.processed_at,
+        wallet_balance: wallet.balance,
+      };
+
+      this.logger.log(`Wallet funding completed: ${paymentReference}, new balance: ${wallet.balance}`);
+      return response;
+
+    } catch (error) {
+      this.logger.error(`Wallet funding failed for reference ${paymentReference}: ${error.message}`);
+      
+      // Mark payment as failed
+      payment.markAsFailed(error.message, gatewayResponse);
+      await this.paymentRepository.update(payment.id, payment);
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Get wallet funding status
+   * @param reference Funding reference
+   * @returns Promise<WalletFundingStatusDto>
+   */
+  async getFundingStatus(reference: string): Promise<WalletFundingStatusDto> {
+    const payment = await this.paymentRepository.findByReference(reference);
+    if (!payment) {
+      throw new NotFoundException('Funding transaction not found');
+    }
+
+    if (!payment.metadata?.wallet_funding) {
+      throw new BadRequestException('Payment is not a wallet funding transaction');
+    }
+
+    const userId = payment.metadata.user_id;
+    let walletBalance: number | undefined;
+
+    if (payment.is_completed) {
+      const wallet = await this.walletRepository.findOne({
+        where: { user_id: userId },
+      });
+      walletBalance = wallet?.balance;
+    }
+
+    return {
+      id: payment.id,
+      reference: reference,
+      amount: payment.amount,
+      currency: Currency.NGN, // Default, should be stored in payment metadata
+      payment_method: payment.payment_method,
+      status: payment.status,
+      failure_reason: payment.failure_reason,
+      created_at: payment.created_at,
+      processed_at: payment.processed_at,
+      failed_at: payment.failed_at,
+      wallet_balance: walletBalance,
+    };
+  }
+
+  /**
+   * Get user wallet balance and details
+   * @param userId User ID
+   * @returns Promise<WalletBalanceDto>
+   */
+  async getWalletBalance(userId: string): Promise<WalletBalanceDto> {
+    let wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      // Create wallet if it doesn't exist
+      wallet = this.walletRepository.create({
+        user_id: userId,
+        balance: 0,
+        currency: Currency.NGN, // Default currency
+        is_active: true,
+      });
+      await this.walletRepository.save(wallet);
+    }
+
+    return {
+      id: wallet.id,
+      user_id: wallet.user_id,
+      balance: wallet.balance,
+      currency: wallet.currency,
+      is_active: wallet.is_active,
+      formatted_balance: wallet.formatted_balance,
+      last_transaction_at: wallet.last_transaction_at,
+      created_at: wallet.created_at,
+      updated_at: wallet.updated_at,
+    };
+  }
+
+  /**
+   * Generate unique funding reference
+   * @returns Promise<string>
+   */
+  private async generateFundingReference(): Promise<string> {
+    const { v4: uuidv4 } = await import('uuid');
+    return `wallet_${uuidv4()}`;
+  }
+
+  /**
+   * Get payment provider from payment method
+   * @param paymentMethod Payment method
+   * @returns PaymentProvider
+   */
+  private getProviderFromPaymentMethod(paymentMethod: PaymentMethod): PaymentProvider {
+    switch (paymentMethod) {
+      case PaymentMethod.PAYSTACK:
+        return PaymentProvider.PAYSTACK;
+      case PaymentMethod.STRIPE:
+        return PaymentProvider.STRIPE;
+      case PaymentMethod.MERCURY:
+        return PaymentProvider.MERCURY;
+      case PaymentMethod.WALLET:
+        return PaymentProvider.WALLET;
+      default:
+        throw new BadRequestException(`Unsupported payment method for wallet funding: ${paymentMethod}`);
+    }
   }
 }

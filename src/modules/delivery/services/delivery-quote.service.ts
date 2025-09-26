@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { DeliveryQuote, QuoteStatus, QuoteProvider } from '../../../entities/delivery-quote.entity';
+import { DeliveryProvider, DeliveryQuote, QuoteStatus } from '../../../entities/delivery-quote.entity';
 import { Order } from '../../../entities/order.entity';
 import { ShipbubbleDeliveryService } from './shipbubble-delivery.service';
 import { UberDeliveryService } from './uber-delivery.service';
@@ -28,7 +28,7 @@ export class DeliveryQuoteService {
   /**
    * Create delivery quotes for an order
    */
-  async createQuotesForOrder(orderId: string, providers: QuoteProvider[] = [QuoteProvider.SHIPBUBBLE, QuoteProvider.UBER]): Promise<DeliveryQuote[]> {
+  async createQuotesForOrder(orderId: string, providers: DeliveryProvider [] = [DeliveryProvider .SHIPBUBBLE, DeliveryProvider .UBER]): Promise<DeliveryQuote[]> {
     const order = await this.orderRepository.findOne({
       where: { id: orderId },
       relations: ['delivery_address'],
@@ -58,11 +58,11 @@ export class DeliveryQuoteService {
   /**
    * Create a single quote for a specific provider
    */
-  private async createQuoteForProvider(order: Order, provider: QuoteProvider): Promise<DeliveryQuote | null> {
+  private async createQuoteForProvider(order: Order, provider: DeliveryProvider ): Promise<DeliveryQuote | null> {
     try {
-      if (provider === QuoteProvider.SHIPBUBBLE) {
+      if (provider === DeliveryProvider .SHIPBUBBLE) {
         return await this.createShipbubbleQuote(order);
-      } else if (provider === QuoteProvider.UBER) {
+      } else if (provider === DeliveryProvider .UBER) {
         return await this.createUberQuote(order);
       }
       return null;
@@ -79,17 +79,17 @@ export class DeliveryQuoteService {
     try {
       // First, validate addresses to get address codes
       const originValidation = await this.shipbubbleDeliveryService.validateAddress({
-        name: order.vendor?.name || 'Vendor',
-        email: order.vendor?.email || 'vendor@example.com',
-        phone: order.vendor?.phone || '+1234567890',
-        address: order.vendor?.address || 'Vendor Address',
+        name: order.vendor?.business_name || 'Vendor',
+        email: order.vendor?.user?.email || 'vendor@example.com',
+        phone: order.vendor?.user?.phone_number || '+1234567890',
+        address: `${order.vendor?.address?.address_line_1 || 'Vendor Address'}, ${order.vendor?.address?.city || 'City'}, ${order.vendor?.address?.state || 'State'}`,
       }) as any;
 
       const destinationValidation = await this.shipbubbleDeliveryService.validateAddress({
-        name: order.customer?.name || 'Customer',
+        name: `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim() || 'Customer',
         email: order.customer?.email || 'customer@example.com',
-        phone: order.customer?.phone || '+1234567890',
-        address: order.delivery_address?.full_address || 'Customer Address',
+        phone: order.customer?.phone_number || '+1234567890',
+        address: `${order.delivery_address?.address_line_1 || 'Customer Address'}, ${order.delivery_address?.city || 'City'}, ${order.delivery_address?.state || 'State'}`,
       }) as any;
 
       if (!originValidation.success || !destinationValidation.success) {
@@ -109,7 +109,7 @@ export class DeliveryQuoteService {
           name: item.menu_item?.name || 'Food Item',
           description: item.menu_item?.description || 'Food delivery',
           unit_weight: (item.quantity * 0.5).toString(), // Estimate 0.5kg per item
-          unit_amount: item.price.toString(),
+          unit_amount: item.unit_price.toString(),
           quantity: item.quantity.toString(),
         })) || [{
           name: 'Food Order',
@@ -133,8 +133,7 @@ export class DeliveryQuoteService {
       
       for (const courier of ratesResponse.couriers) {
         const quote = this.deliveryQuoteRepository.create({
-          order_id: order.id,
-          provider: QuoteProvider.SHIPBUBBLE,
+          provider: DeliveryProvider .SHIPBUBBLE,
           status: QuoteStatus.PENDING,
           provider_request_token: ratesResponse.request_token,
           fee: courier.total,
@@ -184,7 +183,7 @@ export class DeliveryQuoteService {
               name: item.menu_item?.name || 'Food Item',
               description: item.menu_item?.description || 'Food delivery',
               quantity: item.quantity,
-              value: item.price,
+              value: item.total_price,
             })) || [],
           },
           provider_rates_data: ratesResponse,
@@ -209,10 +208,10 @@ export class DeliveryQuoteService {
       // Prepare quote request
       const quoteRequest: UberDirectDeliveryQuoteRequestDto = {
         pickup_address: JSON.stringify({
-          street_address: [order.vendor?.address || 'Vendor Address'],
-          city: order.vendor?.city || 'Lagos',
-          state: order.vendor?.state || 'Lagos',
-          zip_code: order.vendor?.postal_code || '100001',
+          street_address: [order.vendor?.address?.address_line_1 || 'Vendor Address'],
+          city: order.vendor?.address?.city || 'Lagos',
+          state: order.vendor?.address?.state || 'Lagos',
+          zip_code: order.vendor?.address?.postal_code || '100001',
           country: 'NG',
         }),
         dropoff_address: JSON.stringify({
@@ -222,8 +221,8 @@ export class DeliveryQuoteService {
           zip_code: order.delivery_address?.postal_code || '100001',
           country: 'NG',
         }),
-        pickup_phone_number: order.vendor?.phone || '+1234567890',
-        dropoff_phone_number: order.customer?.phone || '+1234567890',
+        pickup_phone_number: order.vendor?.user?.phone_number || '+1234567890',
+        dropoff_phone_number: order.customer?.phone_number || '+1234567890',
         manifest_total_value: Math.round(order.subtotal * 100), // Convert to cents
         pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
         pickup_deadline_dt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
@@ -235,9 +234,8 @@ export class DeliveryQuoteService {
       const quoteResponse = await this.uberDeliveryService.createDeliveryQuote(quoteRequest);
 
       // Create quote record
-      const quote = this.deliveryQuoteRepository.create({
-        order_id: order.id,
-        provider: QuoteProvider.UBER,
+      const quoteData = {
+        provider: DeliveryProvider.UBER,
         status: QuoteStatus.PENDING,
         provider_quote_id: quoteResponse.id,
         quote_created_at: new Date(quoteResponse.created),
@@ -251,11 +249,11 @@ export class DeliveryQuoteService {
         courier_name: 'Uber Direct',
         service_type: 'on_demand',
         origin_address: {
-          address: order.vendor?.address || 'Vendor Address',
-          city: order.vendor?.city || 'Lagos',
-          state: order.vendor?.state || 'Lagos',
+          address: order.vendor?.address?.address_line_1 || 'Vendor Address',
+          city: order.vendor?.address?.city || 'Lagos',
+          state: order.vendor?.address?.state || 'Lagos',
           country: 'NG',
-          postalCode: order.vendor?.postal_code,
+          postalCode: order.vendor?.address?.postal_code,
         },
         destination_address: {
           address: order.delivery_address?.address_line_1 || 'Customer Address',
@@ -274,12 +272,13 @@ export class DeliveryQuoteService {
             name: item.menu_item?.name || 'Food Item',
             description: item.menu_item?.description || 'Food delivery',
             quantity: item.quantity,
-            value: item.price,
+            value: item.total_price,
           })) || [],
         },
         provider_quote_data: quoteResponse,
-      });
+      };
 
+      const quote = this.deliveryQuoteRepository.create(quoteData);
       return await this.deliveryQuoteRepository.save(quote);
     } catch (error) {
       this.logger.error(`Failed to create Uber quote: ${error.message}`);
@@ -287,46 +286,7 @@ export class DeliveryQuoteService {
     }
   }
 
-  /**
-   * Get quotes for an order
-   */
-  async getQuotesForOrder(orderId: string): Promise<DeliveryQuote[]> {
-    return await this.deliveryQuoteRepository.find({
-      where: { order_id: orderId },
-      order: { created_at: 'DESC' },
-    });
-  }
 
-  /**
-   * Select a quote
-   */
-  async selectQuote(quoteId: string, selectedBy: string, reason?: string): Promise<DeliveryQuote> {
-    const quote = await this.deliveryQuoteRepository.findOne({
-      where: { id: quoteId },
-    });
-
-    if (!quote) {
-      throw new NotFoundException('Quote not found');
-    }
-
-    if (quote.isExpired()) {
-      throw new BadRequestException('Quote has expired');
-    }
-
-    if (quote.status !== QuoteStatus.PENDING) {
-      throw new BadRequestException('Quote is not available for selection');
-    }
-
-    // Cancel other quotes for the same order
-    await this.deliveryQuoteRepository.update(
-      { order_id: quote.order_id, status: QuoteStatus.PENDING },
-      { status: QuoteStatus.CANCELLED }
-    );
-
-    // Select this quote
-    quote.markAsSelected(selectedBy, reason);
-    return await this.deliveryQuoteRepository.save(quote);
-  }
 
   /**
    * Mark quote as used

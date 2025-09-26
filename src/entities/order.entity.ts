@@ -9,6 +9,11 @@ import {
 import { IsEnum, IsOptional, IsBoolean, IsNumber, IsString, IsDateString, Min, Max } from 'class-validator';
 import { BaseEntity } from './base.entity';
 import { DeliveryProvider } from './delivery.entity';
+import { Currency } from './wallet.entity';
+import { User } from './user.entity';
+import { Vendor } from './vendor.entity';
+import { Address } from './address.entity';
+import { OrderItem } from './order-item.entity';
 
 export enum OrderStatus {
   NEW = 'NEW',
@@ -60,9 +65,10 @@ export class Order extends BaseEntity {
   @IsString()
   vendor_id: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', nullable: true })
   @IsString()
-  delivery_address_id: string;
+  @IsOptional()
+  delivery_address_id?: string;
 
   @Column({ type: 'enum', enum: DeliveryProvider, nullable: true })
   @IsEnum(DeliveryProvider)
@@ -104,30 +110,15 @@ export class Order extends BaseEntity {
   @Min(0)
   delivery_fee: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  @IsNumber()
-  @Min(0)
-  service_fee: number;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  @IsNumber()
-  @Min(0)
-  tax_amount: number;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  @IsNumber()
-  @Min(0)
-  discount_amount: number;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
-  @IsNumber()
-  @Min(0)
-  commission_amount: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   @IsNumber()
   @Min(0)
   total_amount: number;
+
+  @Column({ type: 'enum', enum: Currency, default: Currency.NGN })
+  @IsEnum(Currency)
+  currency: Currency;
 
   @Column({ type: 'int', nullable: true })
   @IsOptional()
@@ -194,20 +185,20 @@ export class Order extends BaseEntity {
   vendor_notes?: string;
 
   // Relationships
-  @ManyToOne('User', { onDelete: 'RESTRICT' })
+  @ManyToOne(() => User, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'customer_id' })
-  customer: any;
+  customer: User;
 
-  @ManyToOne('Vendor', { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Vendor, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'vendor_id' })
-  vendor: any;
+  vendor: Vendor;
 
-  @ManyToOne('Address', { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Address, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'delivery_address_id' })
-  delivery_address: any;
+  delivery_address: Address;
 
-  @OneToMany('OrderItem', 'order')
-  order_items: any[];
+  @OneToMany(() => OrderItem, orderItem => orderItem.order)
+  order_items: OrderItem[];
 
   // Virtual properties
   get is_paid(): boolean {
@@ -277,9 +268,5 @@ export class Order extends BaseEntity {
   addCustomerReview(rating: number, review: string): void {
     this.customer_rating = rating;
     this.customer_review = review;
-  }
-
-  calculateTotal(): void {
-    this.total_amount = this.subtotal + this.delivery_fee + this.service_fee + this.tax_amount - this.discount_amount;
   }
 } 

@@ -13,11 +13,6 @@ export class DeliveryProviderFactoryService implements DeliveryProviderFactoryIn
     private readonly shipbubbleService: ShipbubbleDeliveryService,
     private readonly uberService: UberDeliveryService,
   ) {}
-
-  /**
-   * Get the appropriate delivery provider based on country
-   * Nigeria -> Shipbubble, Others -> Uber Direct
-   */
   getProviderByCountry(country: string): ShipbubbleProviderInterface | UberProviderInterface {
     const normalizedCountry = country.toUpperCase();
     

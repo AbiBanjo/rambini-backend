@@ -14,7 +14,11 @@ import {
   Order,
   OrderItem,
   Transaction,
-  VendorApplication
+  VendorApplication,
+  Payment,
+  Delivery,
+  DeliveryTracking,
+  DeliveryQuote
 } from 'src/entities';
 
 export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOptions => ({
@@ -38,7 +42,11 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
     Order,
     OrderItem,
     Transaction,
-    VendorApplication
+    VendorApplication,
+    Payment,
+    Delivery,
+    DeliveryTracking,
+    DeliveryQuote
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: configService.get('DB_SYNCHRONIZE') === 'true',

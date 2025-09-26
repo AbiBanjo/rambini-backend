@@ -23,7 +23,16 @@ export class Wallet extends BaseEntity {
   @IsString()
   user_id: string;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0.0 })
+  @Column({ 
+    type: 'decimal', 
+    precision: 15, 
+    scale: 2, 
+    default: 0.0,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => parseFloat(value) || 0
+    }
+  })
   @IsNumber()
   @Min(0)
   balance: number;

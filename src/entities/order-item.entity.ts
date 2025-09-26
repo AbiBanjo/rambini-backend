@@ -7,6 +7,8 @@ import {
 } from 'typeorm';
 import { IsOptional, IsNumber, IsString, IsJSON, Min } from 'class-validator';
 import { BaseEntity } from './base.entity';
+import { Order } from './order.entity';
+import { MenuItem } from './menu-item.entity';
 
 @Entity('order_items')
 @Index(['order_id'])
@@ -37,13 +39,13 @@ export class OrderItem extends BaseEntity {
 
 
   // Relationships
-  @ManyToOne('Order', { onDelete: 'CASCADE' })
+  @ManyToOne(() => Order, order => order.order_items, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
-  order: any;
+  order: Order;
 
-  @ManyToOne('MenuItem', { onDelete: 'RESTRICT' })
+  @ManyToOne(() => MenuItem, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'menu_item_id' })
-  menu_item: any;
+  menu_item: MenuItem;
 
  
   // Methods
