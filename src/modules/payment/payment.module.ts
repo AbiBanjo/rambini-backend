@@ -38,7 +38,7 @@ import { VendorModule } from '../vendor/vendor.module';
       Vendor,
     ]),
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
-    CartModule,
+    forwardRef(() => CartModule),
     forwardRef(() => OrderModule),
     forwardRef(() => VendorModule),
   ],

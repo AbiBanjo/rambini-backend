@@ -23,7 +23,7 @@ import { OrderRepository } from './repositories/order.repository';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, OrderItem, MenuItem, Vendor, User, Address, DeliveryQuote]),
-    CartModule,
+    forwardRef(() => CartModule),
     MenuModule,
     UserModule,
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard

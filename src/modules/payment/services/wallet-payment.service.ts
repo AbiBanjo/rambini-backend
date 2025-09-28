@@ -41,6 +41,8 @@ export class WalletPaymentService {
       where: { user_id: customerId },
     });
 
+    this.logger.log(`Customer wallet found: ${customerWallet?.id}`);
+
     if (!customerWallet) {
       throw new NotFoundException('Customer wallet not found');
     }
@@ -49,10 +51,13 @@ export class WalletPaymentService {
       throw new BadRequestException('Customer wallet is not active');
     }
 
+    this.logger.log(`Checking if customer has sufficient balance`);
     // Check if customer has sufficient balance
     if (!customerWallet.can_transact(amount)) {
       throw new BadRequestException('Insufficient wallet balance');
     }
+
+    this.logger.log(`Customer has sufficient balance`);
 
     // Create payment record
     // const paymentReference = await this.paymentRepository.generatePaymentReference();
@@ -65,25 +70,34 @@ export class WalletPaymentService {
     //   amount: amount,
     // });
 
+    this.logger.log(`Finding payment with order id: ${orderId}`);
     // find payment with order id
     const payment = await this.paymentRepository.findByOrderId(orderId);
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
 
+    this.logger.log(`Payment found: ${payment?.id}`);
+
     const paymentReference = payment.payment_reference;
 
     try {
+
+      this.logger.log(`Processing wallet debit transaction`);
       // Process wallet debit transaction
       const debitSuccess = customerWallet.debit(amount);
       if (!debitSuccess) {
         throw new BadRequestException('Failed to debit customer wallet');
       }
 
+      this.logger.log(`Wallet debit transaction processed`);
+
       // Save updated wallet
+      this.logger.log(`Saving updated wallet`);
       await this.walletRepository.save(customerWallet);
 
       // Create debit transaction record
+      this.logger.log(`Creating debit transaction record`);
       const debitTransaction = await this.transactionRepository.create({
         wallet_id: customerWallet.id,
         transaction_type: TransactionType.DEBIT,
@@ -96,11 +110,15 @@ export class WalletPaymentService {
         processed_at: new Date(),
       });
 
+      this.logger.log(`Saving debit transaction record`);
       await this.transactionRepository.save(debitTransaction);
 
       // Credit vendor wallet
+      this.logger.log(`Credit vendor wallet`);
       await this.creditVendorWallet(vendorId, amount, orderId, paymentReference);
+      this.logger.log(`Vendor wallet credited`);
 
+      this.logger.log(`Marking payment as completed`);
       // Mark payment as completed
       payment.markAsCompleted();
       await this.paymentRepository.update(payment.id, payment);

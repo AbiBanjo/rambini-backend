@@ -82,7 +82,7 @@ export class OrderController {
   async getCustomerOrders(
     @Request() req,
     @Query() filterDto: OrderFilterDto,
-  ): Promise<{ orders: OrderResponseDto[]; total: number }> {
+  ): Promise<{ orders: OrderResponseDto[] }> {
     return await this.orderService.getCustomerOrders(req.user.id, filterDto);
   }
 

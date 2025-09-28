@@ -48,7 +48,7 @@ export class Delivery {
   })
   status: ShipmentStatus;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   cost: number;
 
   @Column({ length: 3, default: 'NGN' })

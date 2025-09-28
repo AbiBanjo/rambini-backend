@@ -100,18 +100,18 @@ export class Order extends BaseEntity {
   @IsString()
   payment_provider?: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   @IsNumber()
   @Min(0)
   subtotal: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   @IsNumber()
   @Min(0)
   delivery_fee: number;
 
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   @IsNumber()
   @Min(0)
   total_amount: number;

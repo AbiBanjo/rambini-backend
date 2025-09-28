@@ -43,6 +43,9 @@ export class OrderResponseDto {
   @ApiProperty({ description: 'Customer ID' })
   customer_id: string;
 
+  @ApiProperty({ description: 'Customer name' })
+  customer_name: string;
+
   @ApiProperty({ description: 'Vendor ID' })
   vendor_id: string;
 

@@ -318,18 +318,17 @@ export class OrderService {
     return this.mapToOrderResponse(order);
   }
 
-  async getCustomerOrders(customerId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]; total: number }> {
+  async getCustomerOrders(customerId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
     const result = await this.orderRepository.findByCustomerId(customerId, filterDto);
     
     const orders = result.orders.map(order => this.mapToOrderResponse(order));
     
     return {
       orders,
-      total: result.total,
     };
   }
 
-  async getVendorOrders(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]; total: number }> {
+  async getVendorOrders(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
     // get vendor with userid
     const vendor = await this.vendorService.getVendorByUserId(vendorId);
     if (!vendor) {
@@ -341,7 +340,6 @@ export class OrderService {
     
     return {
       orders,
-      total: result.total,
     };
   }
 
@@ -583,6 +581,7 @@ export class OrderService {
       id: order.id,
       order_number: order.order_number,
       customer_id: order.customer_id,
+      customer_name: order.customer?.first_name + ' ' + order.customer?.last_name || 'Unknown',
       vendor_id: order.vendor_id,
       vendor_name: order.vendor?.business_name || 'Unknown',
       delivery_address_id: order.delivery_address_id,

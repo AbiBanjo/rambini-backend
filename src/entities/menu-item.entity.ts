@@ -29,7 +29,7 @@ export class MenuItem extends BaseEntity {
   @IsString()
   description?: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   @IsNumber()
   @Min(0)
   price: number;

@@ -54,7 +54,7 @@ export class DeliveryQuote {
   expires_at?: Date;
 
   // Cost information
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   fee: number;
 
   @Column({ length: 3, default: 'NGN' })
@@ -93,7 +93,7 @@ export class DeliveryQuote {
   @Column({ name: 'insurance_code', nullable: true })
   insurance_code?: string;
 
-  @Column({ name: 'insurance_fee', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'insurance_fee', type: 'decimal', precision: 12, scale: 2, nullable: true })
   insurance_fee?: number;
 
   @Column({ name: 'is_cod_available', default: false })

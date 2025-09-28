@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { CartRepository } from '../repositories/cart.repository';
+import { OrderRepository } from 'src/modules/order/repositories/order.repository';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
 import { AddToCartDto, UpdateCartItemDto, CartResponseDto, CartItemResponseDto, GroupedCartResponseDto, VendorCartGroupDto, VendorCartResponseDto } from '../dto';
 import { CartItem, MenuItem } from 'src/entities';
@@ -13,6 +14,7 @@ export class CartService {
 
   constructor(
     private readonly cartRepository: CartRepository,
+    private readonly orderRepository: OrderRepository,
     private readonly menuItemService: MenuItemService,
     private readonly vendorService: VendorService,
   ) {}
@@ -78,18 +80,24 @@ export class CartService {
     this.logger.log(`Fetching ${isActive ? 'active' : 'inactive'} cart for user ${userId}`);
 
     const cartItems = await this.cartRepository.getCartWithDetails(userId, isActive);
-    const summary = await this.cartRepository.getCartSummary(userId, isActive);
+    // const summary = await this.cartRepository.getCartSummary(userId, isActive);
 
-    const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item));
+    // Get active orders for the customer to check for tracking
+    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(userId);
+    const activeVendorIds = new Set(activeOrders.map(order => order.vendor_id));
+
+    const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item, activeVendorIds));
+
+    
 
     return {
       user_id: userId,
       items: cartItemsResponse,
-      total_items: summary.total_items,
-      subtotal: summary.subtotal,
-      total_amount: summary.subtotal, // No fees applied yet
-      is_empty: summary.is_empty,
-      vendor_count: summary.vendor_count,
+      // total_items: summary.total_items,
+      // subtotal: summary.subtotal,
+      // total_amount: summary.subtotal, // No fees applied yet
+      // is_empty: summary.is_empty,
+      // vendor_count: summary.vendor_count,
     };
   }
 
@@ -264,7 +272,10 @@ export class CartService {
     };
   }
 
-  private mapToCartItemResponse(cartItem: CartItem): CartItemResponseDto {
+  private mapToCartItemResponse(cartItem: CartItem, activeVendorIds?: Set<string>): CartItemResponseDto {
+    const vendorId = cartItem.menu_item?.vendor_id || cartItem.vendor_id;
+    const hasTrackingOrder = activeVendorIds ? activeVendorIds.has(vendorId) : false;
+
     return {
       id: cartItem.id,
       menu_item_id: cartItem.menu_item_id,
@@ -275,10 +286,11 @@ export class CartService {
       updated_at: cartItem.updated_at,
       menu_item_name: cartItem.menu_item?.name || 'Unknown',
       menu_item_image: cartItem.menu_item?.image_url,
-      vendor_id: cartItem.menu_item?.vendor_id || 'Unknown',
+      vendor_id: vendorId,
       vendor_name: cartItem.menu_item?.vendor?.business_name || 'Unknown',
       category_id: cartItem.menu_item?.category_id || 'Unknown',
       category_name: cartItem.menu_item?.category?.name || 'Unknown',
+      tracking_order: hasTrackingOrder,
     };
   }
 
@@ -299,6 +311,10 @@ export class CartService {
       };
     }
 
+    // Get active orders for the customer to check for tracking
+    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(userId);
+    const activeVendorIds = new Set(activeOrders.map(order => order.vendor_id));
+
     // Group cart items by vendor
     const vendorGroups = new Map<string, CartItem[]>();
     
@@ -318,7 +334,7 @@ export class CartService {
     let totalSubtotal = 0;
 
     for (const [vendorId, items] of vendorGroups) {
-      const vendorItems = items.map(item => this.mapToCartItemResponse(item));
+      const vendorItems = items.map(item => this.mapToCartItemResponse(item, activeVendorIds));
       const vendorTotalItems = items.reduce((sum, item) => sum + item.quantity, 0);
       // Coerce potential decimal strings to numbers before summing
       const vendorSubtotal = items.reduce((sum, item) => sum + Number(item.total_price), 0);
@@ -350,7 +366,12 @@ export class CartService {
     this.logger.log(`Fetching ${isActive ? 'active' : 'inactive'} cart items for user ${userId} from vendor ${vendorId}`);
 
     const [cartItems, summary ]= await Promise.all([ this.cartRepository.getCartItemsByVendor(userId, vendorId, isActive),this.cartRepository.getCartSummaryByVendor(userId, vendorId, isActive)])
-    const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item));
+    
+    // Get active orders for the customer to check for tracking
+    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(userId);
+    const activeVendorIds = new Set(activeOrders.map(order => order.vendor_id));
+    
+    const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item, activeVendorIds));
 
     // Get vendor name from first item or default
     const vendorName = cartItems.length > 0 

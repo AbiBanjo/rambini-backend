@@ -54,7 +54,7 @@ export class Payment extends BaseEntity {
   @IsEnum(PaymentTransactionStatus)
   status: PaymentTransactionStatus;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   @IsNumber()
   @Min(0)
   amount: number;
@@ -89,7 +89,7 @@ export class Payment extends BaseEntity {
   @IsDateString()
   refunded_at?: Date;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   @IsNumber()
   @Min(0)
   refunded_amount: number;

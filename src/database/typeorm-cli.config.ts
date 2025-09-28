@@ -14,7 +14,10 @@ import {
   Order,
   OrderItem,
   Transaction,
-  VendorApplication
+  VendorApplication,
+  Payment,
+  Delivery,
+  DeliveryQuote
 } from '../entities';
 
 // Load environment variables
@@ -41,7 +44,10 @@ export default new DataSource({
     Order,
     OrderItem,
     Transaction,
-    VendorApplication
+    VendorApplication,
+    Payment,
+    Delivery,
+    DeliveryQuote
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,

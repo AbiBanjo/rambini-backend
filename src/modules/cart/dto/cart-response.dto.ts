@@ -41,6 +41,9 @@ export class CartItemResponseDto {
 
   @ApiProperty({ description: 'Category name' })
   category_name: string;
+
+  @ApiProperty({ description: 'Whether this cart item has a tracking order' })
+  tracking_order: boolean;
 }
 
 export class CartResponseDto {
@@ -51,19 +54,19 @@ export class CartResponseDto {
   items: CartItemResponseDto[];
 
   @ApiProperty({ description: 'Total number of items in cart' })
-  total_items: number;
+  total_items?: number;
 
   @ApiProperty({ description: 'Subtotal amount' })
-  subtotal: number;
+  subtotal?: number;
 
   @ApiProperty({ description: 'Total amount including fees' })
-  total_amount: number;
+  total_amount?: number;
 
   @ApiProperty({ description: 'Whether cart is empty' })
-  is_empty: boolean;
+  is_empty?: boolean;
 
   @ApiProperty({ description: 'Number of unique vendors in cart' })
-  vendor_count: number;
+  vendor_count?: number;
 }
 
 export class VendorCartGroupDto {

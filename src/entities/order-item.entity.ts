@@ -27,12 +27,12 @@ export class OrderItem extends BaseEntity {
   @Min(1)
   quantity: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   @IsNumber()
   @Min(0)
   unit_price: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   @IsNumber()
   @Min(0)
   total_price: number;

@@ -25,8 +25,9 @@ import { VendorModule } from 'src/modules/vendor/vendor.module';
     ConfigModule,
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
     UserModule, // Import UserModule to get access to AddressService
-    CartModule, // Import CartModule to get access to CartService
-    VendorModule, // Import VendorModule to get access to VendorService
+    forwardRef(() => CartModule), // Import CartModule to get access to CartService
+    forwardRef(() => VendorModule), // Import VendorModule to get access to VendorService
+    
   ],
   controllers: [DeliveryController, DeliveryWebhookController],
   providers: [

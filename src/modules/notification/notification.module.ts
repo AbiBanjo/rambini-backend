@@ -10,6 +10,8 @@ import { InAppNotificationService } from './services/in-app-notification.service
 import { NotificationTemplateService } from './services/notification-template.service';
 import { NotificationDeliveryService } from './services/notification-delivery.service';
 import { NotificationQueueService } from './services/notification-queue.service';
+import { NotificationSSEService } from './services/notification-sse.service';
+import { NotificationSSEController } from './controllers/notification-sse.controller';
 import {
   Notification,
   DeviceToken,
@@ -28,7 +30,7 @@ import {
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
   ],
-  controllers: [NotificationController],
+  controllers: [NotificationController, NotificationSSEController],
   providers: [
     NotificationService,
     EmailNotificationService,
@@ -37,6 +39,7 @@ import {
     NotificationTemplateService,
     NotificationDeliveryService,
     NotificationQueueService,
+    NotificationSSEService,
   ],
   exports: [
     NotificationService,
@@ -46,6 +49,7 @@ import {
     NotificationTemplateService,
     NotificationDeliveryService,
     NotificationQueueService,
+    NotificationSSEService,
   ],
 })
 export class NotificationModule {} 

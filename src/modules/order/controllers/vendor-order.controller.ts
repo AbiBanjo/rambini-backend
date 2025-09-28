@@ -57,7 +57,7 @@ export class VendorOrderController {
   async getVendorOrders(
     @GetUser() user : User,
     @Query() filterDto: OrderFilterDto,
-  ): Promise<{ orders: OrderResponseDto[]; total: number }> {
+  ): Promise<{ orders: OrderResponseDto[]}> {
     return await this.orderService.getVendorOrders(user.id, filterDto);
   }
 

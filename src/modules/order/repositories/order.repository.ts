@@ -55,34 +55,21 @@ export class OrderRepository {
     });
   }
 
-  async findByCustomerId(customerId: string, filterDto?: OrderFilterDto): Promise<{ orders: Order[]; total: number }> {
+  async findByCustomerId(customerId: string, filterDto?: OrderFilterDto): Promise<{ orders: Order[] }> {
     const queryBuilder = this.createOrderQueryBuilder(filterDto);
     queryBuilder.andWhere('order.customer_id = :customerId', { customerId });
-
-    const total = await queryBuilder.getCount();
-    const page = filterDto?.page || 1;
-    const limit = filterDto?.limit || 20;
-    const offset = (page - 1) * limit;
-
-    queryBuilder.skip(offset).take(limit);
     const orders = await queryBuilder.getMany();
 
-    return { orders, total };
+    return { orders};
   }
 
-  async findByVendorId(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: Order[]; total: number }> {
+  async findByVendorId(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: Order[] }> {
     const queryBuilder = this.createOrderQueryBuilder(filterDto);
     queryBuilder.andWhere('order.vendor_id = :vendorId', { vendorId });
 
-    const total = await queryBuilder.getCount();
-    const page = filterDto?.page || 1;
-    const limit = filterDto?.limit || 20;
-    const offset = (page - 1) * limit;
-
-    queryBuilder.skip(offset).take(limit);
     const orders = await queryBuilder.getMany();
 
-    return { orders, total };
+    return { orders };
   }
 
   async findAll(filterDto?: OrderFilterDto): Promise<{ orders: Order[]; total: number }> {
@@ -216,6 +203,20 @@ export class OrderRepository {
 
   async getCancelledOrders(vendorId?: string): Promise<Order[]> {
     return await this.getOrdersByStatus(OrderStatus.CANCELLED, vendorId);
+  }
+
+  async getActiveOrdersForCustomer(customerId: string): Promise<Order[]> {
+    const queryBuilder = this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.vendor', 'vendor')
+      .where('order.customer_id = :customerId', { customerId })
+      .andWhere('order.order_status IN (:...statuses)', {
+        statuses: ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'],
+      });
+
+    return await queryBuilder
+      .orderBy('order.created_at', 'DESC')
+      .getMany();
   }
 
   async generateOrderNumber(): Promise<string> {
