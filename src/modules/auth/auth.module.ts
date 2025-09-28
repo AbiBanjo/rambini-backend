@@ -54,6 +54,6 @@ import { UserModule } from '../user/user.module';
     RedisService,
     AddressService, // Provide AddressService directly
   ],
-  exports: [AuthService, JWTService, JwtAuthGuard],
+  exports: [AuthService, JWTService, JwtAuthGuard, OTPService],
 })
 export class AuthModule {} 

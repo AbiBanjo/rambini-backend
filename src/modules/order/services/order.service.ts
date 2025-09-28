@@ -330,7 +330,12 @@ export class OrderService {
   }
 
   async getVendorOrders(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]; total: number }> {
-    const result = await this.orderRepository.findByVendorId(vendorId, filterDto);
+    // get vendor with userid
+    const vendor = await this.vendorService.getVendorByUserId(vendorId);
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found');
+    }
+    const result = await this.orderRepository.findByVendorId(vendor.id, filterDto);
     
     const orders = result.orders.map(order => this.mapToOrderResponse(order));
     
@@ -342,10 +347,16 @@ export class OrderService {
 
   async updateOrderStatus(
     orderId: string, 
-    vendorId: string, 
+    userId: string, 
     updateDto: UpdateOrderStatusDto
   ): Promise<OrderResponseDto> {
     this.logger.log(`Updating order ${orderId} status to ${updateDto.order_status}`);
+    this.logger.log(`Vendor ID: ${userId}`);
+    // get vendor with userid
+    const vendor = await this.vendorService.getVendorByUserId(userId);
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found');
+    }
 
     const order = await this.orderRepository.findById(orderId);
     if (!order) {
@@ -353,7 +364,7 @@ export class OrderService {
     }
 
     // Verify vendor ownership
-    if (order.vendor_id !== vendorId) {
+    if (order.vendor_id !== vendor.id) {
       throw new ForbiddenException('You can only update orders for your vendor account');
     }
 
@@ -530,10 +541,10 @@ export class OrderService {
 
   private validateStatusTransition(currentStatus: OrderStatus, newStatus: OrderStatus): void {
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.NEW]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-      [OrderStatus.READY]: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED],
+      [OrderStatus.NEW]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED, OrderStatus.PREPARING, OrderStatus.READY],
+      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED, OrderStatus.READY, OrderStatus.PREPARING, OrderStatus.OUT_FOR_DELIVERY],
+      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED, OrderStatus.OUT_FOR_DELIVERY],
+      [OrderStatus.READY]: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, OrderStatus.DELIVERED],
       [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
       [OrderStatus.DELIVERED]: [], // Final state
       [OrderStatus.CANCELLED]: [], // Final state
@@ -630,15 +641,7 @@ export class OrderService {
     };
   }
 
-  /**
-   * Get delivery quote for order and save to database
-   * @param vendor Vendor information
-   * @param deliveryAddress Customer delivery address
-   * @param cartItems Cart items
-   * @param subtotal Order subtotal
-   * @param provider Selected delivery provider
-   * @returns Promise<{lowestFee: number, quotes: any[]}>
-   */
+
   private async getDeliveryQuoteForOrder(
     vendor: any,
     deliveryAddress: any,

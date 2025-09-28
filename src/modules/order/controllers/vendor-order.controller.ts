@@ -23,6 +23,9 @@ import {
   OrderResponseDto,
   OrderFilterDto,
 } from '../dto';
+import { GetUser } from '@/common/decorators/get-user.decorator';
+import { User, UserType } from '@/entities';
+import { AccessControl } from '@/common/guards';
 
 @ApiTags('vendor-orders')
 @Controller('vendor/orders')
@@ -32,6 +35,10 @@ export class VendorOrderController {
   constructor(private readonly orderService: OrderService) {}
 
   @Get()
+  @AccessControl({
+    roles: [UserType.VENDOR],
+    requireVendorOwnership: 'id'
+  })
   @ApiOperation({ summary: 'Get vendor orders with filtering and pagination' })
   @ApiResponse({ status: 200, description: 'Orders retrieved successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
@@ -48,15 +55,10 @@ export class VendorOrderController {
   @ApiQuery({ name: 'page', required: false, description: 'Page number' })
   @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
   async getVendorOrders(
-    @Request() req,
+    @GetUser() user : User,
     @Query() filterDto: OrderFilterDto,
   ): Promise<{ orders: OrderResponseDto[]; total: number }> {
-    // Verify user is a vendor
-    if (req.user.user_type !== 'VENDOR') {
-      throw new Error('Only vendors can access vendor order endpoints');
-    }
-
-    return await this.orderService.getVendorOrders(req.user.vendor_id, filterDto);
+    return await this.orderService.getVendorOrders(user.id, filterDto);
   }
 
   @Get('stats')
@@ -149,6 +151,10 @@ export class VendorOrderController {
   }
 
   @Put(':id/status')
+  @AccessControl({
+    roles: [UserType.VENDOR],
+    requireVendorOwnership: 'id'
+  })
   @ApiOperation({ summary: 'Update order status' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   @ApiResponse({ status: 200, description: 'Order status updated successfully', type: OrderResponseDto })
@@ -157,16 +163,11 @@ export class VendorOrderController {
   @ApiResponse({ status: 403, description: 'Forbidden - Order does not belong to vendor' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async updateOrderStatus(
-    @Request() req,
+    @GetUser() user: User,
     @Param('id') id: string,
     @Body() updateDto: UpdateOrderStatusDto,
   ): Promise<OrderResponseDto> {
-    // Verify user is a vendor
-    if (req.user.user_type !== 'VENDOR') {
-      throw new Error('Only vendors can access vendor order endpoints');
-    }
-
-    return await this.orderService.updateOrderStatus(id, req.user.vendor_id, updateDto);
+    return await this.orderService.updateOrderStatus(id, user.id, updateDto);
   }
 
   @Put(':id/cancel')

@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserStatus, UserType } from '../../../entities';
+import { FileStorageService } from '@/modules/file-storage/services/file-storage.service';
+import { ConfigService } from '@nestjs/config';
 
 export interface UpdateProfileRequest {
   firstName?: string;
@@ -26,6 +28,7 @@ export class UserProfileService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly configService: ConfigService,
   ) {}
 
   async getUserProfile(userId: string): Promise<User> {
@@ -158,6 +161,30 @@ export class UserProfileService {
       memberSince: user.created_at,
       lastOrderDate: undefined, // Would be fetched from orders table
     };
+  }
+
+  async uploadProfilePicture(userId: string, file: Express.Multer.File): Promise<User> {
+
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    const user = await this.getUserProfile(userId);
+
+    const { FileStorageService } = await import('src/modules/file-storage/services/file-storage.service');
+    const fileStorageService = new FileStorageService(this.configService);
+    // Upload image to cloud storage
+    // Upload image to cloud storage
+    const uploadedFile = await fileStorageService.uploadImage(file, {
+      quality: 85,
+      createThumbnail: true,
+      thumbnailSize: 300,
+    });
+
+    user.image_url = uploadedFile.url;
+    await this.userRepository.save(user);
+
+    return user;
   }
 
   private isValidEmail(email: string): boolean {

@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { User, UserType, UserStatus, CartItem, MenuItem, Vendor } from 'src/entities';
+import { UpdateUserDto } from '../dto';
+import { OTPService } from '@/modules/auth/services/otp.service';
 
 @Injectable()
 export class UserService {
@@ -15,6 +17,7 @@ export class UserService {
     @InjectRepository(Vendor)
     private readonly vendorRepository: Repository<Vendor>,
     private readonly dataSource: DataSource,
+    private readonly otpService: OTPService,
   ) {}
 
   async createUser(userData: Partial<User>): Promise<User> {
@@ -38,23 +41,43 @@ export class UserService {
     return await this.userRepository.findOne({ where: { email } });
   }
 
-  async updateUser(id: string, updateData: Partial<User>): Promise<User> {
+  async updateUser(id: string, updateData: UpdateUserDto): Promise<User> {
+    // Extract OTP fields from updateData
+    const { otpCode, otpId, ...userUpdateData } = updateData;
+
     // Check for email conflicts if email is being updated
-    if (updateData.email) {
-      const existingUserWithEmail = await this.findByEmail(updateData.email);
+    if (userUpdateData.email) {
+      const existingUserWithEmail = await this.findByEmail(userUpdateData.email);
       if (existingUserWithEmail && existingUserWithEmail.id !== id) {
         throw new ConflictException('Email is already taken by another user');
       }
-      
+
       // If the email is the same as the current user's email, remove it from updateData to avoid unnecessary update
       const currentUser = await this.findById(id);
-      if (currentUser.email === updateData.email) {
-        delete updateData.email;
+      if (currentUser.email === userUpdateData.email) {
+        delete userUpdateData.email;
+      }
+    }
+
+    if (userUpdateData.phone_number) {
+      const existingUserWithPhoneNumber = await this.findByPhoneNumber(userUpdateData.phone_number);
+      if (existingUserWithPhoneNumber && existingUserWithPhoneNumber.id !== id) {
+        throw new ConflictException('Phone number is already taken by another user');
+      }
+      
+      // Validate OTP if both otpId and otpCode are provided
+      if (!otpId || !otpCode) {
+        throw new BadRequestException('OTP ID and OTP code are required when updating phone number');
+      }
+      
+      const { isValid } = await this.otpService.validateOTP(otpId, otpCode);
+      if (!isValid) {
+        throw new BadRequestException('Invalid OTP');
       }
     }
 
     const user = await this.findById(id);
-    Object.assign(user, updateData);
+    Object.assign(user, userUpdateData);
     return await this.userRepository.save(user);
   }
 
@@ -148,5 +171,11 @@ export class UserService {
   async findUsersByType(userType: UserType): Promise<User[]> {
     return await this.userRepository.find({ where: { user_type: userType } });
   }
+
+  async generateOTP(phoneNumber: string): Promise<string> {
+    const { otpId, otpCode } = await this.otpService.generateOTP(phoneNumber);
+    return otpCode;
+  }
+    // use otp service to generate OTP
 
 } 

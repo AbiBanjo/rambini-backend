@@ -86,6 +86,11 @@ export class User extends BaseEntity {
   @IsDateString()
   last_active_at?: Date;
 
+  @Column({ type: 'text', nullable: true })
+  @IsOptional()
+  @IsString()
+  image_url?: string;
+
   // Timestamps are inherited from BaseEntity
 
   // Relationships

@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { UserService } from '../services/user.service';
 import { UserProfileService } from '../services/user-profile.service';
 import { User, UserType, UserStatus } from 'src/entities';
+import { UpdateUserDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GetUser } from '../../../common/decorators/get-user.decorator';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
@@ -52,7 +53,9 @@ export class UserController {
   @ApiResponse({ status: 200, description: 'User updated successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async updateCurrentUser(@Body() updateData: Partial<User>, @GetUser() user: User): Promise<User> {
+  @ApiResponse({ status: 400, description: 'Invalid OTP or validation failed' })
+  @ApiResponse({ status: 409, description: 'Email or phone number already taken' })
+  async updateCurrentUser(@Body() updateData: UpdateUserDto, @GetUser() user: User): Promise<User> {
     return await this.userService.updateUser(user.id, updateData);
   }
 
@@ -67,6 +70,25 @@ export class UserController {
   async deleteCurrentUser(@Body() deleteAccountDto: DeleteAccountDto, @GetUser() user: User): Promise<{ message: string }> {
     await this.userService.deleteUserAccount(user.id, deleteAccountDto.reason);
     return { message: 'Account deleted successfully' };
+  }
+
+  @Post('profile/picture')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload profile picture' })
+  @ApiResponse({ status: 200, description: 'Profile picture uploaded successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async uploadProfilePicture(@UploadedFile(
+    new ParseFilePipe({
+      validators: [
+        new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+        new FileTypeValidator({ fileType: '.(jpg|jpeg|png|webp)' }),
+      ],
+      fileIsRequired: true, // Make file optional
+    }),
+  ) file: Express.Multer.File, @GetUser() user: User): Promise<User> {
+    return await this.userProfileService.uploadProfilePicture(user.id, file);
   }
 
   @Post('verify-phone')
