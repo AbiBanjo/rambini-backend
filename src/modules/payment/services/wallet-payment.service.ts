@@ -553,6 +553,67 @@ export class WalletPaymentService {
   }
 
   /**
+   * Debit wallet for withdrawal
+   * @param userId User ID
+   * @param amount Amount to debit
+   * @param description Transaction description
+   * @returns Promise<void>
+   */
+  async debitWalletForWithdrawal(userId: string, amount: number, description: string): Promise<void> {
+    this.logger.log(`Debiting wallet for withdrawal: user ${userId}, amount: ${amount}`);
+
+    // Get user wallet
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('User wallet not found');
+    }
+
+    if (!wallet.is_active) {
+      throw new BadRequestException('Wallet is not active');
+    }
+
+    // Check if user has sufficient balance
+    if (!wallet.can_transact(amount)) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
+
+    try {
+      // Debit wallet
+      const balanceBefore = wallet.balance;
+      const debitSuccess = wallet.debit(amount);
+      if (!debitSuccess) {
+        throw new BadRequestException('Failed to debit wallet');
+      }
+
+      // Save updated wallet
+      await this.walletRepository.save(wallet);
+
+      // Create debit transaction record
+      const debitTransaction = await this.transactionRepository.create({
+        wallet_id: wallet.id,
+        transaction_type: TransactionType.DEBIT,
+        amount: amount,
+        balance_before: balanceBefore,
+        balance_after: wallet.balance,
+        description: description,
+        reference_id: `withdrawal_${Date.now()}`,
+        status: TransactionStatus.COMPLETED,
+        processed_at: new Date(),
+      });
+
+      await this.transactionRepository.save(debitTransaction);
+
+      this.logger.log(`Wallet debited successfully for withdrawal: ${amount}`);
+    } catch (error) {
+      this.logger.error(`Failed to debit wallet for withdrawal: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Get payment provider from payment method
    * @param paymentMethod Payment method
    * @returns PaymentProvider

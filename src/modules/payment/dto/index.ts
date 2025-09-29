@@ -1,3 +1,7 @@
 export * from './process-payment.dto';
 export * from './payment-webhook.dto';
 export * from './wallet-funding.dto';
+export * from './withdrawal-otp-request.dto';
+export * from './withdrawal-request.dto';
+export * from './withdrawal-response.dto';
+export * from './admin-withdrawal-action.dto';

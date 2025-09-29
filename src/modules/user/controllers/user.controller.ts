@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { UserService } from '../services/user.service';
 import { UserProfileService } from '../services/user-profile.service';
@@ -7,6 +7,7 @@ import { UpdateUserDto } from '../dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GetUser } from '../../../common/decorators/get-user.decorator';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('users')
 @Controller('users')
@@ -74,6 +75,7 @@ export class UserController {
 
   @Post('profile/picture')
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upload profile picture' })
   @ApiResponse({ status: 200, description: 'Profile picture uploaded successfully' })
@@ -175,5 +177,13 @@ export class UserController {
   @ApiResponse({ status: 404, description: 'User not found' })
   async getCurrentUserProfileById(@GetUser() user: User): Promise<User> {
     return await this.userProfileService.getUserProfile(user.id);
+  }
+
+  @Post('generate-otp')
+  @ApiOperation({ summary: 'Generate OTP' })
+  @ApiResponse({ status: 200, description: 'OTP generated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  async generateOTP(@Body() generateOTPRequest: {phone_number: string}): Promise<{ otpId: string }> {
+    return await this.userService.generateOTP(generateOTPRequest.phone_number);
   }
 } 

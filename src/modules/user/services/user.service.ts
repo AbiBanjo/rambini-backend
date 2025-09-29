@@ -81,6 +81,7 @@ export class UserService {
     return await this.userRepository.save(user);
   }
 
+
   async deleteUser(id: string): Promise<void> {
     const user = await this.findById(id);
     user.delete();
@@ -172,9 +173,9 @@ export class UserService {
     return await this.userRepository.find({ where: { user_type: userType } });
   }
 
-  async generateOTP(phoneNumber: string): Promise<string> {
+  async generateOTP(phoneNumber: string): Promise<{ otpId: string }> {
     const { otpId, otpCode } = await this.otpService.generateOTP(phoneNumber);
-    return otpCode;
+    return {otpId}
   }
     // use otp service to generate OTP
 

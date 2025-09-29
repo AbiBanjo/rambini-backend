@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { AuthModule } from '../auth/auth.module';
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { EmailNotificationService } from './services/email-notification.service';
@@ -29,6 +30,7 @@ import {
     ]),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
+    AuthModule,
   ],
   controllers: [NotificationController, NotificationSSEController],
   providers: [

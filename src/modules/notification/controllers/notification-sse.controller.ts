@@ -13,6 +13,8 @@ import {
 import { Response } from 'express';
 import { NotificationSSEService } from '../services/notification-sse.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'; // Adjust path as needed
+import { GetUser } from '@/common/decorators/get-user.decorator';
+import { User } from '@/entities';
 
 @Controller('notifications/sse')
 @UseGuards(JwtAuthGuard)
@@ -21,17 +23,16 @@ export class NotificationSSEController {
 
   constructor(private readonly sseService: NotificationSSEService) {}
 
-  /**
-   * Establish SSE connection for notifications
-   */
+
   @Get('connect')
   @HttpCode(HttpStatus.OK)
   async connect(
     @Request() req,
+    @GetUser() user: User,
     @Res() res: Response,
     @Query('lastEventId') lastEventId?: string,
   ): Promise<void> {
-    const userId = req.user.id;
+    const userId = user.id;
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -110,9 +111,7 @@ export class NotificationSSEController {
     });
   }
 
-  /**
-   * Send test event to user (for testing purposes)
-   */
+
   @Get('test/:userId')
   @HttpCode(HttpStatus.OK)
   async sendTestEvent(
