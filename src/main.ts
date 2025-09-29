@@ -1,7 +1,3 @@
-// IMPORTANT: Initialize crypto polyfill BEFORE any NestJS imports
-// This prevents the "crypto is not defined" error in @nestjs/schedule
-import './crypto-polyfill';
-
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -14,16 +10,7 @@ import {
 } from './common/filters';
 import { loadEnvironmentVariables, validateRequiredEnvironmentVariables } from './utils/env-loader';
 
-
 async function bootstrap() {
-  
-  // Debug information for troubleshooting
-  console.log(`🚀 Starting Rambini Backend...`);
-  console.log(`📋 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📋 Node.js version: ${process.version}`);
-  console.log(`📋 Platform: ${process.platform}`);
-  console.log(`📋 Crypto available: ${typeof globalThis.crypto !== 'undefined' ? '✓' : '✗'}`);
-  
   // Load environment variables first
   loadEnvironmentVariables();
   
@@ -85,10 +72,4 @@ async function bootstrap() {
   console.log(`📚 API Documentation available at: http://0.0.0.0:${port}/api/docs`);
 }
 
-// Export the main function for use in bootstrap.ts
-export { bootstrap as main };
-
-// Start the application if this file is run directly
-if (require.main === module) {
-  bootstrap();
-} 
+bootstrap(); 
