@@ -6,7 +6,8 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
-import * as AWS from 'aws-sdk';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 
 export interface UploadedFile {
   originalName: string;
@@ -40,7 +41,7 @@ export class FileStorageService {
   private readonly maxFileSize: number;
   private readonly allowedMimeTypes: string[];
   private readonly cdnUrl: string;
-  private readonly s3: AWS.S3;
+  private readonly s3: S3Client;
   private readonly s3BucketName: string;
   private readonly s3Region: string;
 
@@ -54,10 +55,12 @@ export class FileStorageService {
     this.s3BucketName = this.configService.get('AWS_S3_BUCKET_NAME');
     this.s3Region = this.configService.get('AWS_REGION', 'us-east-1');
     
-    // Initialize AWS S3
-    this.s3 = new AWS.S3({
-      accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
-      secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY'),
+    // Initialize AWS S3 Client (v3)
+    this.s3 = new S3Client({
+      credentials: {
+        accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
+        secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY'),
+      },
       region: this.s3Region,
     });
     
@@ -391,57 +394,40 @@ export class FileStorageService {
     buffer: Buffer,
     key: string,
     contentType: string,
-  ): Promise<AWS.S3.ManagedUpload.SendData> {
-    const params: AWS.S3.PutObjectRequest = {
-      Bucket: this.s3BucketName,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-      // ACL removed - use bucket policy for public access instead
-    };
-
-    return new Promise((resolve, reject) => {
-      this.s3.upload(params, (err, data) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(data);
-        }
-      });
+  ): Promise<{ Location: string; Key: string }> {
+    const upload = new Upload({
+      client: this.s3,
+      params: {
+        Bucket: this.s3BucketName,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        // ACL removed - use bucket policy for public access instead
+      },
     });
+
+    const result = await upload.done();
+    return {
+      Location: `https://${this.s3BucketName}.s3.${this.s3Region}.amazonaws.com/${key}`,
+      Key: key,
+    };
   }
 
   private async deleteFromS3(key: string): Promise<void> {
-    const params: AWS.S3.DeleteObjectRequest = {
+    const command = new DeleteObjectCommand({
       Bucket: this.s3BucketName,
       Key: key,
-    };
-
-    return new Promise((resolve, reject) => {
-      this.s3.deleteObject(params, (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
     });
+
+    await this.s3.send(command);
   }
 
-  private async getS3ObjectInfo(key: string): Promise<AWS.S3.HeadObjectOutput> {
-    const params: AWS.S3.HeadObjectRequest = {
+  private async getS3ObjectInfo(key: string): Promise<any> {
+    const command = new HeadObjectCommand({
       Bucket: this.s3BucketName,
       Key: key,
-    };
-
-    return new Promise((resolve, reject) => {
-      this.s3.headObject(params, (err, data) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(data);
-        }
-      });
     });
+
+    return await this.s3.send(command);
   }
 } 

@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PaymentMethod, PaymentProvider } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
 import Stripe from 'stripe';
-import * as crypto from 'crypto';
+// Crypto import removed as it's not used in this service
 
 @Injectable()
 export class StripePaymentService implements PaymentProviderInterface {

@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PaymentMethod, PaymentProvider } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
-import * as crypto from 'crypto';
+import { createHmac } from 'crypto';
 
 @Injectable()
 export class PaystackPaymentService implements PaymentProviderInterface {
@@ -253,8 +253,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
 
   private verifyWebhookSignature(payload: any, signature: string): boolean {
     try {
-      const hash = crypto
-        .createHmac('sha512', this.paystackSecretKey)
+      const hash = createHmac('sha512', this.paystackSecretKey)
         .update(JSON.stringify(payload))
         .digest('hex');
       

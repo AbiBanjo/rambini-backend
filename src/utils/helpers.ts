@@ -137,7 +137,6 @@ export const uploadFileToS3 = async (
   bucketName: string,
   folder: string = 'uploads',
   options?: {
-    acl?: 'private' | 'public-read' | 'public-read-write' | 'authenticated-read';
     contentType?: string;
     metadata?: Record<string, string>;
   }
@@ -148,17 +147,18 @@ export const uploadFileToS3 = async (
       throw new Error('AWS SDK not available in browser environment');
     }
 
-    // Dynamically import AWS SDK
-    const AWS = require('aws-sdk');
+    // Dynamically import AWS SDK v3
+    const { S3Client } = await import('@aws-sdk/client-s3');
+    const { Upload } = await import('@aws-sdk/lib-storage');
     
-    // Configure AWS
-    AWS.config.update({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    // Initialize S3 client
+    const s3 = new S3Client({
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
       region: process.env.AWS_REGION || 'us-east-1',
     });
-
-    const s3 = new AWS.S3();
 
     // Generate unique filename
     const timestamp = Date.now();
@@ -169,27 +169,30 @@ export const uploadFileToS3 = async (
     // Create S3 key (path in bucket)
     const key = `${folder}/${filename}`;
 
-    // Prepare upload parameters
-    const uploadParams: any = {
-      Bucket: bucketName,
-      Key: key,
-      Body: file.buffer,
-      ContentType: options?.contentType || file.mimetype,
-      ACL: options?.acl || 'private',
-      Metadata: {
-        originalName: file.originalname,
-        uploadedAt: new Date().toISOString(),
-        ...options?.metadata,
+    // Upload to S3 using Upload class
+    const upload = new Upload({
+      client: s3,
+      params: {
+        Bucket: bucketName,
+        Key: key,
+        Body: file.buffer,
+        ContentType: options?.contentType || file.mimetype,
+        Metadata: {
+          originalName: file.originalname,
+          uploadedAt: new Date().toISOString(),
+          ...options?.metadata,
+        },
       },
-    };
+    });
 
-    // Upload to S3
-    const result = await s3.upload(uploadParams).promise();
+    await upload.done();
+
+    const url = `https://${bucketName}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${key}`;
 
     return {
       success: true,
-      url: result.Location,
-      key: result.Key,
+      url,
+      key,
       metadata: {
         filename: file.originalname,
         size: file.size,
@@ -219,23 +222,25 @@ export const deleteFileFromS3 = async (
       throw new Error('AWS SDK not available in browser environment');
     }
 
-    // Dynamically import AWS SDK
-    const AWS = require('aws-sdk');
+    // Dynamically import AWS SDK v3
+    const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
     
-    // Configure AWS
-    AWS.config.update({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    // Initialize S3 client
+    const s3 = new S3Client({
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
       region: process.env.AWS_REGION || 'us-east-1',
     });
 
-    const s3 = new AWS.S3();
-
     // Delete from S3
-    await s3.deleteObject({
+    const command = new DeleteObjectCommand({
       Bucket: bucketName,
       Key: key,
-    }).promise();
+    });
+
+    await s3.send(command);
 
     return { success: true };
   } catch (error) {
@@ -261,24 +266,26 @@ export const getPresignedUrl = async (
       throw new Error('AWS SDK not available in browser environment');
     }
 
-    // Dynamically import AWS SDK
-    const AWS = require('aws-sdk');
+    // Dynamically import AWS SDK v3
+    const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+    const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
     
-    // Configure AWS
-    AWS.config.update({
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    // Initialize S3 client
+    const s3 = new S3Client({
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
       region: process.env.AWS_REGION || 'us-east-1',
     });
 
-    const s3 = new AWS.S3();
-
     // Generate presigned URL
-    const url = await s3.getSignedUrlPromise('getObject', {
+    const command = new GetObjectCommand({
       Bucket: bucketName,
       Key: key,
-      Expires: expiresIn,
     });
+
+    const url = await getSignedUrl(s3, command, { expiresIn });
 
     return { success: true, url };
   } catch (error) {
