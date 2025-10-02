@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { PaymentMethod, PaymentProvider } from 'src/entities';
+ import { PaymentMethod, PaymentProvider } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
 import Stripe from 'stripe';
 // Crypto import removed as it's not used in this service
@@ -41,15 +41,58 @@ export class StripePaymentService implements PaymentProviderInterface {
         throw new BadRequestException('Stripe configuration missing');
       }
 
-      const paymentIntent = await this.createStripePaymentIntent(amount, currency, reference, metadata);
+      currency = "USD"
+
+      // Validate that only USD and GBP are supported
+      const supportedCurrencies = ['USD', 'GBP'];
+      if (!supportedCurrencies.includes(currency.toUpperCase())) {
+        throw new BadRequestException(`Stripe only supports USD and GBP currencies. Received: ${currency}`);
+      }
+
+      // Default to USD if not provided
+      const paymentCurrency = currency || 'USD';
+      
+      // Extract redirect URL from metadata or use a default
+      const redirectUrl = metadata?.redirectUrl || process.env.FRONTEND_URL || 'http://localhost:3000';
+      const description = metadata?.description || `Payment for order ${reference}`;
+      const name = metadata?.customerName || email || 'Customer';
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        customer_email: email,
+        client_reference_id: reference,
+        line_items: [
+          {
+            price_data: {
+              currency: paymentCurrency.toLowerCase(),
+              product_data: {
+                name: description,
+                description: `Payment for ${description}`,
+              },
+              unit_amount: amount * 100, // Stripe expects amount in cents
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${redirectUrl}?session_id={CHECKOUT_SESSION.ID}`,
+        cancel_url: `${redirectUrl}?success=false`,
+        metadata: {
+          reference,
+          customerName: name,
+          email: email || '',
+          ...metadata,
+        },
+      });
 
       return {
         success: true,
-        external_reference: paymentIntent.id,
-        payment_url: paymentIntent.client_secret ? `https://checkout.stripe.com/pay/${paymentIntent.id}` : undefined,
-        gateway_response: paymentIntent,
+        payment_url: session.url,
+        external_reference: session.id,
+        gateway_response: session,
       };
     } catch (error) {
+      console.error('Stripe payment initialization error:', error);
       const errorMessage = this.handleStripeError(error);
       this.logger.error(`Stripe payment initialization failed: ${errorMessage}`);
       return {
@@ -59,6 +102,83 @@ export class StripePaymentService implements PaymentProviderInterface {
     }
   }
 
+  // New method for direct checkout session creation
+  async createCheckoutSession({
+    amount,
+    email,
+    name,
+    reference,
+    description,
+    currency = 'usd',
+    redirectUrl,
+  }: {
+    amount: number;
+    email: string;
+    name: string;
+    reference: string;
+    description: string;
+    currency?: string;
+    redirectUrl: string;
+  }): Promise<{
+    success: boolean;
+    message?: string;
+    checkoutUrl?: string;
+    sessionId?: string;
+  }> {
+    try {
+      this.logger.log(`Creating Stripe checkout session for reference: ${reference}`);
+
+      if (!this.stripeSecretKey) {
+        throw new BadRequestException('Stripe configuration missing');
+      }
+
+      // Validate that only USD and GBP are supported
+      const supportedCurrencies = ['USD', 'GBP'];
+      if (!supportedCurrencies.includes(currency.toUpperCase())) {
+        throw new BadRequestException(`Stripe only supports USD and GBP currencies. Received: ${currency}`);
+      }
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        customer_email: email,
+        client_reference_id: reference,
+        line_items: [
+          {
+            price_data: {
+              currency: currency.toLowerCase(),
+              product_data: {
+                name: description,
+                description: `Payment for ${description}`,
+              },
+              unit_amount: amount * 100, // Stripe expects amount in cents
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${redirectUrl}?session_id={CHECKOUT_SESSION.ID}`,
+        cancel_url: `${redirectUrl}?success=false`,
+        metadata: {
+          reference,
+          customerName: name,
+          email,
+        },
+      });
+
+      return {
+        success: true,
+        checkoutUrl: session.url,
+        sessionId: session.id,
+      };
+    } catch (error) {
+      console.error('Stripe payment initialization error:', error);
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+ 
   async verifyPayment(reference: string): Promise<PaymentVerificationResult> {
     try {
       this.logger.log(`Verifying Stripe payment: ${reference}`);
@@ -67,32 +187,60 @@ export class StripePaymentService implements PaymentProviderInterface {
         throw new BadRequestException('Stripe configuration missing');
       }
 
-      const paymentIntent = await this.retrieveStripePaymentIntent(reference);
+      // Try to retrieve as checkout session first
+      try {
+        const session = await this.stripe.checkout.sessions.retrieve(reference);
+        
+        let status: 'pending' | 'completed' | 'failed' | 'cancelled';
+        switch (session.payment_status) {
+          case 'unpaid':
+            status = 'pending';
+            break;
+          case 'paid':
+            status = 'completed';
+            break;
+          case 'no_payment_required':
+            status = 'completed';
+            break;
+          default:
+            status = 'failed';
+        }
 
-      let status: 'pending' | 'completed' | 'failed' | 'cancelled';
-      switch (paymentIntent.status) {
-        case 'requires_payment_method':
-        case 'requires_confirmation':
-        case 'requires_action':
-          status = 'pending';
-          break;
-        case 'succeeded':
-          status = 'completed';
-          break;
-        case 'requires_capture':
-        case 'canceled':
-          status = 'cancelled';
-          break;
-        default:
-          status = 'failed';
+        return {
+          success: true,
+          status,
+          external_reference: session.id,
+          gateway_response: session,
+        };
+      } catch (sessionError) {
+        // If it's not a checkout session, try as payment intent
+        const paymentIntent = await this.retrieveStripePaymentIntent(reference);
+
+        let status: 'pending' | 'completed' | 'failed' | 'cancelled';
+        switch (paymentIntent.status) {
+          case 'requires_payment_method':
+          case 'requires_confirmation':
+          case 'requires_action':
+            status = 'pending';
+            break;
+          case 'succeeded':
+            status = 'completed';
+            break;
+          case 'requires_capture':
+          case 'canceled':
+            status = 'cancelled';
+            break;
+          default:
+            status = 'failed';
+        }
+
+        return {
+          success: true,
+          status,
+          external_reference: paymentIntent.id,
+          gateway_response: paymentIntent,
+        };
       }
-
-      return {
-        success: true,
-        status,
-        external_reference: paymentIntent.id,
-        gateway_response: paymentIntent,
-      };
     } catch (error) {
       const errorMessage = this.handleStripeError(error);
       this.logger.error(`Stripe payment verification failed: ${errorMessage}`);
@@ -119,7 +267,20 @@ export class StripePaymentService implements PaymentProviderInterface {
       let reference: string;
       let amount: number | undefined;
 
+      this.logger.log(`Stripe webhook event: ${JSON.stringify(event)}`);
+
       switch (event.type) {
+        case 'checkout.session.completed':
+          status = 'completed';
+          reference = event.data.object.client_reference_id as string;
+          amount = event.data.object.amount_total / 100; // Convert from cents
+          this.logger.log(`Stripe amount_total: ${event.data.object.amount_total}, converted amount: ${amount}`);
+          break;
+        case 'checkout.session.expired':
+          status = 'cancelled';
+          reference = event.data.object.id;
+          amount = event.data.object.amount_total / 100;
+          break;
         case 'payment_intent.succeeded':
           status = 'completed';
           reference = event.data.object.id;
@@ -151,6 +312,11 @@ export class StripePaymentService implements PaymentProviderInterface {
             error: `Unhandled event type: ${event.type}`,
           };
       }
+
+      this.logger.log(`Stripe webhook reference: ${reference}`);
+      this.logger.log(`Stripe webhook status: ${status}`);
+      this.logger.log(`Stripe webhook amount: ${amount}`);
+     
 
       return {
         success: true,

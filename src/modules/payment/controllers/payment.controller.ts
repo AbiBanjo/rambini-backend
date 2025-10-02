@@ -19,6 +19,8 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { PaymentService } from '../services/payment.service';
+import { PaystackPaymentService } from '../services/paystack-payment.service';
+import { WalletPaymentService } from '../services/wallet-payment.service';
 import {
   ProcessPaymentDto,
   PaymentResponseDto,
@@ -29,6 +31,8 @@ import {
   WalletBalanceDto,
   VerifyWalletFundingDto,
 } from '../dto';
+import { BankListResponseDto } from '../dto/bank-list.dto';
+import { TransactionHistoryResponseDto, TransactionQueryDto, TransactionDto } from '../dto/transaction-history.dto';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
@@ -39,7 +43,45 @@ import { User } from '@/entities';
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name);
 
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly paystackPaymentService: PaystackPaymentService,
+    private readonly walletPaymentService: WalletPaymentService,
+  ) {}
+
+
+  @Get('banks')
+  @ApiOperation({ summary: 'Get list of banks from Paystack' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Banks retrieved successfully', 
+    type: BankListResponseDto 
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - Paystack configuration missing' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 500, description: 'Internal server error - Failed to fetch banks' })
+  async getBanks(@GetUser() user: User): Promise<BankListResponseDto> {
+    this.logger.log('Fetching banks from Paystack');
+    return await this.paystackPaymentService.getBanks();
+  }
+
+   // Transaction History Endpoints
+
+   @Get('transactions')
+   @ApiOperation({ summary: 'Get user transaction history with pagination and filters' })
+   @ApiResponse({ 
+     status: 200, 
+     description: 'Transaction history retrieved successfully', 
+     type: TransactionHistoryResponseDto 
+   })
+   @ApiResponse({ status: 401, description: 'Unauthorized' })
+   @ApiResponse({ status: 404, description: 'User wallet not found' })
+   async getTransactionHistory(
+     @GetUser() user: User,
+   ) {
+     this.logger.log(`Getting transaction history for user ${user.id}`);
+     return await this.walletPaymentService.getTransactionHistory(user.id);
+   }
 
   @Post('process')
   @ApiOperation({ summary: 'Process payment for an order' })
@@ -183,5 +225,24 @@ export class PaymentController {
       body.external_reference,
       body.gateway_response,
     );
+  }
+
+
+  @Get('transactions/:id')
+  @ApiOperation({ summary: 'Get transaction by ID' })
+  @ApiParam({ name: 'id', description: 'Transaction ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Transaction retrieved successfully', 
+    type: TransactionDto 
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Transaction not found' })
+  async getTransactionById(
+    @GetUser() user: User,
+    @Param('id') transactionId: string,
+  ): Promise<TransactionDto> {
+    this.logger.log(`Getting transaction ${transactionId} for user ${user.id}`);
+    return await this.walletPaymentService.getTransactionById(user.id, transactionId);
   }
 }

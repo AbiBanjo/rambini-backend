@@ -248,6 +248,10 @@ export class PaymentService {
   private async processWalletFundingWebhook(webhookResult: any): Promise<WalletFundingStatusDto> {
     this.logger.log(`Processing wallet funding webhook for reference: ${webhookResult.reference}`);
 
+    // if( !webhookResult.reference.startsWith('wallet_')) {
+    //   webhookResult.reference = webhookResult.client_reference_id
+    // }
+
     const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
     if (!payment) {
       throw new NotFoundException('Wallet funding transaction not found for webhook reference');
@@ -290,6 +294,9 @@ export class PaymentService {
     this.logger.log(`Processing order payment webhook for reference: ${webhookResult.reference}`);
 
     // Find payment by reference
+    // if( !webhookResult.reference.startsWith('PAY-')) {
+    //   webhookResult.reference = webhookResult.client_reference_id
+    // }
     const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
     if (!payment) {
       throw new NotFoundException('Payment not found for webhook reference');
@@ -412,6 +419,8 @@ export class PaymentService {
       this.logger.warn(`Order not found for payment ${payment.id}`);
       return;
     }
+
+    
     this.logger.log(`Order found for payment ${payment.id}: ${order.id}`);
     // Use wallet payment service to credit vendor
     await this.walletPaymentService['creditVendorWallet'](

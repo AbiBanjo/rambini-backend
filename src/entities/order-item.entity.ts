@@ -9,10 +9,12 @@ import { IsOptional, IsNumber, IsString, IsJSON, Min } from 'class-validator';
 import { BaseEntity } from './base.entity';
 import { Order } from './order.entity';
 import { MenuItem } from './menu-item.entity';
+import { CartItem } from './cart-item.entity';
 
 @Entity('order_items')
 @Index(['order_id'])
 @Index(['menu_item_id'])
+@Index(['cart_item_id'])
 export class OrderItem extends BaseEntity {
   @Column({ type: 'varchar' })
   @IsString()
@@ -21,6 +23,11 @@ export class OrderItem extends BaseEntity {
   @Column({ type: 'varchar' })
   @IsString()
   menu_item_id: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  @IsString()
+  @IsOptional()
+  cart_item_id: string;
 
   @Column({ type: 'int' })
   @IsNumber()
@@ -46,6 +53,10 @@ export class OrderItem extends BaseEntity {
   @ManyToOne(() => MenuItem, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'menu_item_id' })
   menu_item: MenuItem;
+
+  @ManyToOne(() => CartItem, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'cart_item_id' })
+  cart_item: CartItem;
 
  
   // Methods

@@ -20,4 +20,10 @@ export class UpdateCartItemDto {
   @IsOptional()
   @IsJSON()
   customizations?: Record<string, any>;
+
+
+  @ApiPropertyOptional({ description: 'Order ID' })
+  @IsOptional()
+  @IsString()
+  order_id?: string;
 } 

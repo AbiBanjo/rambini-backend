@@ -6,6 +6,7 @@ import {
   Param,
   Logger,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -30,15 +31,19 @@ export class PaymentWebhookController {
   @ApiResponse({ status: 400, description: 'Bad request - Invalid webhook data' })
   @ApiHeader({ name: 'stripe-signature', description: 'Stripe webhook signature' })
   async handleStripeWebhook(
-    @Body() payload: any,
+    @Req() request : any,
     @Headers('stripe-signature') signature: string,
   ): Promise<{ received: boolean }> {
     this.logger.log('Received Stripe webhook');
     
     try {
+      if (!request.rawBody) {
+        console.error('No raw body found in request');
+        throw new BadRequestException('No raw body found in request');
+      }
       await this.paymentService.processWebhook(
         PaymentProvider.STRIPE,
-        payload,
+        request.rawBody,
         signature,
       );
       

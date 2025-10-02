@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { json } from 'express';
 import { 
   DatabaseExceptionFilter, 
   HttpExceptionFilter, 
@@ -63,6 +64,16 @@ async function bootstrap() {
     
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
+
+  app.use('/api/v1/webhooks/payments/stripe', json({
+    verify: (req: any, res: any, buf: Buffer) => {
+      if (req.originalUrl.startsWith('/api/v1/webhooks/payments/stripe')) {
+        req.rawBody = buf;
+      }
+    }
+  }));
+
+  app.use(json())
   
   // Start application
   const port = configService.get('PORT') || 3500;

@@ -218,6 +218,28 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     return [PaymentMethod.PAYSTACK];
   }
 
+  async getBanks(): Promise<any> {
+    try {
+      this.logger.log('Fetching banks from Paystack');
+
+      if (!this.paystackSecretKey) {
+        throw new BadRequestException('Paystack configuration missing');
+      }
+
+      const url = `${this.paystackBaseUrl}/bank`;
+      const response = await this.makePaystackRequest('GET', url);
+
+      if (!response.status) {
+        throw new Error('Failed to fetch banks from Paystack');
+      }
+
+      return response;
+    } catch (error) {
+      this.logger.error(`Failed to fetch banks: ${error.message}`);
+      throw error;
+    }
+  }
+
   // Private helper methods for Paystack API integration
   private async createPaystackTransaction(
     amount: number,

@@ -93,11 +93,7 @@ export class CartService {
     return {
       user_id: userId,
       items: cartItemsResponse,
-      // total_items: summary.total_items,
-      // subtotal: summary.subtotal,
-      // total_amount: summary.subtotal, // No fees applied yet
-      // is_empty: summary.is_empty,
-      // vendor_count: summary.vendor_count,
+
     };
   }
 
@@ -120,7 +116,8 @@ export class CartService {
 
     const updatedCartItem = await this.cartRepository.update(cartItem.id, {
       quantity: cartItem.quantity,
-      total_price: cartItem.total_price
+      total_price: cartItem.total_price,
+      order_id: updateDto.order_id
     });
     this.logger.log(`Cart item ${cartItemId} updated successfully`);
 
@@ -291,6 +288,10 @@ export class CartService {
       category_id: cartItem.menu_item?.category_id || 'Unknown',
       category_name: cartItem.menu_item?.category?.name || 'Unknown',
       tracking_order: hasTrackingOrder,
+      order_id: cartItem.order_id,
+      address_id: cartItem.menu_item?.vendor?.address_id,
+      address_name: cartItem.menu_item?.vendor?.address?.address_line_1 + ' ' + cartItem.menu_item?.vendor?.address?.address_line_2 + ' ' + cartItem.menu_item?.vendor?.address?.city + ' ' + cartItem.menu_item?.vendor?.address?.state + ' ' + cartItem.menu_item?.vendor?.address?.postal_code + ' ' + cartItem.menu_item?.vendor?.address?.country,
+      address_phone: cartItem.menu_item?.vendor?.address?.phone,
     };
   }
 

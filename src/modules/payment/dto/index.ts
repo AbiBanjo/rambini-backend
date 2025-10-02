@@ -5,3 +5,5 @@ export * from './withdrawal-otp-request.dto';
 export * from './withdrawal-request.dto';
 export * from './withdrawal-response.dto';
 export * from './admin-withdrawal-action.dto';
+export * from './bank-list.dto';
+export * from './transaction-history.dto';

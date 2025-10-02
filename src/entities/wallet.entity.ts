@@ -65,22 +65,25 @@ export class Wallet extends BaseEntity {
     return `${this.currency} ${this.balance.toFixed(2)}`;
   }
 
-  // Methods
-  credit(amount: number): void {
+   // Methods
+   credit(amount: number): void {
     if (amount > 0) {
-      this.balance += amount;
+      const currentBalance = Number(this.balance) || 0; // force numeric
+      this.balance = currentBalance + Number(amount);
       this.last_transaction_at = new Date();
     }
   }
 
   debit(amount: number): boolean {
-    if (amount > 0 && this.balance >= amount) {
-      this.balance -= amount;
+    const currentBalance = Number(this.balance) || 0;
+    if (amount > 0 && currentBalance >= amount) {
+      this.balance = currentBalance - Number(amount);
       this.last_transaction_at = new Date();
       return true;
     }
     return false;
   }
+
 
   can_transact(amount: number): boolean {
     return this.is_active && this.balance >= amount;

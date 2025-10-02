@@ -38,17 +38,17 @@ export class Transaction extends BaseEntity {
   @IsEnum(TransactionType)
   transaction_type: TransactionType;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 15, scale: 2 })
   @IsNumber()
   @Min(0)
   amount: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 15, scale: 2 })
   @IsNumber()
   @Min(0)
   balance_before: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 15, scale: 2 })
   @IsNumber()
   @Min(0)
   balance_after: number;

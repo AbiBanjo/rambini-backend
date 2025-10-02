@@ -139,6 +139,12 @@ export class OrderService {
         quantity: cartItem.quantity,
         unit_price: cartItem.unit_price,
         total_price: cartItem.total_price,
+        cart_item_id:cartItem.id
+      });
+
+      // Update cart item with order_id
+      await this.cartService.updateCartItem(customerId, cartItem.id, {
+        order_id: order.id,
       });
     }
 

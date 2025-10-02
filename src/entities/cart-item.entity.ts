@@ -45,6 +45,10 @@ export class CartItem extends BaseEntity {
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
+  @Column({ type: 'varchar', nullable: true })
+  @IsString()
+  order_id?: string;
+
   // Relationships
   @ManyToOne(() => MenuItem, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'menu_item_id' })

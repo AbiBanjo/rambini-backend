@@ -6,6 +6,7 @@ import { PaymentRepository } from '../repositories/payment.repository';
 import { Payment } from 'src/entities/payment.entity';
 import { VendorService } from '@/modules/vendor/services/vendor.service';
 import { FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto/wallet-funding.dto';
+import { TransactionHistoryResponseDto, TransactionQueryDto, TransactionDto } from '../dto/transaction-history.dto';
 
 @Injectable()
 export class WalletPaymentService {
@@ -152,6 +153,9 @@ export class WalletPaymentService {
   ): Promise<void> {
     // Get vendor wallet
     this.logger.log(`Getting vendor wallet for: ${vendorId}`);
+    this.logger.log(`Amount: ${amount}`);
+    this.logger.log(`Order ID: ${orderId}`);
+    this.logger.log(`Payment reference: ${paymentReference}`);
 
     // get vendor with vendor id
     const vendor = await this.vendorService.getVendorById(vendorId);
@@ -176,7 +180,11 @@ export class WalletPaymentService {
 
     this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
 
+    // Store balance before credit for transaction record
+    const balanceBefore = vendorWallet.balance;
+
     // Credit vendor wallet
+    this.logger.log(`vendor wallet balance: ${balanceBefore}`)
     vendorWallet.credit(amount);
 
     await this.walletRepository.save(vendorWallet);
@@ -190,7 +198,7 @@ export class WalletPaymentService {
       wallet_id: vendorWallet.id,
       transaction_type: TransactionType.CREDIT,
       amount: amount,
-      balance_before: vendorWallet.balance - amount,
+      balance_before: balanceBefore,
       balance_after: vendorWallet.balance,
       description: `Payment received for order ${orderId}`,
       reference_id: paymentReference,
@@ -282,6 +290,9 @@ export class WalletPaymentService {
       throw new NotFoundException('Customer wallet not found');
     }
 
+    // Store balance before credit for transaction record
+    const customerBalanceBefore = customerWallet.balance;
+
     // Credit customer wallet
     customerWallet.credit(refundAmount);
     await this.walletRepository.save(customerWallet);
@@ -291,7 +302,7 @@ export class WalletPaymentService {
       wallet_id: customerWallet.id,
       transaction_type: TransactionType.CREDIT,
       amount: refundAmount,
-      balance_before: customerWallet.balance - refundAmount,
+      balance_before: customerBalanceBefore,
       balance_after: customerWallet.balance,
       description: `Refund for order ${order.id}: ${reason || 'No reason provided'}`,
       reference_id: payment.payment_reference,
@@ -631,5 +642,120 @@ export class WalletPaymentService {
       default:
         throw new BadRequestException(`Unsupported payment method for wallet funding: ${paymentMethod}`);
     }
+  }
+
+ 
+  async getTransactionHistory(userId: string): Promise<{ transactions: TransactionDto[] }> {
+    this.logger.log(`Getting transaction history for user ${userId}`);
+
+    // Get user wallet
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('User wallet not found');
+    }
+
+    // Build query
+    const queryBuilder = this.transactionRepository
+      .createQueryBuilder('transaction')
+      .where('transaction.wallet_id = :walletId', { walletId: wallet.id })
+      .orderBy('transaction.created_at', 'DESC');
+
+
+
+    // Execute query
+    const transactions = await queryBuilder.getMany();
+
+    // Convert to DTOs
+    const transactionDtos: TransactionDto[] = transactions.map(transaction => ({
+      id: transaction.id,
+      wallet_id: transaction.wallet_id,
+      transaction_type: transaction.transaction_type,
+      amount: transaction.amount,
+      balance_before: transaction.balance_before,
+      balance_after: transaction.balance_after,
+      description: transaction.description,
+      reference_id: transaction.reference_id,
+      external_reference: transaction.external_reference,
+      status: transaction.status,
+      failure_reason: transaction.failure_reason,
+      processed_at: transaction.processed_at,
+      reversed_at: transaction.reversed_at,
+      reversal_reason: transaction.reversal_reason,
+      metadata: transaction.metadata,
+      created_at: transaction.created_at,
+      updated_at: transaction.updated_at,
+      is_credit: transaction.is_credit,
+      is_debit: transaction.is_debit,
+      is_completed: transaction.is_completed,
+      is_pending: transaction.is_pending,
+      is_failed: transaction.is_failed,
+      is_reversed: transaction.is_reversed,
+    }));
+
+
+
+    return {
+      transactions: transactionDtos,
+    };
+  }
+
+  /**
+   * Get transaction by ID
+   * @param userId User ID
+   * @param transactionId Transaction ID
+   * @returns Promise<TransactionDto>
+   */
+  async getTransactionById(userId: string, transactionId: string): Promise<TransactionDto> {
+    this.logger.log(`Getting transaction ${transactionId} for user ${userId}`);
+
+    // Get user wallet
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('User wallet not found');
+    }
+
+    // Get transaction
+    const transaction = await this.transactionRepository.findOne({
+      where: {
+        id: transactionId,
+        wallet_id: wallet.id,
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    return {
+      id: transaction.id,
+      wallet_id: transaction.wallet_id,
+      transaction_type: transaction.transaction_type,
+      amount: transaction.amount,
+      balance_before: transaction.balance_before,
+      balance_after: transaction.balance_after,
+      description: transaction.description,
+      reference_id: transaction.reference_id,
+      external_reference: transaction.external_reference,
+      status: transaction.status,
+      failure_reason: transaction.failure_reason,
+      processed_at: transaction.processed_at,
+      reversed_at: transaction.reversed_at,
+      reversal_reason: transaction.reversal_reason,
+      metadata: transaction.metadata,
+      created_at: transaction.created_at,
+      updated_at: transaction.updated_at,
+      is_credit: transaction.is_credit,
+      is_debit: transaction.is_debit,
+      is_completed: transaction.is_completed,
+      is_pending: transaction.is_pending,
+      is_failed: transaction.is_failed,
+      is_reversed: transaction.is_reversed,
+    };
   }
 }

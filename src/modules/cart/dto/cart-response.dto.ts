@@ -44,6 +44,18 @@ export class CartItemResponseDto {
 
   @ApiProperty({ description: 'Whether this cart item has a tracking order' })
   tracking_order: boolean;
+
+  @ApiPropertyOptional({ description: 'Order ID if this cart item is part of an order' })
+  order_id?: string;
+
+  @ApiPropertyOptional({ description: 'Address ID if this cart item is part of an order' })
+  address_id?: string;
+
+  @ApiPropertyOptional({ description: 'Address name if this cart item is part of an order' })
+  address_name?: string;
+
+  @ApiPropertyOptional({ description: 'Address phone if this cart item is part of an order' })
+  address_phone?: string;
 }
 
 export class CartResponseDto {

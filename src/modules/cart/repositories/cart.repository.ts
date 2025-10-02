@@ -20,7 +20,7 @@ export class CartRepository {
   async findById(id: string): Promise<CartItem | null> {
     return await this.cartItemRepository.findOne({
       where: { id },
-      relations: ['menu_item', 'menu_item.vendor', 'menu_item.category'],
+      relations: ['menu_item', 'menu_item.vendor', 'menu_item.vendor.address', 'menu_item.category'],
     });
   }
 
@@ -210,6 +210,7 @@ export class CartRepository {
       .createQueryBuilder('cart_item')
       .leftJoinAndSelect('cart_item.menu_item', 'menu_item')
       .leftJoinAndSelect('menu_item.vendor', 'vendor')
+      .leftJoinAndSelect('vendor.address', 'vendor_address')
       .leftJoinAndSelect('menu_item.category', 'category')
       .where('cart_item.user_id = :userId', { userId })
       .andWhere('cart_item.is_active = :isActive', { isActive })
@@ -228,6 +229,7 @@ export class CartRepository {
       .createQueryBuilder('cart_item')
       .leftJoinAndSelect('cart_item.menu_item', 'menu_item')
       .leftJoinAndSelect('menu_item.vendor', 'vendor')
+      .leftJoinAndSelect('vendor.address', 'vendor_address')
       .leftJoinAndSelect('menu_item.category', 'category')
       .where('cart_item.user_id = :userId', { userId })
       .andWhere('cart_item.vendor_id = :vendorId', { vendorId })
@@ -264,6 +266,6 @@ export class CartRepository {
 
 
   async makeCartItemsInactiveForVendor(userId: string, vendorId: string, orderId: string): Promise<void> {
-    await this.cartItemRepository.update({ user_id: userId, vendor_id: vendorId }, { is_active: false });
+    await this.cartItemRepository.update({ user_id: userId, vendor_id: vendorId,order_id: orderId }, { is_active: false });
   }
 } 
