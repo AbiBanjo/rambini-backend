@@ -60,9 +60,14 @@ export class UberDeliveryService implements UberProviderInterface {
 
 
   async createDeliveryQuote(quoteRequest: UberDirectDeliveryQuoteRequestDto): Promise<UberDirectDeliveryQuoteResponseDto> {
+    
     try {
+
+      this.logger.log('Creating delivery quote');
       const token = await this.getAccessToken();
-      
+
+      // https://api.uber.com/v1/customers/{customer_id}/delivery_quotes
+      this.logger.log('Creating delivery quote', `${this.baseUrl}/customers/${this.customerId}/delivery_quotes`);
       const response = await firstValueFrom(
         this.httpService.post(
           `${this.baseUrl}/customers/${this.customerId}/delivery_quotes`,
@@ -78,7 +83,7 @@ export class UberDeliveryService implements UberProviderInterface {
 
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to create delivery quote', error);
+      this.logger.error('Failed to create delivery quote', error.response.data);
       throw new BadRequestException(
         error.response?.data?.message || 'Failed to create delivery quote'
       );
@@ -187,6 +192,7 @@ export class UberDeliveryService implements UberProviderInterface {
 
 
   private async getAccessToken(): Promise<string> {
+    this.logger.log('Getting Uber access token');
     if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
       return this.accessToken;
     }
@@ -194,11 +200,12 @@ export class UberDeliveryService implements UberProviderInterface {
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.baseUrl}/oauth/token`,
+          'https://auth.uber.com/oauth/v2/token',
           {
             grant_type: 'client_credentials',
             client_id: this.clientId,
             client_secret: this.clientSecret,
+            scope: 'eats.deliveries',
           },
           {
             headers: {
@@ -210,10 +217,11 @@ export class UberDeliveryService implements UberProviderInterface {
 
       this.accessToken = response.data.access_token;
       this.tokenExpiry = new Date(Date.now() + (response.data.expires_in * 1000));
-      
+      this.logger.log('Uber access token', this.accessToken);
       return this.accessToken;
     } catch (error) {
       this.logger.error('Failed to get Uber access token', error);
+      this.logger.error('Failed to get Uber access token', error.response.data);
       throw new BadRequestException('Failed to authenticate with Uber');
     }
   }
@@ -563,15 +571,7 @@ export class UberDeliveryService implements UberProviderInterface {
     return this.createDeliveryQuote(quoteRequest);
   }
 
-  /**
-   * Create delivery from standard shipment data
-   * @param shipmentData Standard shipment creation data
-   * @param pickupName Pickup location name
-   * @param dropoffName Dropoff location name
-   * @param manifestItems Manifest items for delivery
-   * @param quoteId Optional quote ID from previous quote
-   * @returns Promise<UberDirectCreateDeliveryResponseDto>
-   */
+
   async createDeliveryFromShipmentData(
     shipmentData: CreateShipmentDto,
     pickupName: string,
@@ -622,7 +622,7 @@ export class UberDeliveryService implements UberProviderInterface {
       name: itemName,
       description: itemDescription,
       quantity: 1,
-      value: Math.round((packageData.value || 0) * 100), // Convert to cents
+      price: Math.round((packageData.value || 0) * 100), // Convert to cents
       weight: Math.round((packageData.weight || 0) * 1000), // Convert kg to grams
       dimensions: {
         length: packageData.length || 0,

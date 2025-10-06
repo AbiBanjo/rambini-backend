@@ -8,6 +8,7 @@ import { DeliveryService } from 'src/modules/delivery/services/delivery.service'
 import { DeliveryProviderSelectorService } from 'src/modules/delivery/services/delivery-provider-selector.service';
 import { DeliveryQuoteService } from 'src/modules/delivery/services/delivery-quote.service';
 import { VendorService } from 'src/modules/vendor/services/vendor.service';
+import { NotificationSSEService } from 'src/modules/notification/services/notification-sse.service';
 import { 
   CreateOrderDto, 
   UpdateOrderStatusDto, 
@@ -38,6 +39,7 @@ export class OrderService {
     private readonly deliveryProviderSelector: DeliveryProviderSelectorService,
     private readonly deliveryQuoteService: DeliveryQuoteService,
     private readonly vendorService: VendorService,
+    private readonly notificationSSEService: NotificationSSEService,
   ) {}
 
   async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto | OrderPaymentResponseDto> {
@@ -59,22 +61,16 @@ export class OrderService {
       const vendorCurrency = getCurrencyForCountry(vendor.address.country);
 
     // Validate delivery address if there is one and get country for provider selection
-    let deliveryAddress = null;
-    let selectedDeliveryProvider = null;
+    let deliveryFee = 0;
     
     if (createOrderDto.order_type === OrderType.DELIVERY) {
-      if (!createOrderDto.delivery_address_id) {
-        throw new BadRequestException('Delivery address is required for delivery orders');
-      }
       
-      deliveryAddress = await this.addressService.getAddressById(customerId, createOrderDto.delivery_address_id);
-      if (!deliveryAddress) {
-        throw new NotFoundException('Delivery address not found');
+      const deliveryQuote = await this.deliveryQuoteService.getQuoteById(createOrderDto.delivery_quote_id);
+      if (!deliveryQuote) {
+        throw new NotFoundException('Delivery quote not found');
       }
+      deliveryFee = deliveryQuote.fee;
       
-      // Select delivery provider based on country
-      selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(deliveryAddress.country);
-      this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for country: ${deliveryAddress.country}`);
     }
 
  
@@ -93,14 +89,11 @@ export class OrderService {
       throw new BadRequestException(`Cart validation failed: ${cartValidation.issues.join(', ')}`);
     }
 
-    const { cartItems, vendorId, subtotal } = cartValidation;
-
-    // Calculate fees and totals
-    const deliveryFee = this.calculateDeliveryFee(createOrderDto.order_type, subtotal);
+    const { cartItems, vendorId, subtotal } = cartValidation
 
     this.logger.log(`Delivery fee: ${deliveryFee}`);
   
-    const totalAmount = subtotal + deliveryFee
+    const totalAmount =Number(subtotal) + Number(deliveryFee)
 
     // Determine currency based on delivery address or use provided currency
     let orderCurrency = vendorCurrency;
@@ -116,7 +109,6 @@ export class OrderService {
       customer_id: customerId,
       vendor_id: vendorId,
       delivery_address_id: createOrderDto.order_type === OrderType.PICKUP ? null : createOrderDto.delivery_address_id,
-      delivery_provider: selectedDeliveryProvider,
       order_status: OrderStatus.NEW,
       order_type: createOrderDto.order_type,
       payment_method: createOrderDto.payment_method,
@@ -127,6 +119,7 @@ export class OrderService {
       currency: orderCurrency,
       special_instructions: createOrderDto.delivery_instructions,
       vendor_notes: createOrderDto.vendor_notes,
+      delivery_quote_id:createOrderDto.delivery_quote_id
     });
 
     this.logger.log(`Order created: ${order.id}`);
@@ -340,6 +333,8 @@ export class OrderService {
     if (!vendor) {
       throw new NotFoundException('Vendor not found');
     }
+    // make payment status paid 
+    filterDto.payment_status = PaymentStatus.PAID;
     const result = await this.orderRepository.findByVendorId(vendor.id, filterDto);
     
     const orders = result.orders.map(order => this.mapToOrderResponse(order));
@@ -399,11 +394,52 @@ export class OrderService {
         if (updateDto.estimated_delivery_time) {
           updateData.estimated_delivery_time = new Date(updateDto.estimated_delivery_time);
         }
+        
+        // If this is a delivery order, create delivery
+        if (order.order_type === OrderType.DELIVERY && order.delivery_quote_id) {
+          try {
+            this.logger.log(`Creating delivery for order ${orderId} with quote ${order.delivery_quote_id}`);
+            const deliveryResult = await this.deliveryService.createDelivery(order.delivery_quote_id, orderId);
+            this.logger.log(`Delivery created successfully: ${deliveryResult.id} with tracking number: ${deliveryResult.trackingNumber}`);
+            
+          } catch (error) {
+            this.logger.error(`Failed to create delivery for order ${orderId}: ${error.message}`);
+            // Don't fail the order status update, just log the error
+            // The order can still be marked as ready even if delivery creation fails
+          }
+        }
+
+        // Send SSE notification to customer about order being ready
+        try {
+          this.notificationSSEService.sendOrderUpdate(
+            order.customer_id,
+            orderId,
+            updateDto.order_status,
+            `Your order ${order.order_number} is ready for ${order.order_type === OrderType.DELIVERY ? 'delivery' : 'pickup'}!`
+          );
+          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+          // Don't fail the order status update if SSE fails
+        }
         break;
 
       case OrderStatus.OUT_FOR_DELIVERY:
         if (updateDto.estimated_delivery_time) {
           updateData.estimated_delivery_time = new Date(updateDto.estimated_delivery_time);
+        }
+        
+        // Send SSE notification to customer about order being out for delivery
+        try {
+          this.notificationSSEService.sendOrderUpdate(
+            order.customer_id,
+            orderId,
+            updateDto.order_status,
+            `Your order ${order.order_number} is out for delivery! Track your order for real-time updates.`
+          );
+          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
         }
         break;
 
@@ -415,12 +451,38 @@ export class OrderService {
         if (updateDto.customer_review) {
           updateData.customer_review = updateDto.customer_review;
         }
+        
+        // Send SSE notification to customer about order being delivered
+        try {
+          this.notificationSSEService.sendOrderUpdate(
+            order.customer_id,
+            orderId,
+            updateDto.order_status,
+            `Your order ${order.order_number} has been delivered! Thank you for choosing Rambini.`
+          );
+          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+        }
         break;
 
       case OrderStatus.CANCELLED:
         updateData.cancelled_at = new Date();
         updateData.cancellation_reason = updateDto.reason || 'Cancelled by vendor';
         updateData.cancelled_by = 'VENDOR';
+        
+        // Send SSE notification to customer about order being cancelled
+        try {
+          this.notificationSSEService.sendOrderUpdate(
+            order.customer_id,
+            orderId,
+            updateDto.order_status,
+            `Your order ${order.order_number} has been cancelled. ${updateDto.reason || 'Please contact support for more information.'}`
+          );
+          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+        }
         break;
     }
 
@@ -519,14 +581,14 @@ export class OrderService {
     return orders.map(order => this.mapToOrderResponse(order));
   }
 
-  private calculateDeliveryFee(orderType: OrderType, subtotal: number): number {
-    if (orderType === OrderType.PICKUP) {
-      return 0;
-    }
+  // private calculateDeliveryFee(orderType: OrderType, subtotal: number): number {
+  //   if (orderType === OrderType.PICKUP) {
+  //     return 0;
+  //   }
     
-    // Base delivery fee: ₦200 for orders under ₦1000, ₦100 for orders over ₦1000
-    return subtotal < 1000 ? 200 : 100;
-  }
+  //   // Base delivery fee: ₦200 for orders under ₦1000, ₦100 for orders over ₦1000
+  //   return subtotal < 1000 ? 200 : 100;
+  // }
 
   private calculateServiceFee(subtotal: number): number {
     // 5% service fee

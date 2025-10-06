@@ -1,13 +1,14 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Withdrawal, WithdrawalStatus, User, Currency, Country } from '../../../entities';
+import { Withdrawal, WithdrawalStatus, User, Currency, Country, Bank } from '../../../entities';
 import { WithdrawalRepository } from '../repositories/withdrawal.repository';
+import { BankRepository } from '../repositories/bank.repository';
 import { RedisService } from '../../../database/redis.service';
 import { EmailNotificationService } from '../../notification/services/email-notification.service';
 import { NotificationService } from '../../notification/notification.service';
 import { WalletPaymentService } from './wallet-payment.service';
-import { WithdrawalOtpRequestDto, WithdrawalRequestDto, WithdrawalResponseDto, AdminWithdrawalActionDto } from '../dto';
+import { WithdrawalOtpRequestDto, WithdrawalRequestDto, WithdrawalResponseDto, AdminWithdrawalActionDto, BankCreateDto, BankUpdateDto, BankResponseDto } from '../dto';
 
 export interface OTPData {
   userId: string;
@@ -28,7 +29,10 @@ export class WithdrawalService {
     private readonly withdrawalRepository: Repository<Withdrawal>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Bank)
+    private readonly bankRepository: Repository<Bank>,
     private readonly withdrawalRepo: WithdrawalRepository,
+    private readonly bankRepo: BankRepository,
     private readonly redisService: RedisService,
     private readonly emailNotificationService: EmailNotificationService,
     private readonly notificationService: NotificationService,
@@ -324,7 +328,103 @@ export class WithdrawalService {
     return this.mapToResponseDto(await this.withdrawalRepo.findById(withdrawalId));
   }
 
-  private async   sendWithdrawalOTPEmail(user: User, otpCode: string): Promise<void> {
+  // Bank management methods
+  async createBank(userId: string, bankData: BankCreateDto): Promise<BankResponseDto> {
+    this.logger.log(`Creating bank for user ${userId}`);
+
+    // Check if bank with same account number already exists for this user
+    const existingBank = await this.bankRepo.findByAccountNumber(userId, bankData.account_number);
+    if (existingBank) {
+      throw new BadRequestException('Bank account with this account number already exists');
+    }
+
+    // Check if bank with same name and bank name already exists
+    const existingBankByName = await this.bankRepo.findByBankNameAndAccountNumber(
+      userId, 
+      bankData.bank_name, 
+      bankData.account_number
+    );
+    if (existingBankByName) {
+      throw new BadRequestException('Bank account with this name and bank already exists');
+    }
+
+    const bank = await this.bankRepo.create({
+      user_id: userId,
+      name: bankData.name,
+      bank_name: bankData.bank_name,
+      account_number: bankData.account_number,
+    });
+
+    this.logger.log(`Bank created: ${bank.id} for user ${userId}`);
+    return this.mapBankToResponseDto(bank);
+  }
+
+  async getUserBanks(userId: string): Promise<BankResponseDto[]> {
+    this.logger.log(`Getting banks for user ${userId}`);
+    const banks = await this.bankRepo.findByUserId(userId);
+    return banks.map(bank => this.mapBankToResponseDto(bank));
+  }
+
+  async getBankById(userId: string, bankId: string): Promise<BankResponseDto> {
+    this.logger.log(`Getting bank ${bankId} for user ${userId}`);
+    const bank = await this.bankRepo.findByUserIdAndId(userId, bankId);
+    if (!bank) {
+      throw new NotFoundException('Bank not found');
+    }
+    return this.mapBankToResponseDto(bank);
+  }
+
+  async updateBank(userId: string, bankId: string, bankData: BankUpdateDto): Promise<BankResponseDto> {
+    this.logger.log(`Updating bank ${bankId} for user ${userId}`);
+
+    const existingBank = await this.bankRepo.findByUserIdAndId(userId, bankId);
+    if (!existingBank) {
+      throw new NotFoundException('Bank not found');
+    }
+
+    // Check if updating account number would create a duplicate
+    if (bankData.account_number && bankData.account_number !== existingBank.account_number) {
+      const duplicateBank = await this.bankRepo.findByAccountNumber(userId, bankData.account_number);
+      if (duplicateBank && duplicateBank.id !== bankId) {
+        throw new BadRequestException('Bank account with this account number already exists');
+      }
+    }
+
+    // Check if updating bank name and account number would create a duplicate
+    if (bankData.bank_name && bankData.account_number) {
+      const duplicateBank = await this.bankRepo.findByBankNameAndAccountNumber(
+        userId, 
+        bankData.bank_name, 
+        bankData.account_number
+      );
+      if (duplicateBank && duplicateBank.id !== bankId) {
+        throw new BadRequestException('Bank account with this name and bank already exists');
+      }
+    }
+
+    const updatedBank = await this.bankRepo.update(bankId, bankData);
+    this.logger.log(`Bank updated: ${bankId} for user ${userId}`);
+    return this.mapBankToResponseDto(updatedBank);
+  }
+
+  async deleteBank(userId: string, bankId: string): Promise<{ message: string }> {
+    this.logger.log(`Deleting bank ${bankId} for user ${userId}`);
+
+    const existingBank = await this.bankRepo.findByUserIdAndId(userId, bankId);
+    if (!existingBank) {
+      throw new NotFoundException('Bank not found');
+    }
+
+    const deleted = await this.bankRepo.delete(bankId);
+    if (!deleted) {
+      throw new BadRequestException('Failed to delete bank');
+    }
+
+    this.logger.log(`Bank deleted: ${bankId} for user ${userId}`);
+    return { message: 'Bank deleted successfully' };
+  }
+
+  private async sendWithdrawalOTPEmail(user: User, otpCode: string): Promise<void> {
     try {
       const notification = await this.notificationService.createNotification(
         user.id,
@@ -520,5 +620,18 @@ export class WithdrawalService {
       return '*'.repeat(accountNumber.length);
     }
     return '*'.repeat(accountNumber.length - 4) + accountNumber.slice(-4);
+  }
+
+  private mapBankToResponseDto(bank: Bank): BankResponseDto {
+    return {
+      id: bank.id,
+      user_id: bank.user_id,
+      name: bank.name,
+      bank_name: bank.bank_name,
+      account_number: bank.masked_account_number,
+      display_name: bank.display_name,
+      created_at: bank.created_at,
+      updated_at: bank.updated_at,
+    };
   }
 }

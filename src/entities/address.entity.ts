@@ -91,6 +91,8 @@ export class Address extends BaseEntity {
   @JoinColumn({ name: 'user_id' })
   user: any;
 
+  
+
   // Virtual properties
   get full_address(): string {
     const parts = [

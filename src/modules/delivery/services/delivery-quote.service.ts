@@ -289,6 +289,22 @@ export class DeliveryQuoteService {
 
 
   /**
+   * Mark quote as selected
+   */
+  async markQuoteAsSelected(quoteId: string, selectedBy: string, reason?: string): Promise<DeliveryQuote> {
+    const quote = await this.deliveryQuoteRepository.findOne({
+      where: { id: quoteId },
+    });
+
+    if (!quote) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    quote.markAsSelected(selectedBy, reason);
+    return await this.deliveryQuoteRepository.save(quote);
+  }
+
+  /**
    * Mark quote as used
    */
   async markQuoteAsUsed(quoteId: string, deliveryId: string): Promise<DeliveryQuote> {

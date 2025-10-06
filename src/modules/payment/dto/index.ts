@@ -7,3 +7,6 @@ export * from './withdrawal-response.dto';
 export * from './admin-withdrawal-action.dto';
 export * from './bank-list.dto';
 export * from './transaction-history.dto';
+export * from './bank-create.dto';
+export * from './bank-update.dto';
+export * from './bank-response.dto';

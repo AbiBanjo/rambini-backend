@@ -9,6 +9,7 @@ import { AuthModule } from 'src/modules/auth/auth.module';
 import { PaymentModule } from 'src/modules/payment/payment.module';
 import { DeliveryModule } from 'src/modules/delivery/delivery.module';
 import { VendorModule } from 'src/modules/vendor/vendor.module';
+import { NotificationModule } from 'src/modules/notification/notification.module';
 
 // Controllers
 import { OrderController } from './controllers/order.controller';
@@ -30,6 +31,7 @@ import { OrderRepository } from './repositories/order.repository';
     forwardRef(() => PaymentModule), // Import PaymentModule to get access to PaymentService
     DeliveryModule, // Import DeliveryModule to get access to DeliveryService
     VendorModule, // Import VendorModule to get access to VendorService
+    NotificationModule, // Import NotificationModule to get access to NotificationSSEService
   ],
   controllers: [
     OrderController,

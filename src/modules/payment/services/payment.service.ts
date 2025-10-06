@@ -329,7 +329,7 @@ export class PaymentService {
     if (newStatus === PaymentTransactionStatus.COMPLETED) {
       await this.orderRepository.update(payment.order_id, {
         payment_status: PaymentStatus.PAID,
-        order_status: OrderStatus.CONFIRMED
+        order_status: OrderStatus.NEW
       });
     }
 

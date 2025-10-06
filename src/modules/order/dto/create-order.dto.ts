@@ -13,6 +13,11 @@ export class CreateOrderDto {
   @IsOptional()
   delivery_address_id?: string;
 
+  @ApiPropertyOptional({ description: 'Delivery quote ID (optional - if provided, will use this quote for delivery fee calculation)' })
+  @IsString()
+  @IsOptional()
+  delivery_quote_id?: string;
+
   @ApiProperty({ description: 'Order type', enum: OrderType })
   @IsEnum(OrderType)
   order_type: OrderType;

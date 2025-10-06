@@ -136,10 +136,18 @@ export class VendorService {
     });
   }
 
+  // i should add where orderId is null here 
   async getVendorById(vendorId: string): Promise<Vendor | null> {
     return await this.vendorRepository.findOne({
       where: { id: vendorId },
-      relations: ['address'], // Include address details
+      relations: ['address', 'user'], // Include address details
+    });
+  }
+
+  async getVendorByIdForDelivery(vendorId: string): Promise<Vendor | null> {
+    return await this.vendorRepository.findOne({
+      where: { id: vendorId },
+      relations: ['address', 'user'], // Include address details
     });
   }
 

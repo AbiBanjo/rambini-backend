@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Address, AddressType } from '../../../entities';
+import { Address, AddressType, User } from '../../../entities';
 import { ConfigService } from '@nestjs/config';
 // import { ShipbubbleDeliveryService } from '../../delivery/services/shipbubble-delivery.service';
 
@@ -25,6 +25,8 @@ export class AddressService {
   constructor(
     @InjectRepository(Address)
     private readonly addressRepository: Repository<Address>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly configService: ConfigService,
     // @Inject(forwardRef(() => ShipbubbleDeliveryService))
     // private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
@@ -112,6 +114,32 @@ export class AddressService {
     }
 
     return address;
+  }
+
+  async getAddressByIdForDelivery(userId: string, addressId: string): Promise<any> {
+    const address = await this.addressRepository.findOne({
+      where: { id: addressId, user_id: userId },
+    });
+
+    if (!address) {
+      throw new NotFoundException('Address not found');
+    }
+
+    // get user by id
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+    
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      ...address,
+      phone: user.phone_number,
+      email: user.email,
+      name: user.full_name,
+    };
   }
 
   async getAddressByIdWithoutValidation(addressId: string): Promise<Address | null> {

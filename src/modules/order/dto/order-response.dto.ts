@@ -55,6 +55,9 @@ export class OrderResponseDto {
   @ApiProperty({ description: 'Delivery address ID' })
   delivery_address_id: string;
 
+  @ApiPropertyOptional({ description: 'Delivery quote ID' })
+  delivery_quote_id?: string;
+
   @ApiProperty({ description: 'Order status', enum: OrderStatus })
   order_status: OrderStatus;
 

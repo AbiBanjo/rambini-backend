@@ -249,6 +249,8 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     metadata?: Record<string, any>
   ): Promise<any> {
     const url = `${this.paystackBaseUrl}/transaction/initialize`;
+
+    this.logger.log(`currency: ${currency}`);
     
     const requestBody = {
       amount: Math.round(amount * 100), // Convert to kobo

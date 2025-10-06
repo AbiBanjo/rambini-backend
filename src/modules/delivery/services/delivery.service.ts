@@ -50,9 +50,6 @@ export class DeliveryService {
 
   ) {}
 
-  /**
-   * Get appropriate delivery provider based on country
-   */
   private getProviderByCountry(country: string) {
     return this.providerFactory.getProviderByCountry(country);
   }
@@ -60,19 +57,23 @@ export class DeliveryService {
 
   async intializeDelivery (user_id: string,userDetails:{name: string, email: string, phone: string}, intializeDto : IntializeDeliveryDto) {
 
-    const customerAddress = await this.addressService.getAddressById(user_id, intializeDto.customer_address_id);
+    const customerAddress = await this.addressService.getAddressByIdForDelivery(user_id, intializeDto.customer_address_id);
 
     const vendor = await this.vendorService.getVendorById(intializeDto.vendor_id);
     // get user cart items for this vendor
     const {subtotal, items} = await this.cartService.getCartByVendor(user_id, vendor.id);
-    console.log(vendor.address.country);
+    this.logger.log('Subtotal', subtotal);
     // select delivery provider based on vendor country
      const selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(vendor.address.country);
+    // const selectedDeliveryProvider = DeliveryProvider.UBER;
+    // const selectedDeliveryProvider = DeliveryProvider.SHIPBUBBLE;
 
       // Initialize delivery fee and provider
     let deliveryFee = 0;
 
     try {
+
+      this.logger.log('Getting delivery quote');
       // Validate and get delivery quotes
       const deliveryQuoteResult = await this.getDeliveryQuoteForOrder(
         vendor,
@@ -83,6 +84,8 @@ export class DeliveryService {
         userDetails
       );
       
+      deliveryFee = deliveryQuoteResult.fee;
+      this.logger.log('Delivery quote result', deliveryQuoteResult);
       // let currency be based on vendor country
       const currency = getCurrencyForCountry(vendor.address.country);
       
@@ -93,7 +96,34 @@ export class DeliveryService {
         provider_quote_id: deliveryQuoteResult.quote_id,
         provider_request_token: deliveryQuoteResult.quote_requestToken,
         service_code: deliveryQuoteResult.qoute_ServiceCode,
+        courier_id: deliveryQuoteResult.courier_id,
         currency: currency,
+        quantity_of_items: items.length,
+        items_price: subtotal,
+        origin_address: {
+          address: vendor.address.address_line_1,
+          city: vendor.address.city,
+          state: vendor.address.state,
+          country: vendor.address.country,
+          postalCode: vendor.address.postal_code,
+          latitude: vendor.address.latitude,
+          longitude: vendor.address.longitude,
+          phone: vendor.user.phone_number,
+          email: vendor.user.email,
+          name: vendor.user.full_name,
+        },
+        destination_address: {
+          address: customerAddress.address_line_1,
+          city: customerAddress.city,
+          state: customerAddress.state,
+          country: customerAddress.country,
+          postalCode: customerAddress.postal_code,
+          latitude: customerAddress.latitude,
+          longitude: customerAddress.longitude,
+          phone: customerAddress.phone,
+          email: customerAddress.email,
+          name: customerAddress.name,
+        }
       });
 
       await this.deliveryQuoteRepository.save(deliveryQuote);
@@ -106,6 +136,7 @@ export class DeliveryService {
       }
       
     } catch (error) {
+      this.logger.error('Failed to get delivery quotes', error);
       throw new BadRequestException('Failed to get delivery quotes');
     }
 
@@ -146,12 +177,10 @@ export class DeliveryService {
 
  
   async createDelivery(
+    deliveryQuoteId: string,
     orderId: string,
-    shipmentData: CreateShipmentDto,
-    userInfo?: { name: string; email: string; phone: string },
   ): Promise<DeliveryResponseDto> {
-    const country = shipmentData.destination.country;
-    this.logger.log(`Creating delivery for order ${orderId} in country ${country}`);
+    this.logger.log(`Creating delivery for order ${orderId} using delivery quote ${deliveryQuoteId}`);
 
     // Check if delivery already exists for this order
     const existingDelivery = await this.deliveryRepository.findByOrderId(orderId);
@@ -159,65 +188,134 @@ export class DeliveryService {
       throw new BadRequestException('Delivery already exists for this order');
     }
 
-    const deliveryProvider = this.getProviderByCountry(country);
-    if (!deliveryProvider) {
-      throw new BadRequestException(`No delivery provider available for country: ${country}`);
+    // Get the delivery quote
+    const deliveryQuote = await this.deliveryQuoteRepository.findOne({
+      where: { id: deliveryQuoteId }
+    });
+
+    if (!deliveryQuote) {
+      throw new NotFoundException('Delivery quote not found');
     }
 
-    // Determine provider type for database storage
-    const providerType = this.providerFactory.isShipbubbleCountry(country) 
-      ? DeliveryProvider.SHIPBUBBLE 
-      : DeliveryProvider.UBER;
+    // if (!deliveryQuote.canBeUsed()) {
+    //   throw new BadRequestException('Delivery quote cannot be used (expired or not selected)');
+    // }
 
-    // Note: Address validation should be done separately before creating delivery
-    // The delivery service assumes the address has already been validated
-    // Use the validateAddressForDelivery method in AddressService before calling this method
+    // Get the appropriate provider based on the quote
+    let deliveryResult: any;
+    let trackingNumber: string;
+    let referenceNumber: string;
+    let labelUrl: string;
 
-    // Get delivery rates to find the selected rate (legacy support)
-    if ('getDeliveryRates' in deliveryProvider && typeof deliveryProvider.getDeliveryRates === 'function') {
-      const rates = await deliveryProvider.getDeliveryRates({
-        origin: shipmentData.origin,
-        destination: shipmentData.destination,
-        package: shipmentData.package,
-        couriers: [shipmentData.courier],
-      });
+    if (deliveryQuote.provider === DeliveryProvider.UBER) {
+      // Use Uber's createDelivery method
+      this.logger.log('Creating delivery with Uber Direct');
+      
+      // Get Uber delivery service
+      const uberService = this.uberDeliveryService;
+      
+      // Create delivery request from quote data
+      const deliveryRequest = {
+        pickup_name: deliveryQuote.origin_address?.name || 'Vendor', // This should come from vendor data
+        pickup_address: JSON.stringify(deliveryQuote.origin_address),
+        pickup_phone_number: deliveryQuote.origin_address?.phone || '+1234567890', // This should come from vendor data
+        dropoff_name: deliveryQuote.destination_address?.name || 'Customer', // This should come from order data
+        dropoff_address: JSON.stringify(deliveryQuote.destination_address),
+        dropoff_phone_number: deliveryQuote.destination_address?.phone || '+1234567890', // This should come from order data
+        manifest_items: [{
+          name: 'Food Order',
+          description: 'Food delivery order',
+          quantity: deliveryQuote.quantity_of_items || 1,
+          price: Math.round((deliveryQuote.items_price || 0) * 100), // Convert to cents
+          // weight: Math.round((deliveryQuote.package_details?.weight || 0) * 1000), // Convert kg to grams
+          // dimensions: {
+          //   length: deliveryQuote.package_details?.length || 30,
+          //   width: deliveryQuote.package_details?.width || 30,
+          //   height: deliveryQuote.package_details?.height || 15,
+          // },
+        }],
+        manifest_total_value: Math.round((deliveryQuote.package_details?.value || 0) * 100),
+        pickup_ready_dt: new Date(Date.now() + 20 * 60 * 1000).toISOString(), // 20 minutes from now
+        pickup_deadline_dt: new Date(Date.now() + 50 * 60 * 1000).toISOString(), // 50 minutes from now
+        dropoff_ready_dt: new Date(Date.now() + 50 * 60 * 1000).toISOString(), // 50 minutes from now
+        dropoff_deadline_dt: new Date(Date.now() + 140 * 60 * 1000).toISOString(), // 140 minutes from now
+        manifest_reference: orderId,
+        external_store_id: orderId,
+        external_id: orderId,
+        quote_id: deliveryQuote.provider_quote_id,
+        deliverable_action: 'deliverable_action_meet_at_door' as const,
+        undeliverable_action: 'return' as const,
+        dropoff_notes: 'Please ring the doorbell',
+      };
 
-      const selectedRate = rates.find(rate => rate.rateId === shipmentData.rateId);
-      if (!selectedRate) {
-        throw new BadRequestException('Selected rate not found');
-      }
+      deliveryResult = await uberService.createDelivery(deliveryRequest);
+      trackingNumber = deliveryResult.id;
+      referenceNumber = deliveryResult.external_id || orderId;
+      labelUrl = deliveryResult.tracking_url;
 
-      // Create shipment with provider (legacy support)
-      if ('createShipment' in deliveryProvider && typeof deliveryProvider.createShipment === 'function') {
-        const shipmentResult = await deliveryProvider.createShipment(shipmentData);
-        if (!shipmentResult.success) {
-          throw new BadRequestException(shipmentResult.error || 'Failed to create shipment');
-        }
+    } else if (deliveryQuote.provider === DeliveryProvider.SHIPBUBBLE) {
+      // Use Shipbubble's createShipmentLabel method
+      this.logger.log('Creating shipment label with Shipbubble');
+      
+      // Get Shipbubble delivery service
+      const shipbubbleService = this.shipbubbleDeliveryService;
+      
+      // Create shipment request from quote data
+      const shipmentRequest = {
+        request_token: deliveryQuote.provider_request_token,
+        courier_id: deliveryQuote.courier_id,
+        service_code: deliveryQuote.service_code,
+        // package_items: deliveryQuote.package_details?.items || [{
+        //   name: 'Food Order',
+        //   description: 'Food delivery order',
+        //   unit_weight: (deliveryQuote.package_details?.weight || 0.5).toString(),
+        //   unit_amount: (deliveryQuote.package_details?.value || 0).toString(),
+        //   quantity: deliveryQuote.quantity_of_items,
+        // }],
+        // package_dimension: {
+        //   length: deliveryQuote.package_details?.length || 30,
+        //   width: deliveryQuote.package_details?.width || 30,
+        //   height: deliveryQuote.package_details?.height || 15,
+        // },
+        // pickup_date: new Date().toISOString().split('T')[0], // Today's date
+      };
 
-        // Create delivery record
-        const delivery = await this.deliveryRepository.create({
-          order_id: orderId,
-          provider: providerType,
-          tracking_number: shipmentResult.trackingNumber!,
-          cost: selectedRate.amount,
-          currency: selectedRate.currency,
-          courier_name: selectedRate.courierName,
-          service_type: selectedRate.serviceName,
-          rate_id: shipmentData.rateId,
-          reference_number: shipmentResult.reference,
-          label_url: shipmentResult.labelUrl,
-          estimated_delivery: new Date(Date.now() + selectedRate.estimatedDays * 24 * 60 * 60 * 1000),
-          origin_address: shipmentData.origin,
-          destination_address: shipmentData.destination,
-          package_details: shipmentData.package,
-          status: ShipmentStatus.PENDING,
-        });
+      this.logger.log('Shipment request', shipmentRequest);
 
-        return this.mapToDeliveryResponse(delivery);
-      }
+      deliveryResult = await shipbubbleService.createShipmentLabel(shipmentRequest);
+      this.logger.log('Shipment response', deliveryResult);
+      trackingNumber = deliveryResult.data.tracking_number;
+      referenceNumber = deliveryResult.data.reference_number || orderId;
+      labelUrl = deliveryResult.data.label_url;
+
+    } else {
+      throw new BadRequestException(`Unsupported delivery provider: ${deliveryQuote.provider}`);
     }
 
-    throw new BadRequestException('Provider does not support legacy shipment creation');
+    // Create delivery record
+    const delivery = await this.deliveryRepository.create({
+      order_id: orderId,
+      provider: deliveryQuote.provider,
+      tracking_number: trackingNumber,
+      cost: deliveryQuote.fee,
+      currency: deliveryQuote.currency,
+      courier_name: deliveryQuote.courier_name || deliveryQuote.getDisplayName(),
+      service_type: deliveryQuote.service_code || deliveryQuote.service_type || 'standard',
+      rate_id: deliveryQuote.provider_quote_id || deliveryQuote.id,
+      reference_number: referenceNumber,
+      label_url: labelUrl,
+      estimated_delivery: deliveryQuote.estimated_delivery_time || new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      origin_address: deliveryQuote.origin_address,
+      destination_address: deliveryQuote.destination_address,
+      package_details: deliveryQuote.package_details,
+      status: ShipmentStatus.PENDING,
+    });
+
+    // Mark the delivery quote as used
+    deliveryQuote.markAsUsed(delivery.id);
+    await this.deliveryQuoteRepository.save(deliveryQuote);
+
+    return this.mapToDeliveryResponse(delivery);
   }
 
  
@@ -471,7 +569,6 @@ export class DeliveryService {
     };
   }
 
-
   private async getDeliveryQuoteForOrder(
     vendor: any,
     deliveryAddress: any,
@@ -479,13 +576,14 @@ export class DeliveryService {
     subtotal: number,
     provider: DeliveryProvider,
     userDetails: {name: string, email: string, phone: string}
-  ): Promise<{fee: number, quote_requestToken?: string , quote_id:string, qoute_ServiceCode?:string}> {
+  ): Promise<{fee: number, quote_requestToken?: string , quote_id:string, qoute_ServiceCode?:string, courier_id?:string}> {
     this.logger.log(`Getting delivery quotes for provider: ${provider}`);
 
     // Validate addresses and get address codes for Shipbubble
     if (provider === DeliveryProvider.SHIPBUBBLE) {
       return await this.getShipbubbleQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal, userDetails);
     } else if (provider === DeliveryProvider.UBER) {
+      this.logger.log('Getting Uber quote');
       return await this.getUberQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal);
     }
 
@@ -498,62 +596,76 @@ export class DeliveryService {
     cartItems: any[],
     subtotal: number,
     userDetails: {name: string, email: string, phone: string}
-  ): Promise<{fee: number, qoute_requestToken: string , qoute_ServiceCode:string, quote_id:string}> {
+  ): Promise<{fee: number, quote_requestToken: string, quote_ServiceCode: string, quote_id: string, courier_id: string}> {
     const shipbubbleService = this.shipbubbleDeliveryService;
 
-    // Validate vendor address and get/save address code
-    const vendorAddressValidation = await shipbubbleService.validateAddress({
-      name: vendor.business_name || 'Vendor',
-      email: vendor.email || 'vendor@example.com',
-      phone: vendor.phone || '+2348000000000',
-      // address: `${vendor.address.address_line_1}, ${vendor.address.city}, ${vendor.address.state}`,
-      address:"15 Babatunde Jose St, Victoria Island, Lagos",
-      // latitude: vendor.address.latitude,
-      // longitude: vendor.address.longitude,
-    });
+    let vendorAddressCode = vendor.address.shipbubble_address_code;
+    let customerAddressCode = deliveryAddress.shipbubble_address_code;
 
-    if (!vendorAddressValidation.success || !vendorAddressValidation.data) {
-      throw new Error('Vendor address validation failed');
+    // Check if vendor address doesn't have shipbubble address code, if not validate it
+    if (!vendorAddressCode) {
+      // Validate vendor address and get/save address code
+      const vendorAddressValidation = await shipbubbleService.validateAddress({
+        name: vendor.business_name || 'Vendor',
+        email: vendor.email || 'vendor@example.com',
+        phone: vendor.phone || '+2348000000000',
+        address: `${vendor.address.address_line_1}, ${vendor.address.city} ${vendor.address.postal_code}, ${vendor.address.state}, Nigeria`,
+        latitude: vendor.address.latitude,
+        longitude: vendor.address.longitude,
+      });
+
+      if (!vendorAddressValidation.success || !vendorAddressValidation.data) {
+        throw new Error('Vendor address validation failed');
+      }
+
+      // Update vendor address with Shipbubble address code if needed
+      if (vendorAddressValidation.data.address_code) {
+        vendorAddressCode = vendorAddressValidation.data.address_code;
+        await this.addressService.updateAddressCode(vendor.address.id, vendorAddressCode);
+      }
     }
 
-    // Update vendor address with Shipbubble address code if needed
-    if (vendorAddressValidation.data.address_code) {
-      await this.addressService.updateAddressCode(vendor.address.id, vendorAddressValidation.data.address_code);
-    }
+    if (!customerAddressCode) {
+      // Validate customer delivery address and get/save address code
+      const customerAddressValidation = await shipbubbleService.validateAddress({
+        name: userDetails.name, 
+        email: userDetails.email, 
+        phone: userDetails.phone, 
+        address: `${deliveryAddress.address_line_1}, ${deliveryAddress.city} ${deliveryAddress.postal_code}, ${deliveryAddress.state}, Nigeria`,
+        latitude: deliveryAddress.latitude,
+        longitude: deliveryAddress.longitude,
+      });
 
-    // Validate customer delivery address and get/save address code
-    const customerAddressValidation = await shipbubbleService.validateAddress({
-      name: userDetails.name, 
-      email: userDetails.email, 
-      phone: userDetails.phone, 
-      // address: `${deliveryAddress.address_line_1}, ${deliveryAddress.city}, ${deliveryAddress.state}`,
-      address:"15 Babatunde Jose St, Victoria Island, Lagos",
-      latitude: deliveryAddress.latitude,
-      longitude: deliveryAddress.longitude,
-    });
+      if (!customerAddressValidation.success || !customerAddressValidation.data) {
+        throw new Error('Customer address validation failed');
+      }
 
-    if (!customerAddressValidation.success || !customerAddressValidation.data) {
-      throw new Error('Customer address validation failed');
-    }
-
-    // Update customer address with Shipbubble address code if needed
-    if (customerAddressValidation.data.address_code) {
-      await this.addressService.updateAddressCode(deliveryAddress.id, customerAddressValidation.data.address_code);
+      // Update customer address with Shipbubble address code if needed
+      if (customerAddressValidation.data.address_code) {
+        customerAddressCode = customerAddressValidation.data.address_code;
+        await this.addressService.updateAddressCode(deliveryAddress.id, customerAddressCode);
+      }
     }
 
     // Get package categories
     const categories = await shipbubbleService.getPackageCategories();
-    // choose food category
+    this.logger.log('Shipbubble package categories', categories);
+    
+    // Choose food category
     const foodCategory = categories.data?.find((category: ShipbubblePackageCategoryDto) => category.category.toLowerCase() === 'food');
     const categoryId = foodCategory?.category_id || categories.data?.[0]?.category_id || 1;
 
+
+    this.logger.log("cart items",cartItems)
     // Calculate package dimensions based on cart items
     const packageDimensions = this.calculatePackageDimensions(cartItems);
+    
+    this.logger.log('Package dimensions', packageDimensions);
 
     // Prepare Shipbubble rates request
     const ratesRequest = {
-      sender_address_code: vendorAddressValidation.data.address_code,
-      reciever_address_code: customerAddressValidation.data.address_code,
+      sender_address_code: vendorAddressCode,
+      reciever_address_code: customerAddressCode,
       category_id: categoryId,
       package_items: cartItems.map(item => ({
         name: item.menu_item?.name || 'Food Item',
@@ -564,33 +676,41 @@ export class DeliveryService {
       })),
       package_dimension: packageDimensions,
       pickup_date: new Date().toISOString().split('T')[0], // Today's date
+      service_type:"pickup",
     };
+
+    this.logger.log("Rate Request",ratesRequest)
 
     // Fetch rates from Shipbubble
     const ratesResponse = await shipbubbleService.fetchShippingRates(ratesRequest);
 
-    // Find the lowest fee , the service code and courier id of the lowest fee
+    this.logger.log('Shipbubble rates response', ratesResponse);
+
+    if (!ratesResponse.couriers || ratesResponse.couriers.length === 0) {
+      throw new Error('No courier options available from Shipbubble');
+    }
+
+    // Find the lowest fee, the service code and courier id of the lowest fee
     const lowestFeeCourier = ratesResponse.couriers.reduce((min, courier) => 
       courier.total < min.total ? courier : min,
       ratesResponse.couriers[0]
     );
+    
     const lowestFeeServiceCode = lowestFeeCourier.service_code;
     const lowestFeeCourierId = lowestFeeCourier.courier_id.toString();
-    const lowestFee = ratesResponse.couriers.reduce((min, courier) => 
-      courier.total < min ? courier.total : min, 
-      ratesResponse.couriers[0]?.total || 0
-    );
+    const lowestFee = lowestFeeCourier.total;
+
 
     this.logger.log(`Shipbubble lowest delivery fee: ${lowestFee}`);
 
-    // return request token too for later use
+    // Return request token too for later use
     const requestToken = ratesResponse.request_token;
     return {
-      fee : lowestFee,
-      qoute_requestToken: requestToken,
+      fee: lowestFee,
+      quote_requestToken: requestToken,
       quote_id: lowestFeeCourierId,
-      qoute_ServiceCode: lowestFeeServiceCode
-
+      quote_ServiceCode: lowestFeeServiceCode,
+      courier_id: lowestFeeCourierId
     };
   }
 
@@ -600,6 +720,7 @@ export class DeliveryService {
     cartItems: any[],
     subtotal: number
   ): Promise<{fee: number, quote_id:string }> {
+    this.logger.log('Getting Uber quote');
     const uberService = this.uberDeliveryService;
 
     // Prepare Uber Direct quote request
@@ -618,8 +739,8 @@ export class DeliveryService {
         zip_code: deliveryAddress.postal_code || '100001',
         country: deliveryAddress.country,
       }),
-      pickup_phone_number: vendor.phone || '+1234567890',
-      dropoff_phone_number: '+1234567890', // We'll need to get customer phone
+      pickup_phone_number: vendor.phone || '+2348020542618',
+      dropoff_phone_number:'+2348020542618', // We'll need to get customer phone
       manifest_total_value: Math.round(subtotal * 100), // Convert to cents
       pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
       pickup_deadline_dt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
@@ -627,8 +748,13 @@ export class DeliveryService {
       dropoff_deadline_dt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
     };
 
+    this.logger.log('Quote request', quoteRequest);
+
+    this.logger.log('Creating delivery quote');
     // Create quote with Uber Direct
     const quoteResponse = await uberService.createDeliveryQuote(quoteRequest);
+
+    this.logger.log('Quote response', quoteResponse);
 
     // Convert fee from cents to naira (assuming USD to NGN conversion or direct NGN)
     const deliveryFee = quoteResponse.fee / 100;

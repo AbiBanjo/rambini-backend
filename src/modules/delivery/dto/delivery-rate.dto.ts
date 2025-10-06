@@ -702,7 +702,7 @@ export class UberDirectManifestItemDto {
   @ApiProperty({ description: 'Item value in cents' })
   @IsNumber()
   @Min(0)
-  value: number;
+  price: number;
 
   @ApiProperty({ description: 'Item weight in grams', required: false })
   @IsNumber()

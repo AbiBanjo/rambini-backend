@@ -14,6 +14,7 @@ import { User } from './user.entity';
 import { Vendor } from './vendor.entity';
 import { Address } from './address.entity';
 import { OrderItem } from './order-item.entity';
+import { DeliveryQuote } from './delivery-quote.entity';
 
 export enum OrderStatus {
   NEW = 'NEW',
@@ -69,6 +70,11 @@ export class Order extends BaseEntity {
   @IsString()
   @IsOptional()
   delivery_address_id?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  @IsString()
+  @IsOptional()
+  delivery_quote_id?: string;
 
   @Column({ type: 'enum', enum: DeliveryProvider, nullable: true })
   @IsEnum(DeliveryProvider)
@@ -196,6 +202,10 @@ export class Order extends BaseEntity {
   @ManyToOne(() => Address, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'delivery_address_id' })
   delivery_address: Address;
+
+  @ManyToOne(() => DeliveryQuote, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'delivery_quote_id' })
+  delivery_quote: DeliveryQuote;
 
   @OneToMany(() => OrderItem, orderItem => orderItem.order)
   order_items: OrderItem[];

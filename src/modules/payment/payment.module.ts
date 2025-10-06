@@ -7,7 +7,8 @@ import {
   Order, 
   User, 
   Vendor,
-  Withdrawal
+  Withdrawal,
+  Bank
 } from 'src/entities';
 import { AuthModule } from 'src/modules/auth/auth.module';
 
@@ -27,6 +28,7 @@ import { WithdrawalService } from './services/withdrawal.service';
 // Repositories
 import { PaymentRepository } from './repositories/payment.repository';
 import { WithdrawalRepository } from './repositories/withdrawal.repository';
+import { BankRepository } from './repositories/bank.repository';
 import { CartModule } from '../cart/cart.module';
 import { OrderModule } from '../order/order.module';
 import { VendorModule } from '../vendor/vendor.module';
@@ -43,6 +45,7 @@ import { RedisService } from '../../database/redis.service';
       User,
       Vendor,
       Withdrawal,
+      Bank,
     ]),
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
     forwardRef(() => CartModule),
@@ -69,6 +72,7 @@ import { RedisService } from '../../database/redis.service';
     // Repositories
     PaymentRepository,
     WithdrawalRepository,
+    BankRepository,
   ],
   exports: [
     PaymentService,
@@ -76,6 +80,7 @@ import { RedisService } from '../../database/redis.service';
     PaymentRepository,
     WithdrawalService,
     WithdrawalRepository,
+    BankRepository,
   ],
 })
 export class PaymentModule {}

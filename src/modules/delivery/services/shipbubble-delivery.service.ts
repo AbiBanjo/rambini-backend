@@ -24,7 +24,7 @@ import {
 @Injectable()
 export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
   private readonly logger = new Logger(ShipbubbleDeliveryService.name);
-  private readonly baseUrl = 'https://api.shipbubble.com';
+  private readonly baseUrl = 'https://api.shipbubble.com/v1';
   private readonly apiKey: string;
 
   constructor(
@@ -84,7 +84,7 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
 
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.baseUrl}/v1/shipping/address/validate`,
+          `${this.baseUrl}/shipping/address/validate`,
           addressData,
           {
             headers: {
@@ -131,75 +131,6 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
   }
 
  
-  // Legacy method for backward compatibility - will be deprecated
-  // async getDeliveryRates(rateRequest: DeliveryRateRequestDto): Promise<DeliveryRateResponseDto[]> {
-  //   try {
-  //     this.logger.log(`Getting delivery rates from ${rateRequest.origin.city} to ${rateRequest.destination.city}`);
-
-  //     const requestData = {
-  //       origin: {
-  //         address: rateRequest.origin.address,
-  //         city: rateRequest.origin.city,
-  //         state: rateRequest.origin.state,
-  //         country: rateRequest.origin.country,
-  //         postal_code: rateRequest.origin.postalCode,
-  //       },
-  //       destination: {
-  //         address: rateRequest.destination.address,
-  //         city: rateRequest.destination.city,
-  //         state: rateRequest.destination.state,
-  //         country: rateRequest.destination.country,
-  //         postal_code: rateRequest.destination.postalCode,
-  //       },
-  //       package: {
-  //         weight: rateRequest.package.weight,
-  //         length: rateRequest.package.length,
-  //         width: rateRequest.package.width,
-  //         height: rateRequest.package.height,
-  //         value: rateRequest.package.value,
-  //       },
-  //       couriers: rateRequest.couriers,
-  //     };
-
-  //     const response = await firstValueFrom(
-  //       this.httpService.post(
-  //         `${this.baseUrl}/rates`,
-  //         requestData,
-  //         {
-  //           headers: {
-  //             'Authorization': `Bearer ${this.apiKey}`,
-  //             'Content-Type': 'application/json',
-  //           },
-  //         },
-  //       ),
-  //     );
-
-  //     const data = response.data;
-
-  //     if (data.success && data.data) {
-  //       return data.data.map((rate: any) => ({
-  //         courier: rate.courier_code,
-  //         courierName: rate.courier_name,
-  //         service: rate.service_code,
-  //         serviceName: rate.service_name,
-  //         rateId: rate.rate_id,
-  //         amount: parseFloat(rate.amount),
-  //         currency: rate.currency || 'NGN',
-  //         estimatedDays: rate.estimated_days || 1,
-  //         features: rate.features || [],
-  //       }));
-  //     } else {
-  //       throw new BadRequestException(data.message || 'Failed to get delivery rates');
-  //     }
-  //   } catch (error) {
-  //     this.logger.error(`Failed to get delivery rates: ${error.message}`);
-  //     if (error.response?.data?.message) {
-  //       throw new BadRequestException(error.response.data.message);
-  //     }
-  //     throw new BadRequestException('Failed to get delivery rates');
-  //   }
-  // }
-
 
   async fetchShippingRates(ratesRequest: ShipbubbleShippingRatesRequestDto): Promise<ShipbubbleShippingRatesResponseDto> {
     try {
@@ -254,76 +185,6 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
       throw new BadRequestException('Failed to fetch shipping rates');
     }
   }
-
-  // Legacy method for backward compatibility - will be deprecated
-  // async createShipment(shipmentData: CreateShipmentDto): Promise<CreateShipmentResponseDto> {
-  //   try {
-  //     this.logger.log(`Creating shipment with rate ID: ${shipmentData.rateId}`);
-
-  //     const requestData = {
-  //       origin: {
-  //         address: shipmentData.origin.address,
-  //         city: shipmentData.origin.city,
-  //         state: shipmentData.origin.state,
-  //         country: shipmentData.origin.country,
-  //         postal_code: shipmentData.origin.postalCode,
-  //       },
-  //       destination: {
-  //         address: shipmentData.destination.address,
-  //         city: shipmentData.destination.city,
-  //         state: shipmentData.destination.state,
-  //         country: shipmentData.destination.country,
-  //         postal_code: shipmentData.destination.postalCode,
-  //       },
-  //       package: {
-  //         weight: shipmentData.package.weight,
-  //         length: shipmentData.package.length,
-  //         width: shipmentData.package.width,
-  //         height: shipmentData.package.height,
-  //         value: shipmentData.package.value,
-  //       },
-  //       courier: shipmentData.courier,
-  //       rate_id: shipmentData.rateId,
-  //       reference: shipmentData.reference,
-  //       description: shipmentData.description,
-  //     };
-
-  //     const response = await firstValueFrom(
-  //       this.httpService.post(
-  //         `${this.baseUrl}/shipments`,
-  //         requestData,
-  //         {
-  //           headers: {
-  //             'Authorization': `Bearer ${this.apiKey}`,
-  //             'Content-Type': 'application/json',
-  //           },
-  //         },
-  //       ),
-  //     );
-
-  //     const data = response.data;
-
-  //     if (data.success && data.data) {
-  //       return {
-  //         success: true,
-  //         trackingNumber: data.data.tracking_number,
-  //         labelUrl: data.data.label_url,
-  //         reference: data.data.reference,
-  //       };
-  //     } else {
-  //       return {
-  //         success: false,
-  //         error: data.message || 'Failed to create shipment',
-  //       };
-  //     }
-  //   } catch (error) {
-  //     this.logger.error(`Failed to create shipment: ${error.message}`);
-  //     return {
-  //       success: false,
-  //       error: error.response?.data?.message || 'Failed to create shipment',
-  //     };
-  //   }
-  // }
 
   async trackShipment(trackingNumber: string): Promise<ShipmentTrackingResponseDto> {
     try {
@@ -501,6 +362,7 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
       );
 
       const data = response.data;
+      this.logger.log('Package categories', data);
 
       if (data.status === 'success' && data.data) {
         return {

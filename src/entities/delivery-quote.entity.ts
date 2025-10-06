@@ -18,8 +18,8 @@ export class DeliveryQuote {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar' })
-  order_id: string;
+  @Column({ type: 'varchar', nullable: true })
+  order_id?: string;
 
   // Relationships
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
@@ -112,6 +112,14 @@ export class DeliveryQuote {
   @Column({ name: 'on_demand_available', default: false })
   on_demand_available: boolean;
 
+  // items price
+  @Column({ name: 'items_price', nullable: true })
+  items_price?: number;
+
+  // add quantity of items
+  @Column({ name: 'quantity_of_items', nullable: true })
+  quantity_of_items?: number;
+
   // Quality metrics
   @Column({ name: 'courier_rating', nullable: true })
   courier_rating?: number;
@@ -135,8 +143,8 @@ export class DeliveryQuote {
   };
 
   // Address information
-  @Column({ name: 'origin_address', type: 'jsonb' })
-  origin_address: {
+  @Column({ name: 'origin_address', type: 'jsonb', nullable: true })
+  origin_address?: {
     address: string;
     city: string;
     state: string;
@@ -144,10 +152,13 @@ export class DeliveryQuote {
     postalCode?: string;
     latitude?: number;
     longitude?: number;
+    phone?: string;
+    email?: string;
+    name?: string;
   };
 
-  @Column({ name: 'destination_address', type: 'jsonb' })
-  destination_address: {
+  @Column({ name: 'destination_address', type: 'jsonb', nullable: true })
+  destination_address?: {
     address: string;
     city: string;
     state: string;
@@ -155,11 +166,14 @@ export class DeliveryQuote {
     postalCode?: string;
     latitude?: number;
     longitude?: number;
+    phone?: string;
+    email?: string;
+    name?: string;
   };
 
   // Package information
-  @Column({ name: 'package_details', type: 'jsonb' })
-  package_details: {
+  @Column({ name: 'package_details', type: 'jsonb', nullable: true })
+  package_details?: {
     weight: number;
     length: number;
     width: number;

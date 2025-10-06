@@ -17,7 +17,10 @@ import {
   WithdrawalOtpRequestDto, 
   WithdrawalRequestDto, 
   WithdrawalResponseDto,
-  AdminWithdrawalActionDto 
+  AdminWithdrawalActionDto,
+  BankCreateDto,
+  BankUpdateDto,
+  BankResponseDto
 } from '../dto';
 import { User } from '@/entities';
 import { GetUser } from '@/common/decorators/get-user.decorator';
@@ -95,6 +98,91 @@ export class WithdrawalController {
     @Param('id') id: string
   ): Promise<WithdrawalResponseDto> {
     return await this.withdrawalService.getWithdrawalById(id);
+  }
+
+  // Bank management endpoints
+  @Post('banks')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new bank account' })
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Bank account created successfully',
+    type: BankResponseDto
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - duplicate bank account or invalid data' })
+  async createBank(
+    @GetUser() user: User,
+    @Body() bankData: BankCreateDto
+  ): Promise<BankResponseDto> {
+    return await this.withdrawalService.createBank(user.id, bankData);
+  }
+
+  @Get('banks')
+  @ApiOperation({ summary: 'Get user bank accounts' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bank accounts retrieved successfully',
+    type: [BankResponseDto]
+  })
+  async getUserBanks(@GetUser() user: User): Promise<BankResponseDto[]> {
+    return await this.withdrawalService.getUserBanks(user.id);
+  }
+
+  @Get('banks/:id')
+  @ApiOperation({ summary: 'Get bank account by ID' })
+  @ApiParam({ name: 'id', description: 'Bank account ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bank account retrieved successfully',
+    type: BankResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  async getBankById(
+    @GetUser() user: User,
+    @Param('id') id: string
+  ): Promise<BankResponseDto> {
+    return await this.withdrawalService.getBankById(user.id, id);
+  }
+
+  @Post('banks/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update bank account' })
+  @ApiParam({ name: 'id', description: 'Bank account ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bank account updated successfully',
+    type: BankResponseDto
+  })
+  @ApiResponse({ status: 400, description: 'Bad request - duplicate bank account or invalid data' })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  async updateBank(
+    @GetUser() user: User,
+    @Param('id') id: string,
+    @Body() bankData: BankUpdateDto
+  ): Promise<BankResponseDto> {
+    return await this.withdrawalService.updateBank(user.id, id, bankData);
+  }
+
+  @Post('banks/:id/delete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete bank account' })
+  @ApiParam({ name: 'id', description: 'Bank account ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bank account deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Bank deleted successfully' }
+      }
+    }
+  })
+  @ApiResponse({ status: 404, description: 'Bank account not found' })
+  async deleteBank(
+    @GetUser() user: User,
+    @Param('id') id: string
+  ): Promise<{ message: string }> {
+    return await this.withdrawalService.deleteBank(user.id, id);
   }
 }
 

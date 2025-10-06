@@ -38,37 +38,6 @@ import {
 export class DeliveryController {
   constructor(private readonly deliveryService: DeliveryService) {}
 
-  // @Post('validate-address')
-  // @HttpCode(HttpStatus.OK)
-  // @ApiOperation({ summary: 'Validate delivery address' })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'Address validation result',
-  //   type: AddressValidationResponseDto,
-  // })
-  // async validateAddress(
-  //   @Body() addressValidationDto: AddressValidationDto,
-  //   @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
-  // ): Promise<AddressValidationResponseDto> {
-  //   return await this.deliveryService.validateAddress(provider, addressValidationDto);
-  // }
-
-  // @Post('rates')
-  // @HttpCode(HttpStatus.OK)
-  // @ApiOperation({ summary: 'Get delivery rates' })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'Delivery rates',
-  //   type: [DeliveryRateResponseDto],
-  // })
-  // async getDeliveryRates(
-  //   @Body() rateRequest: DeliveryRateRequestDto,
-  //   @Query('provider') provider: DeliveryProvider = DeliveryProvider.SHIPBUBBLE,
-  // ): Promise<DeliveryRateResponseDto[]> {
-  //   return await this.deliveryService.getDeliveryRates(provider, rateRequest);
-  // }
-
-
   @Get('track/:trackingNumber')
   @ApiOperation({ summary: 'Track delivery' })
   @ApiResponse({
