@@ -609,7 +609,7 @@ export class DeliveryService {
         name: vendor.business_name || 'Vendor',
         email: vendor.email || 'vendor@example.com',
         phone: vendor.phone || '+2348000000000',
-        address: `${vendor.address.address_line_1}, ${vendor.address.city} ${vendor.address.postal_code}, ${vendor.address.state}, Nigeria`,
+        address:vendor.address.address_line_1 || vendor.address.address_line_2,
         latitude: vendor.address.latitude,
         longitude: vendor.address.longitude,
       });
@@ -631,7 +631,7 @@ export class DeliveryService {
         name: userDetails.name, 
         email: userDetails.email, 
         phone: userDetails.phone, 
-        address: `${deliveryAddress.address_line_1}, ${deliveryAddress.city} ${deliveryAddress.postal_code}, ${deliveryAddress.state}, Nigeria`,
+        address: deliveryAddress.address_line_2 || deliveryAddress.address_line_1,
         latitude: deliveryAddress.latitude,
         longitude: deliveryAddress.longitude,
       });
