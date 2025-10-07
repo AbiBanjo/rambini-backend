@@ -614,6 +614,8 @@ export class DeliveryService {
         longitude: vendor.address.longitude,
       });
 
+      this.logger.log('Vendor address validation', vendorAddressValidation);
+
       if (!vendorAddressValidation.success || !vendorAddressValidation.data) {
         throw new Error('Vendor address validation failed');
       }
@@ -635,6 +637,8 @@ export class DeliveryService {
         latitude: deliveryAddress.latitude,
         longitude: deliveryAddress.longitude,
       });
+
+      this.logger.log('Customer address validation', customerAddressValidation);
 
       if (!customerAddressValidation.success || !customerAddressValidation.data) {
         throw new Error('Customer address validation failed');

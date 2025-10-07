@@ -80,7 +80,8 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
     error?: string;
   }> {
     try {
-      this.logger.log(`Validating address with ShipBubble v1 API: ${addressData.address}`);
+      // this.logger.log(`Validating address with ShipBubble v1 API: ${addressData.address}`);
+      this.logger.log('Address data', addressData);
 
       const response = await firstValueFrom(
         this.httpService.post(
