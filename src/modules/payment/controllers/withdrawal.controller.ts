@@ -32,6 +32,18 @@ import { GetUser } from '@/common/decorators/get-user.decorator';
 export class WithdrawalController {
   constructor(private readonly withdrawalService: WithdrawalService) {}
 
+  @Get('banks')
+  @ApiOperation({ summary: 'Get user bank accounts' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Bank accounts retrieved successfully',
+    type: [BankResponseDto]
+  })
+  async getUserBanks(@GetUser() user: User): Promise<BankResponseDto[]> {
+    return await this.withdrawalService.getUserBanks(user.id);
+  }
+
+
   @Post('otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate withdrawal OTP' })
@@ -117,16 +129,6 @@ export class WithdrawalController {
     return await this.withdrawalService.createBank(user.id, bankData);
   }
 
-  @Get('banks')
-  @ApiOperation({ summary: 'Get user bank accounts' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Bank accounts retrieved successfully',
-    type: [BankResponseDto]
-  })
-  async getUserBanks(@GetUser() user: User): Promise<BankResponseDto[]> {
-    return await this.withdrawalService.getUserBanks(user.id);
-  }
 
   @Get('banks/:id')
   @ApiOperation({ summary: 'Get bank account by ID' })

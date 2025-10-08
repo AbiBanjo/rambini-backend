@@ -19,7 +19,8 @@ import {
   Delivery,
   DeliveryTracking,
   DeliveryQuote,
-  Withdrawal
+  Withdrawal,
+  Bank
 } from 'src/entities';
 
 export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOptions => ({
@@ -48,7 +49,8 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
     Delivery,
     DeliveryTracking,
     DeliveryQuote,
-    Withdrawal
+    Withdrawal,
+    Bank
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: configService.get('DB_SYNCHRONIZE') === 'true',

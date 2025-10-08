@@ -33,9 +33,6 @@ export class BankCreateDto {
   @IsString()
   @IsNotEmpty()
   @Length(8, 20)
-  @Matches(/^[0-9]+$/, {
-    message: 'Account number must contain only digits',
-  })
   account_number: string;
 }
 
