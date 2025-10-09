@@ -192,7 +192,9 @@ export class AddressService {
             updateRequest.city ||
             updateRequest.state ||
             updateRequest.postal_code ||
-            updateRequest.country) {
+            updateRequest.country || 
+            updateRequest.latitude ||
+            updateRequest.longitude) {
           address.shipbubble_address_code = null;
         }
 

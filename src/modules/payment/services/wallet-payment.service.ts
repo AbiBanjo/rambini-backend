@@ -60,16 +60,7 @@ export class WalletPaymentService {
 
     this.logger.log(`Customer has sufficient balance`);
 
-    // Create payment record
-    // const paymentReference = await this.paymentRepository.generatePaymentReference();
-    // const payment = await this.paymentRepository.create({
-    //   order_id: orderId,
-    //   payment_reference: paymentReference,
-    //   payment_method: PaymentMethod.WALLET,
-    //   provider: PaymentProvider.WALLET,
-    //   status: PaymentTransactionStatus.PROCESSING,
-    //   amount: amount,
-    // });
+ 
 
     this.logger.log(`Finding payment with order id: ${orderId}`);
     // find payment with order id
@@ -102,9 +93,9 @@ export class WalletPaymentService {
       const debitTransaction = await this.transactionRepository.create({
         wallet_id: customerWallet.id,
         transaction_type: TransactionType.DEBIT,
-        amount: amount,
-        balance_before: customerWallet.balance + amount,
-        balance_after: customerWallet.balance,
+        amount: Number(amount),
+        balance_before: Number(customerWallet.balance) + Number(amount),
+        balance_after: Number(customerWallet.balance),
         description: `Payment for order ${orderId}`,
         reference_id: paymentReference,
         status: TransactionStatus.COMPLETED,
@@ -197,9 +188,9 @@ export class WalletPaymentService {
     const creditTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
       transaction_type: TransactionType.CREDIT,
-      amount: amount,
-      balance_before: balanceBefore,
-      balance_after: vendorWallet.balance,
+      amount: Number(amount),
+      balance_before: Number(balanceBefore),
+      balance_after: Number(vendorWallet.balance),
       description: `Payment received for order ${orderId}`,
       reference_id: paymentReference,
       status: TransactionStatus.COMPLETED,
@@ -270,9 +261,9 @@ export class WalletPaymentService {
     const vendorDebitTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
       transaction_type: TransactionType.DEBIT,
-      amount: refundAmount,
-      balance_before: vendorWallet.balance + refundAmount,
-      balance_after: vendorWallet.balance,
+      amount: Number(refundAmount),
+      balance_before: Number(vendorWallet.balance) + Number(refundAmount),
+      balance_after: Number(vendorWallet.balance),
       description: `Refund for order ${order.id}: ${reason || 'No reason provided'}`,
       reference_id: payment.payment_reference,
       status: TransactionStatus.COMPLETED,
@@ -301,9 +292,9 @@ export class WalletPaymentService {
     const customerCreditTransaction = await this.transactionRepository.create({
       wallet_id: customerWallet.id,
       transaction_type: TransactionType.CREDIT,
-      amount: refundAmount,
-      balance_before: customerBalanceBefore,
-      balance_after: customerWallet.balance,
+      amount: Number(refundAmount),
+      balance_before: Number(customerBalanceBefore),
+      balance_after: Number(customerWallet.balance),
       description: `Refund for order ${order.id}: ${reason || 'No reason provided'}`,
       reference_id: payment.payment_reference,
       status: TransactionStatus.COMPLETED,
@@ -433,9 +424,9 @@ export class WalletPaymentService {
       const creditTransaction = await this.transactionRepository.create({
         wallet_id: wallet.id,
         transaction_type: TransactionType.CREDIT,
-        amount: payment.amount,
-        balance_before: balanceBefore,
-        balance_after: wallet.balance,
+        amount: Number(payment.amount),
+        balance_before: Number(balanceBefore),
+        balance_after: Number(wallet.balance),
         description: `Wallet funding via ${payment.payment_method}`,
         reference_id: paymentReference,
         external_reference: externalReference,
@@ -606,9 +597,9 @@ export class WalletPaymentService {
       const debitTransaction = await this.transactionRepository.create({
         wallet_id: wallet.id,
         transaction_type: TransactionType.DEBIT,
-        amount: amount,
-        balance_before: balanceBefore,
-        balance_after: wallet.balance,
+        amount: Number(amount),
+        balance_before: Number(balanceBefore),
+        balance_after: Number(wallet.balance),
         description: description,
         reference_id: `withdrawal_${Date.now()}`,
         status: TransactionStatus.COMPLETED,

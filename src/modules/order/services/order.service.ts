@@ -9,6 +9,8 @@ import { DeliveryProviderSelectorService } from 'src/modules/delivery/services/d
 import { DeliveryQuoteService } from 'src/modules/delivery/services/delivery-quote.service';
 import { VendorService } from 'src/modules/vendor/services/vendor.service';
 import { NotificationSSEService } from 'src/modules/notification/services/notification-sse.service';
+import { NotificationService } from 'src/modules/notification/notification.service';
+import { NotificationType } from 'src/entities';
 import { 
   CreateOrderDto, 
   UpdateOrderStatusDto, 
@@ -40,6 +42,7 @@ export class OrderService {
     private readonly deliveryQuoteService: DeliveryQuoteService,
     private readonly vendorService: VendorService,
     private readonly notificationSSEService: NotificationSSEService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto | OrderPaymentResponseDto> {
@@ -381,11 +384,57 @@ export class OrderService {
         if (updateDto.estimated_prep_time_minutes) {
           updateData.estimated_prep_time_minutes = updateDto.estimated_prep_time_minutes;
         }
+
+        // Send push notification to customer about order being confirmed
+        try {
+          const prepTimeMsg = updateDto.estimated_prep_time_minutes 
+            ? ` Estimated preparation time: ${updateDto.estimated_prep_time_minutes} minutes.` 
+            : '';
+          await this.notificationService.sendPushNotification(
+            order.customer_id,
+            NotificationType.ORDER_UPDATE,
+            `Order #${order.order_number} Confirmed!`,
+            `Your order has been confirmed by the vendor.${prepTimeMsg}`,
+            { 
+              order_id: orderId, 
+              order_number: order.order_number,
+              status: updateDto.order_status,
+              estimated_prep_time_minutes: updateDto.estimated_prep_time_minutes,
+              order_type: order.order_type
+            }
+          );
+          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+        }
         break;
 
       case OrderStatus.PREPARING:
         if (updateDto.estimated_prep_time_minutes) {
           updateData.estimated_prep_time_minutes = updateDto.estimated_prep_time_minutes;
+        }
+
+        // Send push notification to customer about order being prepared
+        try {
+          const prepTimeMsg = updateDto.estimated_prep_time_minutes 
+            ? ` Estimated time: ${updateDto.estimated_prep_time_minutes} minutes.` 
+            : '';
+          await this.notificationService.sendPushNotification(
+            order.customer_id,
+            NotificationType.ORDER_UPDATE,
+            `Order #${order.order_number} Being Prepared`,
+            `Your order is now being prepared!${prepTimeMsg}`,
+            { 
+              order_id: orderId, 
+              order_number: order.order_number,
+              status: updateDto.order_status,
+              estimated_prep_time_minutes: updateDto.estimated_prep_time_minutes,
+              order_type: order.order_type
+            }
+          );
+          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
         }
         break;
 
@@ -422,6 +471,26 @@ export class OrderService {
           this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
           // Don't fail the order status update if SSE fails
         }
+
+        // Send push notification to customer
+        try {
+          await this.notificationService.sendPushNotification(
+            order.customer_id,
+            NotificationType.ORDER_UPDATE,
+            `Order #${order.order_number} is Ready!`,
+            `Your order is ready for ${order.order_type === OrderType.DELIVERY ? 'delivery' : 'pickup'}!`,
+            { 
+              order_id: orderId, 
+              order_number: order.order_number,
+              status: updateDto.order_status,
+              order_type: order.order_type
+            }
+          );
+          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+          // Don't fail the order status update if push notification fails
+        }
         break;
 
       case OrderStatus.OUT_FOR_DELIVERY:
@@ -440,6 +509,25 @@ export class OrderService {
           this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
         } catch (error) {
           this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+        }
+
+        // Send push notification to customer
+        try {
+          await this.notificationService.sendPushNotification(
+            order.customer_id,
+            NotificationType.ORDER_UPDATE,
+            `Order #${order.order_number} Out for Delivery!`,
+            `Your order is out for delivery! Track your order for real-time updates.`,
+            { 
+              order_id: orderId, 
+              order_number: order.order_number,
+              status: updateDto.order_status,
+              order_type: order.order_type
+            }
+          );
+          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
         }
         break;
 
@@ -464,6 +552,25 @@ export class OrderService {
         } catch (error) {
           this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
         }
+
+        // Send push notification to customer
+        try {
+          await this.notificationService.sendPushNotification(
+            order.customer_id,
+            NotificationType.ORDER_UPDATE,
+            `Order #${order.order_number} Delivered!`,
+            `Your order has been delivered! Thank you for choosing Rambini.`,
+            { 
+              order_id: orderId, 
+              order_number: order.order_number,
+              status: updateDto.order_status,
+              order_type: order.order_type
+            }
+          );
+          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+        }
         break;
 
       case OrderStatus.CANCELLED:
@@ -482,6 +589,26 @@ export class OrderService {
           this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
         } catch (error) {
           this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+        }
+
+        // Send push notification to customer
+        try {
+          await this.notificationService.sendPushNotification(
+            order.customer_id,
+            NotificationType.ORDER_UPDATE,
+            `Order #${order.order_number} Cancelled`,
+            `Your order has been cancelled. ${updateDto.reason || 'Please contact support for more information.'}`,
+            { 
+              order_id: orderId, 
+              order_number: order.order_number,
+              status: updateDto.order_status,
+              reason: updateDto.reason || 'Cancelled by vendor',
+              order_type: order.order_type
+            }
+          );
+          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+        } catch (error) {
+          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
         }
         break;
     }
@@ -538,6 +665,52 @@ export class OrderService {
     const updatedOrder = await this.orderRepository.update(orderId, updateData);
     if (!updatedOrder) {
       throw new NotFoundException('Failed to cancel order');
+    }
+
+    // Send SSE notification to relevant party
+    try {
+      if (userType === 'CUSTOMER') {
+        // Notify vendor about customer cancellation
+        this.notificationSSEService.sendOrderUpdate(
+          order.vendor_id,
+          orderId,
+          OrderStatus.CANCELLED,
+          `Order ${order.order_number} has been cancelled by the customer. Reason: ${reason}`
+        );
+      } else {
+        // Notify customer about vendor cancellation
+        this.notificationSSEService.sendOrderUpdate(
+          order.customer_id,
+          orderId,
+          OrderStatus.CANCELLED,
+          `Your order ${order.order_number} has been cancelled by the vendor. Reason: ${reason}`
+        );
+      }
+      this.logger.log(`SSE notification sent for cancelled order ${orderId}`);
+    } catch (error) {
+      this.logger.error(`Failed to send SSE notification for cancelled order ${orderId}: ${error.message}`);
+    }
+
+    // Send push notification to customer (always notify customer regardless of who cancelled)
+    try {
+      const cancelledBy = userType === 'CUSTOMER' ? 'You' : 'The vendor';
+      await this.notificationService.sendPushNotification(
+        order.customer_id,
+        NotificationType.ORDER_UPDATE,
+        `Order #${order.order_number} Cancelled`,
+        `${cancelledBy} cancelled this order. ${reason}`,
+        { 
+          order_id: orderId, 
+          order_number: order.order_number,
+          status: OrderStatus.CANCELLED,
+          reason: reason,
+          cancelled_by: userType,
+          order_type: order.order_type
+        }
+      );
+      this.logger.log(`Push notification sent to customer ${order.customer_id} for cancelled order ${orderId}`);
+    } catch (error) {
+      this.logger.error(`Failed to send push notification for cancelled order ${orderId}: ${error.message}`);
     }
 
     this.logger.log(`Order ${orderId} cancelled successfully`);
@@ -692,6 +865,16 @@ export class OrderService {
         state: '',
         country: '',
       },
+      pickup_address: order.vendor?.address ? {
+        address_line_1: order.vendor.address.address_line_1,
+        address_line_2: order.vendor.address.address_line_2,
+        city: order.vendor.address.city,
+        state: order.vendor.address.state,
+        postal_code: order.vendor.address.postal_code,
+        country: order.vendor.address.country,
+        latitude: order.vendor.address.latitude,
+        longitude: order.vendor.address.longitude,
+      } : undefined,
     };
   }
 

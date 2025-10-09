@@ -28,6 +28,7 @@ import { UberDeliveryService } from './uber-delivery.service';
 import { ShipbubbleDeliveryService } from './shipbubble-delivery.service';
 import { DeliveryProviderSelectorService } from './delivery-provider-selector.service';
 import { getCurrencyForCountry } from '@/utils/currency-mapper';
+import { UserService } from '@/modules/user/services/user.service';
 
 @Injectable()
 export class DeliveryService {
@@ -47,6 +48,7 @@ export class DeliveryService {
     private readonly cartService: CartService,
     private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
     private readonly uberDeliveryService: UberDeliveryService,
+    private readonly userService : UserService
 
   ) {}
 
@@ -197,10 +199,10 @@ export class DeliveryService {
       throw new NotFoundException('Delivery quote not found');
     }
 
-    // if (!deliveryQuote.canBeUsed()) {
-    //   throw new BadRequestException('Delivery quote cannot be used (expired or not selected)');
-    // }
-
+   this.logger.log('Delivery quote', deliveryQuote);
+   this.logger.log('Delivery quote provider', deliveryQuote.origin_address);
+   this.logger.log('Delivery quote destination address', deliveryQuote.destination_address);
+   
     // Get the appropriate provider based on the quote
     let deliveryResult: any;
     let trackingNumber: string;
@@ -247,6 +249,8 @@ export class DeliveryService {
         undeliverable_action: 'return' as const,
         dropoff_notes: 'Please ring the doorbell',
       };
+
+      this.logger.log('Delivery request', deliveryRequest);
 
       deliveryResult = await uberService.createDelivery(deliveryRequest);
       trackingNumber = deliveryResult.id;
@@ -727,6 +731,9 @@ export class DeliveryService {
     this.logger.log('Getting Uber quote');
     const uberService = this.uberDeliveryService;
 
+    // get customer's phone 
+    const user = await this.userService.findById(deliveryAddress.user_id);
+
     // Prepare Uber Direct quote request
     const quoteRequest = {
       pickup_address: JSON.stringify({
@@ -737,14 +744,14 @@ export class DeliveryService {
         country: vendor.address.country,
       }),
       dropoff_address: JSON.stringify({
-        street_address: [deliveryAddress.address_line_1],
+        street_address: [deliveryAddress.address_line_2],
         city: deliveryAddress.city,
         state: deliveryAddress.state,
         zip_code: deliveryAddress.postal_code || '100001',
         country: deliveryAddress.country,
       }),
       pickup_phone_number: vendor.phone || '+2348020542618',
-      dropoff_phone_number:'+2348020542618', // We'll need to get customer phone
+      dropoff_phone_number: user.phone_number || '+2348020542618',
       manifest_total_value: Math.round(subtotal * 100), // Convert to cents
       pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
       pickup_deadline_dt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now

@@ -274,12 +274,75 @@ export class NotificationService {
       return false;
     }
 
-    // Here you would integrate with FCM, APNS, or other push services
-    this.logger.log(`Sending push notification to ${deviceTokens.length} devices for user ${user.id}`);
+    try {
+      // Send push notification using FCM via PushNotificationService
+      this.logger.log(`Sending push notification to ${deviceTokens.length} devices for user ${user.id}`);
+      
+      const result = await this.pushService.sendPushNotification(
+        notification,
+        user,
+        deviceTokens,
+        notification.data
+      );
+
+      // Handle failed tokens - deactivate them
+      if (result.failed > 0) {
+        const failedTokens = result.results
+          .filter(r => !r.success)
+          .map(r => r.deviceToken);
+        
+        for (const token of failedTokens) {
+          // Check if error is due to invalid token
+          const failedResult = result.results.find(r => r.deviceToken === token);
+          if (failedResult?.error && this.isInvalidTokenError(failedResult.error)) {
+            this.logger.warn(`Deactivating invalid device token: ${token.substring(0, 20)}...`);
+            await this.deactivateDeviceToken(token);
+          }
+        }
+      }
+
+      // Mark notification as sent if at least one device received it
+      if (result.success > 0) {
+        await this.markNotificationSent(notification.id);
+        this.logger.log(
+          `Push notification sent successfully to ${result.success}/${deviceTokens.length} devices for user ${user.id}`
+        );
+        return true;
+      } else {
+        // All devices failed
+        await this.markNotificationFailed(
+          notification.id,
+          `Failed to send to all ${deviceTokens.length} devices`
+        );
+        this.logger.error(`Failed to send push notification to all devices for user ${user.id}`);
+        return false;
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error sending push notification for user ${user.id}:`,
+        error.message,
+        error.stack
+      );
+      await this.markNotificationFailed(notification.id, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Check if the error is due to an invalid or unregistered token
+   */
+  private isInvalidTokenError(error: string): boolean {
+    const invalidTokenErrors = [
+      'invalid-registration-token',
+      'registration-token-not-registered',
+      'invalid-argument',
+      'messaging/invalid-registration-token',
+      'messaging/registration-token-not-registered',
+    ];
     
-    // Mark as sent
-    await this.markNotificationSent(notification.id);
-    return true;
+    return invalidTokenErrors.some(errorType => 
+      error.toLowerCase().includes(errorType.toLowerCase())
+    );
   }
 
   private async sendEmailNotificationInternal(notification: Notification, user: User): Promise<boolean> {
