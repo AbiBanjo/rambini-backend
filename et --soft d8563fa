@@ -1,0 +1,5 @@
+[33m8604fd6[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m feat: move Firebase credentials to GitHub Secrets
+[33mb84927e[m push firebase json file
+[33m58f6365[m add firebase
+[33m6428dbc[m fix: fcm token
+[33md8563fa[m[33m ([m[1;31morigin/main[m[33m)[m fix

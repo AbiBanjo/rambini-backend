@@ -112,6 +112,15 @@ export class DeliveryQuote {
   @Column({ name: 'on_demand_available', default: false })
   on_demand_available: boolean;
 
+  @Column({ name: 'tracking_number', nullable: true })
+  trackingNumber?: string;
+
+  @Column({ name: 'reference_number', nullable: true })
+  referenceNumber?: string;
+
+  @Column({ name: 'label_url', nullable: true })
+  labelUrl?: string;
+
   // items price
   @Column({ name: 'items_price', nullable: true })
   items_price?: number;

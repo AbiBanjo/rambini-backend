@@ -86,6 +86,13 @@ jobs:
           echo "${{ secrets.ENV_STAGING }}" > .env.staging
           echo "${{ secrets.ENV_TEST }}" > .env.test
           
+          # Create Firebase credentials file from GitHub Secret
+          echo "🔐 Creating Firebase credentials file..."
+          mkdir -p src/modules/notification
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > src/modules/notification/firebase.json
+          chmod 600 src/modules/notification/firebase.json
+          echo "✅ Firebase credentials file created"
+          
           # Install production dependencies only (no build needed)
           echo "📦 Installing production dependencies..."
           npm ci --production

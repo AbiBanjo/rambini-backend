@@ -92,27 +92,27 @@ export class DeliveryController {
     return await this.deliveryService.intializeDelivery(user.id, userDetails, initializeDto);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get delivery by ID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Delivery details',
-    type: DeliveryResponseDto,
-  })
-  async getDeliveryById(@Param('id') id: string): Promise<DeliveryResponseDto> {
-    return await this.deliveryService.getDeliveryById(id);
-  }
+  // @Get(':id')
+  // @ApiOperation({ summary: 'Get delivery by ID' })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Delivery details',
+  //   type: DeliveryResponseDto,
+  // })
+  // async getDeliveryById(@Param('id') id: string): Promise<DeliveryResponseDto> {
+  //   return await this.deliveryService.getDeliveryById(id);
+  // }
 
-  @Get('tracking/:trackingNumber')
-  @ApiOperation({ summary: 'Get delivery by tracking number' })
-  @ApiResponse({
-    status: 200,
-    description: 'Delivery details',
-    type: DeliveryResponseDto,
-  })
-  async getDeliveryByTrackingNumber(@Param('trackingNumber') trackingNumber: string): Promise<DeliveryResponseDto> {
-    return await this.deliveryService.getDeliveryByTrackingNumber(trackingNumber);
-  }
+  // @Get('tracking/:trackingNumber')
+  // @ApiOperation({ summary: 'Get delivery by tracking number' })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Delivery details',
+  //   type: DeliveryResponseDto,
+  // })
+  // async getDeliveryByTrackingNumber(@Param('trackingNumber') trackingNumber: string): Promise<DeliveryResponseDto> {
+  //   return await this.deliveryService.getDeliveryByTrackingNumber(trackingNumber);
+  // }
 
   @Get('package-categories')
   @ApiOperation({ summary: 'Get package categories for shipping' })
@@ -150,36 +150,36 @@ export class DeliveryController {
     return await this.deliveryService.createShipmentLabel(shipmentRequest);
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Get deliveries with pagination' })
-  @ApiResponse({
-    status: 200,
-    description: 'Paginated delivery list',
-    schema: {
-      type: 'object',
-      properties: {
-        deliveries: { type: 'array', items: { $ref: '#/components/schemas/DeliveryResponseDto' } },
-        total: { type: 'number' },
-        page: { type: 'number' },
-        limit: { type: 'number' },
-      },
-    },
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page' })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed', 'cancelled', 'returned'] })
-  @ApiQuery({ name: 'provider', required: false, enum: ['shipbubble'] })
-  async getDeliveries(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
-    @Query('status') status?: string,
-    @Query('provider') provider?: string,
-  ): Promise<{ deliveries: DeliveryResponseDto[]; total: number; page: number; limit: number }> {
-    return await this.deliveryService.getDeliveries(
-      page,
-      limit,
-      status as any,
-      provider as any,
-    );
-  }
+  // @Get()
+  // @ApiOperation({ summary: 'Get deliveries with pagination' })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Paginated delivery list',
+  //   schema: {
+  //     type: 'object',
+  //     properties: {
+  //       deliveries: { type: 'array', items: { $ref: '#/components/schemas/DeliveryResponseDto' } },
+  //       total: { type: 'number' },
+  //       page: { type: 'number' },
+  //       limit: { type: 'number' },
+  //     },
+  //   },
+  // })
+  // @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number' })
+  // @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page' })
+  // @ApiQuery({ name: 'status', required: false, enum: ['pending', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'failed', 'cancelled', 'returned'] })
+  // @ApiQuery({ name: 'provider', required: false, enum: ['shipbubble'] })
+  // async getDeliveries(
+  //   @Query('page') page: number = 1,
+  //   @Query('limit') limit: number = 10,
+  //   @Query('status') status?: string,
+  //   @Query('provider') provider?: string,
+  // ): Promise<{ deliveries: DeliveryResponseDto[]; total: number; page: number; limit: number }> {
+  //   return await this.deliveryService.getDeliveries(
+  //     page,
+  //     limit,
+  //     status as any,
+  //     provider as any,
+  //   );
+  // }
 }

@@ -19,17 +19,12 @@ export class DeliveryResponseDto {
   @ApiProperty({ description: 'Delivery cost' })
   cost: number;
 
-  @ApiProperty({ description: 'Currency' })
-  currency: string;
-
   @ApiProperty({ description: 'Courier name' })
   courier: string;
 
   @ApiProperty({ description: 'Service type' })
   service: string;
 
-  @ApiProperty({ description: 'Estimated delivery date' })
-  estimatedDelivery: Date;
 
   @ApiProperty({ description: 'Created at' })
   createdAt: Date;

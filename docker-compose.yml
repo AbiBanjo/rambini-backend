@@ -51,6 +51,9 @@ services:
       - /app/node_modules
     networks:
       - rambini_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     command: npm run start:dev
 
 volumes:

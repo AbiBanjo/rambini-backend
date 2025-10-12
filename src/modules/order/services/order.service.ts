@@ -423,7 +423,7 @@ export class OrderService {
             order.customer_id,
             NotificationType.ORDER_UPDATE,
             `Order #${order.order_number} Being Prepared`,
-            `Your order is now being prepared!${prepTimeMsg}`,
+            `Your order is now being prepared!`,
             { 
               order_id: orderId, 
               order_number: order.order_number,

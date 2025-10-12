@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Withdrawal, WithdrawalStatus, User, Currency, Country, Bank } from '../../../entities';
@@ -105,7 +105,7 @@ export class WithdrawalService {
     // Validate OTP
     const otpValidation = await this.validateWithdrawalOTP(withdrawalData.otp_id, withdrawalData.otp_code);
     if (!otpValidation.isValid) {
-      throw new UnauthorizedException(otpValidation.error || 'Invalid OTP');
+      throw new ForbiddenException(otpValidation.error || 'Invalid OTP');
     }
 
     // Check if user has any active withdrawal request

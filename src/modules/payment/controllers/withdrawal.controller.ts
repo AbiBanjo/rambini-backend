@@ -76,7 +76,7 @@ export class WithdrawalController {
     type: WithdrawalResponseDto
   })
   @ApiResponse({ status: 400, description: 'Bad request - invalid data or insufficient balance' })
-  @ApiResponse({ status: 401, description: 'Unauthorized - invalid OTP' })
+  @ApiResponse({ status: 403, description: 'Unauthorized - invalid OTP' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async requestWithdrawal(
     @Request() req: any,

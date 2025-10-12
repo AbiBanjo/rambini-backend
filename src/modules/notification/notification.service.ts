@@ -119,6 +119,7 @@ export class NotificationService {
       osVersion?: string;
     },
   ): Promise<DeviceToken> {
+    this.logger.log(`Registering device token for user ${userId} on platform ${platform}`);
     // Check if token already exists
     const existingToken = await this.deviceTokenRepository.findOne({
       where: { token },

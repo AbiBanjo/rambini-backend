@@ -13,12 +13,8 @@ export class DeliveryWebhookDto {
   @ApiProperty({ description: 'Tracking number', required: false })
   @IsString()
   @IsOptional()
-  trackingNumber?: string;
+  trackingId?: string;
 
-  @ApiProperty({ description: 'Reference number', required: false })
-  @IsString()
-  @IsOptional()
-  reference?: string;
 
   @ApiProperty({ description: 'Delivery status', required: false })
   @IsString()

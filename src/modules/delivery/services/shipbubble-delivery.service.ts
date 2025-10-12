@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as crypto from 'crypto';
 import { ShipbubbleProviderInterface } from '../interfaces/shipbubble-provider.interface';
 import {
   AddressValidationDto,
@@ -26,6 +27,7 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
   private readonly logger = new Logger(ShipbubbleDeliveryService.name);
   private readonly baseUrl = 'https://api.shipbubble.com/v1';
   private readonly apiKey: string;
+  private readonly webhookSecret: string;
 
   constructor(
     private readonly configService: ConfigService,
@@ -34,6 +36,11 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
     this.apiKey = this.configService.get<string>('SHIPBUBBLE_API_KEY');
     if (!this.apiKey) {
       throw new BadRequestException('SHIPBUBBLE_API_KEY is required');
+    }
+
+    this.webhookSecret = this.configService.get<string>('SHIPBUBBLE_API_KEY')
+    if (!this.webhookSecret) {
+      this.logger.warn('SHIPBUBBLE_WEBHOOK_SECRET is not configured. Webhook signature verification will be disabled.');
     }
   }
 
@@ -263,40 +270,77 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
 
   async processWebhook(payload: any, signature: string): Promise<DeliveryWebhookDto> {
     try {
-      this.logger.log(`Processing Shipbubble webhook: ${payload.event_type}`);
+      this.logger.log(``)
+      this.logger.log(`Processing Shipbubble webhook: ${JSON.stringify(payload)}`);
 
       // Verify webhook signature if needed
-      // const isValidSignature = this.verifyWebhookSignature(payload, signature);
-      // if (!isValidSignature) {
-      //   return {
-      //     success: false,
-      //     eventType: payload.event_type,
-      //     error: 'Invalid webhook signature',
-      //   };
-      // }
+      const isValidSignature = this.verifyWebhookSignature(payload, signature);
+      if (!isValidSignature) {
+        return {
+          success: false,
+          eventType: payload.event_type,
+          error: 'Invalid webhook signature',
+        };
+      }
 
-      const eventType = payload.event_type;
-      const trackingNumber = payload.tracking_number;
-      const reference = payload.reference;
+      const eventType = payload.event_type || payload.event;
+      const trackingId = payload.order_id || payload.data?.order_id;
+     
+      
+      // Extract status from payload - Shipbubble may send status in different locations
+      let shipmentStatus = payload.status || payload.data?.status || payload.data?.shipment_status;
+      
+      this.logger.log(`Event: ${eventType}, Status: ${shipmentStatus}, Tracking: ${trackingId}`);
 
-      // Process different event types
+      // Process different event types and map to our internal status
       switch (eventType) {
-        case 'shipment.created':
-        case 'shipment.picked_up':
-        case 'shipment.in_transit':
-        case 'shipment.out_for_delivery':
-        case 'shipment.delivered':
-        case 'shipment.failed':
-        case 'shipment.cancelled':
-        case 'shipment.returned':
+        case 'shipment.label.created':
+          // When label is created, shipment is confirmed
+          shipmentStatus = shipmentStatus || 'confirmed';
           return {
             success: true,
             eventType,
-            trackingNumber,
-            reference,
+            trackingId,
+            status: shipmentStatus,
+            description: 'Shipment label created and confirmed',
             data: payload.data,
           };
-
+          
+        case 'shipment.status.changed':
+          // Use the status from the webhook payload
+          return {
+            success: true,
+            eventType,
+            trackingId,
+            status: shipmentStatus,
+            description: payload.data?.status_description || `Status changed to ${shipmentStatus}`,
+            data: payload.data,
+          };
+          
+        case 'shipment.cancelled':
+          // Shipment was cancelled
+          shipmentStatus = 'cancelled';
+          return {
+            success: true,
+            eventType,
+            trackingId,
+            status: shipmentStatus,
+            description: 'Shipment cancelled',
+            data: payload.data,
+          };
+          
+        case 'shipment.cod.remitted':
+          // Cash on delivery has been remitted (usually means completed)
+          shipmentStatus = shipmentStatus || 'completed';
+          return {
+            success: true,
+            eventType,
+            trackingId,
+            status: shipmentStatus,
+            description: 'Cash on delivery remitted',
+            data: payload.data,
+          };
+          
         default:
           this.logger.warn(`Unknown webhook event type: ${eventType}`);
           return {
@@ -306,7 +350,7 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
           };
       }
     } catch (error) {
-      this.logger.error(`Failed to process webhook: ${error.message}`);
+      this.logger.error(`Failed to process webhook: ${error.message}`, error.stack);
       return {
         success: false,
         eventType: payload?.event_type || 'unknown',
@@ -315,12 +359,53 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
     }
   }
 
-
   private verifyWebhookSignature(payload: any, signature: string): boolean {
-    // Implement signature verification based on Shipbubble's webhook security
-    // This would typically involve HMAC verification
-    // For now, return true (implement proper verification)
-    return true;
+    try {
+      // If webhook secret is not configured, skip verification but log a warning
+      if (!this.webhookSecret) {
+        this.logger.warn('Webhook signature verification skipped - SHIPBUBBLE_WEBHOOK_SECRET not configured');
+        return true;
+      }
+
+      // If no signature is provided, reject the webhook
+      if (!signature) {
+        this.logger.error('Webhook signature missing');
+        return false;
+      }
+
+      // Convert payload to string for hashing
+      const payloadString = typeof payload === 'string' 
+        ? payload 
+        : JSON.stringify(payload);
+
+      // Create HMAC using SHA512 algorithm with the webhook secret
+      const computedSignature = crypto
+        .createHmac('sha512', this.webhookSecret)
+        .update(payloadString)
+        .digest('hex');
+
+      // Use timing-safe comparison to prevent timing attacks
+      const expectedBuffer = Buffer.from(signature);
+      const computedBuffer = Buffer.from(computedSignature);
+
+      // Ensure both buffers are the same length before comparing
+      if (expectedBuffer.length !== computedBuffer.length) {
+        this.logger.error('Webhook signature length mismatch');
+        return false;
+      }
+
+      // Use crypto.timingSafeEqual for secure comparison
+      const isValid = crypto.timingSafeEqual(expectedBuffer, computedBuffer);
+
+      if (!isValid) {
+        this.logger.error('Webhook signature verification failed - invalid signature');
+      }
+
+      return isValid;
+    } catch (error) {
+      this.logger.error(`Error verifying webhook signature: ${error.message}`);
+      return false;
+    }
   }
 
 
@@ -459,6 +544,7 @@ export class ShipbubbleDeliveryService implements ShipbubbleProviderInterface {
       );
 
       const data = response.data;
+      this.logger.log('Shipment label response', data);
 
       if (data.status === 'success' && data.data) {
         return {

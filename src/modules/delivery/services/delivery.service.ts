@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryRepository } from '../repositories/delivery.repository';
 import { DeliveryProviderFactoryService } from './delivery-provider-factory.service';
-import { Delivery, ShipmentStatus, DeliveryProvider, DeliveryTracking, DeliveryQuote } from 'src/entities';
+import { Delivery, ShipmentStatus, DeliveryProvider, DeliveryTracking, DeliveryQuote, Order, OrderStatus, OrderType, NotificationType } from 'src/entities';
 import { AddressService } from '../../user/services/address.service';
 import {
   AddressValidationDto,
@@ -29,6 +29,8 @@ import { ShipbubbleDeliveryService } from './shipbubble-delivery.service';
 import { DeliveryProviderSelectorService } from './delivery-provider-selector.service';
 import { getCurrencyForCountry } from '@/utils/currency-mapper';
 import { UserService } from '@/modules/user/services/user.service';
+import { NotificationSSEService } from '@/modules/notification/services/notification-sse.service';
+import { NotificationService } from '@/modules/notification/notification.service';
 
 @Injectable()
 export class DeliveryService {
@@ -44,11 +46,15 @@ export class DeliveryService {
     private readonly deliveryTrackingRepository: Repository<DeliveryTracking>,
     @InjectRepository(DeliveryQuote)
     private readonly deliveryQuoteRepository: Repository<DeliveryQuote>,
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
     private readonly deliveryProviderSelector: DeliveryProviderSelectorService,
     private readonly cartService: CartService,
     private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
     private readonly uberDeliveryService: UberDeliveryService,
-    private readonly userService : UserService
+    private readonly userService: UserService,
+    private readonly notificationSSEService: NotificationSSEService,
+    private readonly notificationService: NotificationService,
 
   ) {}
 
@@ -115,7 +121,7 @@ export class DeliveryService {
           name: vendor.user.full_name,
         },
         destination_address: {
-          address: customerAddress.address_line_1,
+          address: customerAddress.address_line_2,
           city: customerAddress.city,
           state: customerAddress.state,
           country: customerAddress.country,
@@ -219,22 +225,28 @@ export class DeliveryService {
       // Create delivery request from quote data
       const deliveryRequest = {
         pickup_name: deliveryQuote.origin_address?.name || 'Vendor', // This should come from vendor data
-        pickup_address: JSON.stringify(deliveryQuote.origin_address),
+        pickup_address: JSON.stringify({
+          street_address:[ deliveryQuote.origin_address?.address],
+          city: deliveryQuote.origin_address?.city,
+          state: deliveryQuote.origin_address?.state,
+          zip_code: deliveryQuote.origin_address?.postalCode,
+          country: deliveryQuote.origin_address?.country,
+        }),
         pickup_phone_number: deliveryQuote.origin_address?.phone || '+1234567890', // This should come from vendor data
         dropoff_name: deliveryQuote.destination_address?.name || 'Customer', // This should come from order data
-        dropoff_address: JSON.stringify(deliveryQuote.destination_address),
+        dropoff_address: JSON.stringify({
+          street_address:[ deliveryQuote.destination_address?.address],
+          city: deliveryQuote.destination_address?.city,
+          state: deliveryQuote.destination_address?.state,
+          zip_code: deliveryQuote.destination_address?.postalCode,
+          country: deliveryQuote.destination_address?.country,
+        }),
         dropoff_phone_number: deliveryQuote.destination_address?.phone || '+1234567890', // This should come from order data
         manifest_items: [{
           name: 'Food Order',
           description: 'Food delivery order',
           quantity: deliveryQuote.quantity_of_items || 1,
-          price: Math.round((deliveryQuote.items_price || 0) * 100), // Convert to cents
-          // weight: Math.round((deliveryQuote.package_details?.weight || 0) * 1000), // Convert kg to grams
-          // dimensions: {
-          //   length: deliveryQuote.package_details?.length || 30,
-          //   width: deliveryQuote.package_details?.width || 30,
-          //   height: deliveryQuote.package_details?.height || 15,
-          // },
+          price: Math.round((deliveryQuote.items_price || 0) * 100), 
         }],
         manifest_total_value: Math.round((deliveryQuote.package_details?.value || 0) * 100),
         pickup_ready_dt: new Date(Date.now() + 20 * 60 * 1000).toISOString(), // 20 minutes from now
@@ -253,6 +265,7 @@ export class DeliveryService {
       this.logger.log('Delivery request', deliveryRequest);
 
       deliveryResult = await uberService.createDelivery(deliveryRequest);
+      this.logger.log('Delivery response', deliveryResult);
       trackingNumber = deliveryResult.id;
       referenceNumber = deliveryResult.external_id || orderId;
       labelUrl = deliveryResult.tracking_url;
@@ -269,57 +282,26 @@ export class DeliveryService {
         request_token: deliveryQuote.provider_request_token,
         courier_id: deliveryQuote.courier_id,
         service_code: deliveryQuote.service_code,
-        // package_items: deliveryQuote.package_details?.items || [{
-        //   name: 'Food Order',
-        //   description: 'Food delivery order',
-        //   unit_weight: (deliveryQuote.package_details?.weight || 0.5).toString(),
-        //   unit_amount: (deliveryQuote.package_details?.value || 0).toString(),
-        //   quantity: deliveryQuote.quantity_of_items,
-        // }],
-        // package_dimension: {
-        //   length: deliveryQuote.package_details?.length || 30,
-        //   width: deliveryQuote.package_details?.width || 30,
-        //   height: deliveryQuote.package_details?.height || 15,
-        // },
-        // pickup_date: new Date().toISOString().split('T')[0], // Today's date
       };
 
       this.logger.log('Shipment request', shipmentRequest);
 
       deliveryResult = await shipbubbleService.createShipmentLabel(shipmentRequest);
       this.logger.log('Shipment response', deliveryResult);
-      trackingNumber = deliveryResult.data.tracking_number;
+      trackingNumber = deliveryResult.data.tracking_number || deliveryResult.data.tracking_url
       referenceNumber = deliveryResult.data.reference_number || orderId;
-      labelUrl = deliveryResult.data.label_url;
+      labelUrl = deliveryResult.data.tracking_url
 
     } else {
       throw new BadRequestException(`Unsupported delivery provider: ${deliveryQuote.provider}`);
     }
-
-    // Create delivery record
-    const delivery = await this.deliveryRepository.create({
-      order_id: orderId,
-      provider: deliveryQuote.provider,
-      tracking_number: trackingNumber,
-      cost: deliveryQuote.fee,
-      currency: deliveryQuote.currency,
-      courier_name: deliveryQuote.courier_name || deliveryQuote.getDisplayName(),
-      service_type: deliveryQuote.service_code || deliveryQuote.service_type || 'standard',
-      rate_id: deliveryQuote.provider_quote_id || deliveryQuote.id,
-      reference_number: referenceNumber,
-      label_url: labelUrl,
-      estimated_delivery: deliveryQuote.estimated_delivery_time || new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
-      origin_address: deliveryQuote.origin_address,
-      destination_address: deliveryQuote.destination_address,
-      package_details: deliveryQuote.package_details,
-      status: ShipmentStatus.PENDING,
-    });
-
-    // Mark the delivery quote as used
-    deliveryQuote.markAsUsed(delivery.id);
+    
+    deliveryQuote.trackingNumber = trackingNumber;
+    deliveryQuote.labelUrl = labelUrl;
+    deliveryQuote.referenceNumber = referenceNumber;
     await this.deliveryQuoteRepository.save(deliveryQuote);
 
-    return this.mapToDeliveryResponse(delivery);
+    return this.mapToDeliveryResponse(deliveryQuote);
   }
 
  
@@ -397,61 +379,102 @@ export class DeliveryService {
 
     const webhookResult = await deliveryProvider.processWebhook(payload, signature);
     
-    if (webhookResult.success && webhookResult.trackingNumber) {
+    if (webhookResult.success && webhookResult.trackingId) {
       // Update delivery status based on webhook event
-      const delivery = await this.deliveryRepository.findByTrackingNumber(webhookResult.trackingNumber);
-      if (delivery) {
-        const newStatus = this.mapWebhookEventToDeliveryStatus(webhookResult.eventType);
-        if (newStatus) {
-          await this.deliveryRepository.updateStatus(delivery.id, newStatus);
-          await this.addTrackingEvent(
-            delivery.id,
-            webhookResult.eventType,
-            `Status updated via webhook: ${webhookResult.eventType}`,
-          );
+      // GET delivery quote with trackingid
+      const deliveryQuote = await this.deliveryQuoteRepository.findOne({ 
+        where: { provider_quote_id: webhookResult.trackingId },
+        relations: ['order', 'order.customer']
+      });
+
+      // if there is delivery, update the order status and send notifications to the customer
+      if (deliveryQuote && deliveryQuote.order) {
+        this.logger.log(`Processing webhook for delivery quote ${deliveryQuote.id} and order ${deliveryQuote.order.id}`);
+        
+        // Map delivery status to order status
+        const newOrderStatus = this.mapDeliveryStatusToOrderStatus(webhookResult.status || webhookResult.eventType);
+        
+        if (newOrderStatus) {
+          const order = deliveryQuote.order;
+          const previousStatus = order.order_status;
+          
+          // Only update if status has changed
+          if (previousStatus !== newOrderStatus) {
+            this.logger.log(`Updating order ${order.id} status from ${previousStatus} to ${newOrderStatus}`);
+            
+            // Update order status based on delivery status
+            order.order_status = newOrderStatus;
+            
+            // Update additional fields based on status
+            if (newOrderStatus === OrderStatus.OUT_FOR_DELIVERY) {
+              // Order is out for delivery
+              if (!order.order_ready_at) {
+                order.order_ready_at = new Date();
+              }
+            } else if (newOrderStatus === OrderStatus.DELIVERED) {
+              // Order has been delivered
+              order.delivered_at = new Date();
+            }
+            
+            // Save updated order using OrderRepository
+            await this.orderRepository.save(order);
+            
+            // Get customer ID
+            const customerId = order.customer_id;
+            const orderNumber = order.order_number;
+            
+            // Send SSE notification to customer
+            try {
+              const notificationMessage = this.getOrderStatusNotificationMessage(newOrderStatus, orderNumber, order.order_type);
+              this.notificationSSEService.sendOrderUpdate(
+                customerId,
+                order.id,
+                newOrderStatus,
+                notificationMessage
+              );
+              this.logger.log(`SSE notification sent to customer ${customerId} for order ${order.id} status: ${newOrderStatus}`);
+            } catch (error) {
+              this.logger.error(`Failed to send SSE notification for order ${order.id}: ${error.message}`);
+            }
+            
+            // Send push notification to customer
+            try {
+              const pushTitle = `Order #${orderNumber} - ${this.getOrderStatusTitle(newOrderStatus)}`;
+              const pushMessage = this.getOrderStatusNotificationMessage(newOrderStatus, orderNumber, order.order_type);
+              
+              await this.notificationService.sendPushNotification(
+                customerId,
+                NotificationType.ORDER_UPDATE,
+                pushTitle,
+                pushMessage,
+                {
+                  order_id: order.id,
+                  order_number: orderNumber,
+                  status: newOrderStatus,
+                  order_type: order.order_type,
+                  delivery_status: webhookResult.status || webhookResult.eventType,
+                  delivery_provider: provider
+                }
+              );
+              this.logger.log(`Push notification sent to customer ${customerId} for order ${order.id} status: ${newOrderStatus}`);
+            } catch (error) {
+              this.logger.error(`Failed to send push notification for order ${order.id}: ${error.message}`);
+            }
+          } else {
+            this.logger.log(`Order ${order.id} status unchanged: ${previousStatus}`);
+          }
+        } else {
+          this.logger.warn(`Could not map delivery status ${webhookResult.status || webhookResult.eventType} to order status`);
         }
+      } else {
+        this.logger.warn(`No order found for delivery quote ${webhookResult.trackingId}`);
       }
     }
 
     return webhookResult;
   }
 
-  
-  async getDeliveryById(id: string): Promise<DeliveryResponseDto> {
-    const delivery = await this.deliveryRepository.findById(id);
-    if (!delivery) {
-      throw new NotFoundException('Delivery not found');
-    }
 
-    return this.mapToDeliveryResponse(delivery);
-  }
-
- 
-  async getDeliveryByTrackingNumber(trackingNumber: string): Promise<DeliveryResponseDto> {
-    const delivery = await this.deliveryRepository.findByTrackingNumber(trackingNumber);
-    if (!delivery) {
-      throw new NotFoundException('Delivery not found');
-    }
-
-    return this.mapToDeliveryResponse(delivery);
-  }
-
-
-  async getDeliveries(
-    page: number = 1,
-    limit: number = 10,
-    status?: ShipmentStatus,
-    provider?: DeliveryProvider,
-  ): Promise<{ deliveries: DeliveryResponseDto[]; total: number; page: number; limit: number }> {
-    const result = await this.deliveryRepository.findAll(page, limit, status, provider);
-    
-    return {
-      deliveries: result.deliveries.map(delivery => this.mapToDeliveryResponse(delivery)),
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-    };
-  }
 
 
   private async addTrackingEvent(
@@ -556,18 +579,16 @@ export class DeliveryService {
     return this.providerFactory.getProviderNameByCountry(country);
   }
 
-  private mapToDeliveryResponse(delivery: Delivery): DeliveryResponseDto {
+  private mapToDeliveryResponse(delivery: DeliveryQuote): DeliveryResponseDto {
     return {
       id: delivery.id,
       orderId: delivery.order_id,
       provider: delivery.provider,
-      trackingNumber: delivery.tracking_number,
+      trackingNumber: delivery.trackingNumber,
       status: delivery.status,
-      cost: delivery.cost,
-      currency: delivery.currency,
+      cost: delivery.fee,
       courier: delivery.courier_name,
       service: delivery.service_type,
-      estimatedDelivery: delivery.estimated_delivery,
       createdAt: delivery.created_at,
       updatedAt: delivery.updated_at,
     };
@@ -799,5 +820,100 @@ export class DeliveryService {
     }
 
     return { length, width, height };
+  }
+
+  /**
+   * Map delivery status to order status
+   */
+  private mapDeliveryStatusToOrderStatus(deliveryStatus: string): OrderStatus | null {
+    if (!deliveryStatus) return null;
+
+    const status = deliveryStatus.toLowerCase();
+    
+    // Map shipment statuses
+    if (status.includes('picked') || status.includes('pickup') || status.includes('picked_up')) {
+      return OrderStatus.OUT_FOR_DELIVERY;
+    }
+    
+    if (status.includes('transit') || status.includes('in_transit')) {
+      return OrderStatus.OUT_FOR_DELIVERY;
+    }
+    
+    if (status.includes('out_for_delivery') || status.includes('out for delivery')) {
+      return OrderStatus.OUT_FOR_DELIVERY;
+    }
+    
+    if (status.includes('delivered') || status.includes('completed')) {
+      return OrderStatus.DELIVERED;
+    }
+    
+    if (status.includes('cancelled') || status.includes('canceled')) {
+      return OrderStatus.CANCELLED;
+    }
+    
+    // Map webhook event types
+    if (status.includes('shipment.picked_up')) {
+      return OrderStatus.OUT_FOR_DELIVERY;
+    }
+    
+    if (status.includes('shipment.in_transit')) {
+      return OrderStatus.OUT_FOR_DELIVERY;
+    }
+    
+    if (status.includes('shipment.out_for_delivery')) {
+      return OrderStatus.OUT_FOR_DELIVERY;
+    }
+    
+    if (status.includes('shipment.delivered')) {
+      return OrderStatus.DELIVERED;
+    }
+    
+    if (status.includes('shipment.cancelled')) {
+      return OrderStatus.CANCELLED;
+    }
+    
+    // Default: no mapping
+    return null;
+  }
+
+  /**
+   * Get notification message based on order status
+   */
+  private getOrderStatusNotificationMessage(status: OrderStatus, orderNumber: string, orderType: OrderType): string {
+    switch (status) {
+      case OrderStatus.OUT_FOR_DELIVERY:
+        return `Your order #${orderNumber} is out for delivery! Track your order for real-time updates.`;
+      
+      case OrderStatus.DELIVERED:
+        if (orderType === OrderType.PICKUP) {
+          return `Your order #${orderNumber} has been delivered. Thank you for your order!`;
+        }
+        return `Your order #${orderNumber} has been delivered! We hope you enjoy your meal.`;
+      
+      case OrderStatus.CANCELLED:
+        return `Your order #${orderNumber} has been cancelled. Please contact support if you have any questions.`;
+      
+      default:
+        return `Your order #${orderNumber} status has been updated to ${status}.`;
+    }
+  }
+
+  /**
+   * Get notification title based on order status
+   */
+  private getOrderStatusTitle(status: OrderStatus): string {
+    switch (status) {
+      case OrderStatus.OUT_FOR_DELIVERY:
+        return 'Out for Delivery';
+      
+      case OrderStatus.DELIVERED:
+        return 'Delivered';
+      
+      case OrderStatus.CANCELLED:
+        return 'Cancelled';
+      
+      default:
+        return status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+    }
   }
 }

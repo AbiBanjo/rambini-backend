@@ -134,6 +134,12 @@ docker-compose.yml
 # Documentation
 examples/
 docs/
+*.md
 
 # Text files at root
 *.txt
+
+# Firebase credentials (sensitive - loaded from GitHub Secrets)
+src/modules/notification/firebase.json
+firebase.json
+**/firebase.json

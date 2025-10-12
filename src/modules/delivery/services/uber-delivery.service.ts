@@ -1,7 +1,8 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import * as crypto from 'crypto';
 import { UberProviderInterface } from '../interfaces/uber-provider.interface';
 import { StoreLocation, DeliveryQuoteDetails, ProofOfDelivery } from '../interfaces/enhanced-delivery-provider.interface';
 import {
@@ -32,6 +33,7 @@ export class UberDeliveryService implements UberProviderInterface {
   private readonly clientId: string;
   private readonly clientSecret: string;
   private readonly customerId: string;
+  private readonly webhookSigningKey: string;
   private accessToken: string;
   private tokenExpiry: Date;
 
@@ -42,10 +44,57 @@ export class UberDeliveryService implements UberProviderInterface {
     this.clientId = this.configService.get<string>('UBER_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('UBER_CLIENT_SECRET');
     this.customerId = this.configService.get<string>('UBER_CUSTOMER_ID');
+    this.webhookSigningKey = this.configService.get<string>('UBER_WEBHOOK_SIGNING_KEY');
     
     if (!this.clientId || !this.clientSecret || !this.customerId) {
       throw new Error('UBER_CLIENT_ID, UBER_CLIENT_SECRET, and UBER_CUSTOMER_ID are required');
     }
+    
+    if (!this.webhookSigningKey) {
+      this.logger.warn('UBER_WEBHOOK_SIGNING_KEY is not configured. Webhook signature verification will be disabled.');
+    }
+  }
+
+  /**
+   * Helper method to retry API calls with exponential backoff
+   */
+  private async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries = 3,
+    initialDelay = 1000,
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        
+        // Check if it's a network error (DNS, timeout, connection refused, etc.)
+        const isNetworkError = 
+          error.code === 'EAI_AGAIN' || 
+          error.code === 'ENOTFOUND' || 
+          error.code === 'ETIMEDOUT' ||
+          error.code === 'ECONNREFUSED' ||
+          error.code === 'ECONNRESET' ||
+          error.message?.includes('getaddrinfo');
+        
+        // Only retry on network errors, not on API errors (4xx, 5xx)
+        if (!isNetworkError || attempt === maxRetries) {
+          throw error;
+        }
+        
+        const delay = initialDelay * Math.pow(2, attempt);
+        this.logger.warn(
+          `Network error (${error.code || error.message}). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`,
+        );
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
   }
 
 
@@ -60,30 +109,43 @@ export class UberDeliveryService implements UberProviderInterface {
 
 
   async createDeliveryQuote(quoteRequest: UberDirectDeliveryQuoteRequestDto): Promise<UberDirectDeliveryQuoteResponseDto> {
-    
     try {
-
       this.logger.log('Creating delivery quote');
       const token = await this.getAccessToken();
 
       // https://api.uber.com/v1/customers/{customer_id}/delivery_quotes
       this.logger.log('Creating delivery quote', `${this.baseUrl}/customers/${this.customerId}/delivery_quotes`);
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/customers/${this.customerId}/delivery_quotes`,
-          quoteRequest,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
+      
+      const response = await this.retryWithBackoff(async () => {
+        return await firstValueFrom(
+          this.httpService.post(
+            `${this.baseUrl}/customers/${this.customerId}/delivery_quotes`,
+            quoteRequest,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
             },
-          },
-        ),
-      );
+          ),
+        );
+      });
 
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to create delivery quote', error.response.data);
+      // Better error logging for network vs API errors
+      if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo')) {
+        this.logger.error('Network/DNS error when creating delivery quote', {
+          error: error.message,
+          code: error.code,
+          suggestion: 'Check DNS configuration, internet connectivity, or Docker network settings'
+        });
+        throw new BadRequestException(
+          'Unable to reach delivery service. Please check your network connection.'
+        );
+      }
+      
+      this.logger.error('Failed to create delivery quote', error.response?.data || error.message);
       throw new BadRequestException(
         error.response?.data?.message || 'Failed to create delivery quote'
       );
@@ -95,22 +157,38 @@ export class UberDeliveryService implements UberProviderInterface {
     try {
       const token = await this.getAccessToken();
       
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.baseUrl}/customers/${this.customerId}/deliveries`,
-          deliveryRequest,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
+      const response = await this.retryWithBackoff(async () => {
+        return await firstValueFrom(
+          this.httpService.post(
+            `${this.baseUrl}/customers/${this.customerId}/deliveries`,
+            deliveryRequest,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
             },
-          },
-        ),
-      );
+          ),
+        );
+      });
+
+      this.logger.log('Uber Delivery response', response.data);
 
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to create delivery', error);
+      // Better error logging for network vs API errors
+      if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo')) {
+        this.logger.error('Network/DNS error when creating delivery', {
+          error: error.message,
+          code: error.code,
+          suggestion: 'Check DNS configuration, internet connectivity, or Docker network settings'
+        });
+        throw new BadRequestException(
+          'Unable to reach delivery service. Please check your network connection.'
+        );
+      }
+      
+      this.logger.error('Failed to create delivery', error.response?.data || error.message);
       throw new BadRequestException(
         error.response?.data?.message || 'Failed to create delivery'
       );
@@ -198,31 +276,84 @@ export class UberDeliveryService implements UberProviderInterface {
     }
 
     try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          'https://auth.uber.com/oauth/v2/token',
-          {
-            grant_type: 'client_credentials',
-            client_id: this.clientId,
-            client_secret: this.clientSecret,
-            scope: 'eats.deliveries',
-          },
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
+      const response = await this.retryWithBackoff(async () => {
+        return await firstValueFrom(
+          this.httpService.post(
+            'https://auth.uber.com/oauth/v2/token',
+            {
+              grant_type: 'client_credentials',
+              client_id: this.clientId,
+              client_secret: this.clientSecret,
+              scope: 'eats.deliveries',
             },
-          },
-        ),
-      );
+            {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+            },
+          ),
+        );
+      });
 
       this.accessToken = response.data.access_token;
       this.tokenExpiry = new Date(Date.now() + (response.data.expires_in * 1000));
-      this.logger.log('Uber access token', this.accessToken);
+      this.logger.log('Uber access token obtained successfully');
       return this.accessToken;
     } catch (error) {
-      this.logger.error('Failed to get Uber access token', error);
-      this.logger.error('Failed to get Uber access token', error.response.data);
+      if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo')) {
+        this.logger.error('Network/DNS error when getting Uber access token', {
+          error: error.message,
+          code: error.code,
+          suggestion: 'Check DNS configuration, internet connectivity, or Docker network settings'
+        });
+        throw new BadRequestException(
+          'Unable to reach Uber authentication service. Please check your network connection.'
+        );
+      }
+      
+      this.logger.error('Failed to get Uber access token', error.response?.data || error.message);
       throw new BadRequestException('Failed to authenticate with Uber');
+    }
+  }
+
+  verifyWebhookSignature(payload: string | Buffer, signature: string): boolean {
+    if (!this.webhookSigningKey) {
+      this.logger.warn('Webhook signing key not configured. Skipping signature verification.');
+      return true; // Allow webhook if signing key is not configured (for backward compatibility)
+    }
+
+    if (!signature) {
+      this.logger.error('Webhook signature is missing');
+      return false;
+    }
+
+    try {
+      // Convert payload to string if it's a Buffer
+      const payloadString = typeof payload === 'string' ? payload : payload.toString('utf-8');
+      
+      // Compute HMAC SHA-256 hash
+      const computedSignature = crypto
+        .createHmac('sha256', this.webhookSigningKey)
+        .update(payloadString, 'utf-8')
+        .digest('hex');
+
+      // Compare signatures using timing-safe comparison
+      const isValid = crypto.timingSafeEqual(
+        Buffer.from(computedSignature, 'hex'),
+        Buffer.from(signature, 'hex')
+      );
+
+      if (!isValid) {
+        this.logger.error('Webhook signature verification failed', {
+          expected: computedSignature,
+          received: signature,
+        });
+      }
+
+      return isValid;
+    } catch (error) {
+      this.logger.error('Error verifying webhook signature', error);
+      return false;
     }
   }
 
@@ -417,56 +548,260 @@ export class UberDeliveryService implements UberProviderInterface {
     }
   }
 
-  async processWebhook(payload: any, signature: string): Promise<DeliveryWebhookDto> {
+  async processWebhook(payload: any, signature: string, rawBody?: string | Buffer): Promise<DeliveryWebhookDto> {
     try {
-      // Verify webhook signature if needed
-      // Uber webhook verification logic would go here
+      this.logger.log(`Processing Uber Direct webhook: ${JSON.stringify(payload)}`);
 
-      const eventType = payload.event_type;
-      const deliveryId = payload.delivery_id;
-
-      let status = 'unknown';
-      let description = 'Unknown event';
-
-      switch (eventType) {
-        case 'delivery.status':
-          status = this.mapUberStatusToShipmentStatus(payload.status);
-          description = this.getStatusDescription(payload.status);
-          break;
-        case 'courier.update':
-          status = 'in_transit';
-          description = 'Courier location updated';
-          break;
-        case 'refund.request':
-          status = 'cancelled';
-          description = 'Refund requested';
-          break;
-        case 'shopping.progress':
-          status = 'picked_up';
-          description = 'Shopping in progress';
-          break;
+      // 1. Verify webhook signature
+      const bodyToVerify = rawBody || JSON.stringify(payload);
+      const isValidSignature = this.verifyWebhookSignature(bodyToVerify, signature);
+      
+      if (!isValidSignature) {
+        this.logger.error('Uber webhook signature verification failed');
+        return {
+          success: false,
+          eventType: payload.kind || 'unknown',
+          error: 'Invalid webhook signature',
+          provider: 'uber',
+        };
       }
 
+      // 2. Extract core webhook fields
+      const eventType = payload.kind;  // "event.delivery_status"
+      const status = payload.status;   // "pickup", "delivered", etc.
+      const deliveryId = payload.delivery_id;  // "del_xxxx"
+      const data = payload.data;
+      
+      // 🎯 Extract quote_id (critical for tracking in delivery service)
+      const quoteId = data?.quote_id || deliveryId;  // Falls back to delivery_id if quote_id not present
+      
+      this.logger.log(`Event: ${eventType}, Status: ${status}, Delivery ID: ${deliveryId}, Quote ID: ${quoteId}`);
+
+      // 3. Process different event types - FOCUS ON KEY EVENTS
+      
+      // 🎯 CASE 1: Courier is 1 minute away from PICKUP (restaurant)
+      if (status === 'pickup' && data.courier_imminent === true) {
+        this.logger.log(`🚗 Courier imminent at pickup for delivery ${deliveryId}`);
+        
+        return {
+          success: true,
+          eventType: 'courier.imminent.pickup',  // Custom event name for your system
+          trackingId: quoteId,  // Return quote_id like Shipbubble
+          status: 'pickup_imminent',  // Refined status
+          description: `Driver ${data.courier?.name || 'courier'} is 1 minute away from pickup location`,
+          timestamp: new Date(),
+          provider: 'uber',
+          data: {
+            // Include relevant courier data for notifications
+            courier: {
+              name: data.courier?.name,
+              phone: data.courier?.phone_number,
+              location: data.courier?.location,
+              vehicle_type: data.courier?.vehicle_type,
+              vehicle_color: data.courier?.vehicle_color,
+              vehicle_make: data.courier?.vehicle_make,
+              vehicle_model: data.courier?.vehicle_model,
+              vehicle_license_plate: data.courier?.vehicle_license_plate,
+              img_href: data.courier?.img_href,
+            },
+            pickup_eta: data.pickup_eta,
+            pickup_address: data.pickup?.address,
+            tracking_url: data.tracking_url,
+          }
+        };
+      }
+
+      // 🎯 CASE 2: Order DELIVERED to customer
+      if (status === 'delivered') {
+        this.logger.log(`✅ Delivery completed for ${deliveryId}`);
+        
+        return {
+          success: true,
+          eventType: 'delivery.completed',  // Custom event name for your system
+          trackingId: quoteId,  // Return quote_id
+          status: 'delivered',  // Refined status
+          description: `Order delivered successfully to ${data.dropoff?.name || 'customer'}`,
+          timestamp: new Date(data.dropoff?.status_timestamp || Date.now()),
+          provider: 'uber',
+          data: {
+            // Include proof of delivery data
+            delivered_at: data.dropoff?.status_timestamp,
+            dropoff_address: data.dropoff?.address,
+            proof_of_delivery: {
+              signature_url: data.dropoff?.verification?.signature?.image_url,
+              photo_url: data.dropoff?.verification?.picture?.image_url,
+              signer_name: data.dropoff?.verification?.signature?.signer_name,
+              signer_relationship: data.dropoff?.verification?.signature?.signer_relationship,
+              pin_entered: data.dropoff?.verification?.pin_code?.entered,
+              completion_location: data.dropoff?.verification?.completion_location,
+            },
+            courier: {
+              name: data.courier?.name,
+              phone: data.courier?.phone_number,
+            },
+            tracking_url: data.tracking_url,
+          }
+        };
+      }
+
+      // Optional: Handle other statuses for completeness
+      
+      // Status: "pending" - Courier being assigned
+      if (status === 'pending') {
+        return {
+          success: true,
+          eventType: 'delivery.pending',
+          trackingId: quoteId,
+          status: 'pending',
+          description: 'Looking for a courier',
+          timestamp: new Date(),
+          provider: 'uber',
+          data: {
+            pickup_eta: data.pickup_eta,
+            dropoff_eta: data.dropoff_eta,
+          },
+        };
+      }
+
+      // Status: "pickup" (without courier_imminent) - Courier heading to restaurant
+      if (status === 'pickup') {
+        return {
+          success: true,
+          eventType: 'courier.heading_to_pickup',
+          trackingId: quoteId,
+          status: 'courier_assigned',
+          description: `Courier ${data.courier?.name || ''} is heading to pickup location`,
+          timestamp: new Date(),
+          provider: 'uber',
+          data: {
+            courier: {
+              name: data.courier?.name,
+              phone: data.courier?.phone_number,
+              vehicle_type: data.courier?.vehicle_type,
+            },
+            pickup_eta: data.pickup_eta,
+          },
+        };
+      }
+
+      // Status: "pickup_complete" - Courier picked up the order
+      if (status === 'pickup_complete') {
+        return {
+          success: true,
+          eventType: 'pickup.completed',
+          trackingId: quoteId,
+          status: 'picked_up',
+          description: 'Order picked up by courier',
+          timestamp: new Date(data.pickup?.status_timestamp || Date.now()),
+          provider: 'uber',
+          data: {
+            picked_up_at: data.pickup?.status_timestamp,
+            courier: {
+              name: data.courier?.name,
+              phone: data.courier?.phone_number,
+            },
+            dropoff_eta: data.dropoff_eta,
+          },
+        };
+      }
+
+      // Status: "dropoff" - Courier heading to customer
+      if (status === 'dropoff') {
+        // Check if courier is imminent at dropoff
+        if (data.courier_imminent === true) {
+          return {
+            success: true,
+            eventType: 'courier.imminent.dropoff',
+            trackingId: quoteId,
+            status: 'dropoff_imminent',
+            description: `Driver is 1 minute away from customer`,
+            timestamp: new Date(),
+            provider: 'uber',
+            data: {
+              courier: {
+                name: data.courier?.name,
+                phone: data.courier?.phone_number,
+                location: data.courier?.location,
+                vehicle_type: data.courier?.vehicle_type,
+              },
+              dropoff_eta: data.dropoff_eta,
+              dropoff_address: data.dropoff?.address,
+            }
+          };
+        }
+        
+        return {
+          success: true,
+          eventType: 'delivery.in_transit',
+          trackingId: quoteId,
+          status: 'out_for_delivery',
+          description: 'Order is out for delivery',
+          timestamp: new Date(),
+          provider: 'uber',
+          data: {
+            courier: {
+              name: data.courier?.name,
+              phone: data.courier?.phone_number,
+            },
+            dropoff_eta: data.dropoff_eta,
+          },
+        };
+      }
+
+      // Status: "canceled" - Delivery cancelled
+      if (status === 'canceled') {
+        return {
+          success: true,
+          eventType: 'delivery.cancelled',
+          trackingId: quoteId,
+          status: 'cancelled',
+          description: data.cancelation_reason?.secondary_reason || 'Delivery cancelled',
+          timestamp: new Date(),
+          provider: 'uber',
+          data: {
+            cancelation_reason: data.cancelation_reason,
+          },
+        };
+      }
+
+      // Status: "returned" - Items returned to restaurant
+      if (status === 'returned') {
+        return {
+          success: true,
+          eventType: 'delivery.returned',
+          trackingId: quoteId,
+          status: 'returned',
+          description: 'Order returned to restaurant',
+          timestamp: new Date(),
+          provider: 'uber',
+          data: {
+            undeliverable_reason: data.undeliverable_reason,
+            undeliverable_action: data.undeliverable_action,
+          },
+        };
+      }
+
+      // Default case: Unknown or unhandled status
+      this.logger.warn(`Unhandled Uber webhook status: ${status}`);
       return {
         success: true,
-        eventType: eventType,
-        trackingNumber: deliveryId,
-        status,
-        description,
+        eventType: eventType || 'unknown',
+        trackingId: quoteId,
+        status: status || 'unknown',
+        description: `Status: ${status}`,
         timestamp: new Date(),
         provider: 'uber',
+        data: data,
       };
+
     } catch (error) {
-      this.logger.error('Failed to process Uber webhook', error);
+      this.logger.error(`Failed to process Uber webhook: ${error.message}`, error.stack);
       return {
         success: false,
-        eventType: payload.event_type || 'unknown',
-        trackingNumber: payload.delivery_id || 'unknown',
-        status: 'unknown',
-        description: 'Webhook processing failed',
-        timestamp: new Date(),
+        eventType: payload?.kind || 'unknown',
+        trackingId: payload?.delivery_id,
+        error: 'Webhook processing failed',
         provider: 'uber',
-        error: 'Failed to process webhook',
       };
     }
   }

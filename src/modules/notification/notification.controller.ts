@@ -21,8 +21,10 @@ import {
   UserNotificationPreference,
   NotificationPriority,
 } from '../../entities';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('notifications')
+@UseGuards(JwtAuthGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 

@@ -49,6 +49,45 @@ export class DeliveryWebhookController {
     }
   }
 
+  @Post('uber')
+  @HttpCode(HttpStatus.OK)
+  @ApiExcludeEndpoint() // Hide from Swagger as this is a webhook endpoint
+  @ApiOperation({ summary: 'Uber Direct delivery webhook' })
+  @ApiResponse({
+    status: 200,
+    description: 'Webhook processed successfully',
+    schema: { type: 'object', properties: { success: { type: 'boolean' } } },
+  })
+  async handleUberWebhook(
+    @Body() payload: any,
+    @Headers('x-uber-signature') uberSignature: string,
+    @Headers('x-postmates-signature') postmatesSignature: string,
+  ): Promise<{ success: boolean }> {
+    this.logger.log('Received Uber Direct webhook');
+
+    try {
+      // Uber Direct supports both x-uber-signature and x-postmates-signature
+      // Prefer x-uber-signature if available
+      const signature = uberSignature || postmatesSignature;
+
+      if (!signature) {
+        this.logger.error('No signature header found in Uber webhook');
+        throw new BadRequestException('Missing webhook signature');
+      }
+
+      const result = await this.deliveryService.processWebhook(
+        DeliveryProvider.UBER,
+        payload,
+        signature,
+      );
+
+      return { success: result.success };
+    } catch (error) {
+      this.logger.error(`Failed to process Uber webhook: ${error.message}`);
+      throw new BadRequestException('Webhook processing failed');
+    }
+  }
+
   @Post('test')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Test webhook endpoint' })
