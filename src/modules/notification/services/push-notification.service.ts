@@ -88,6 +88,14 @@ export class PushNotificationService {
     const tokens = deviceTokens.map(token => token.token);
 
     try {
+      // FCM requires all data values to be strings
+      const dataPayload = this.convertToStringData({
+        type: notification.notification_type,
+        notificationId: notification.id,
+        ...notification.data,
+        ...customData,
+      });
+
       const message: admin.messaging.MulticastMessage = {
         android: {
           priority: 'high',
@@ -122,12 +130,7 @@ export class PushNotificationService {
           title: notification.title,
           body: notification.message,
         },
-        data: {
-          type: notification.notification_type,
-          notificationId: notification.id,
-          ...notification.data,
-          ...customData,
-        },
+        data: dataPayload,
         tokens: tokens,
       };
 
@@ -209,6 +212,14 @@ export class PushNotificationService {
     }
 
     try {
+      // FCM requires all data values to be strings
+      const dataPayload = this.convertToStringData({
+        type: notification.notification_type,
+        notificationId: notification.id,
+        ...notification.data,
+        ...customData,
+      });
+
       const message: admin.messaging.Message = {
         topic: topic,
         android: {
@@ -244,12 +255,7 @@ export class PushNotificationService {
           title: notification.title,
           body: notification.message,
         },
-        data: {
-          type: notification.notification_type,
-          notificationId: notification.id,
-          ...notification.data,
-          ...customData,
-        },
+        data: dataPayload,
       };
 
       const messaging = admin.messaging();
@@ -278,5 +284,29 @@ export class PushNotificationService {
   private isValidTokenFormat(token: DeviceToken): boolean {
     // Basic validation for FCM tokens (works for all platforms)
     return token.token.length > 50 && token.token.length < 200;
+  }
+
+  /**
+   * Converts all values in a data object to strings as required by FCM
+   * FCM data payload only accepts string values
+   */
+  private convertToStringData(data: Record<string, any>): Record<string, string> {
+    const stringData: Record<string, string> = {};
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null || value === undefined) {
+        continue; // Skip null/undefined values
+      }
+      
+      if (typeof value === 'object') {
+        // Convert objects to JSON strings
+        stringData[key] = JSON.stringify(value);
+      } else {
+        // Convert all other types to strings
+        stringData[key] = String(value);
+      }
+    }
+    
+    return stringData;
   }
 }
