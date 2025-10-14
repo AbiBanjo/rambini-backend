@@ -137,6 +137,8 @@ export class PushNotificationService {
       const messaging = admin.messaging();
       const response = await messaging.sendEachForMulticast(message);
 
+      this.logger.log(response)
+
       // Process results
       response.responses.forEach((resp, index) => {
         results.push({

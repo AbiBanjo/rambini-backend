@@ -313,9 +313,9 @@ export class OrderService {
       throw new ForbiddenException('You can only view your own orders');
     }
 
-    if (userType === 'VENDOR' && order.vendor_id !== userId) {
-      throw new ForbiddenException('You can only view orders for your vendor account');
-    }
+    // if (userType === 'VENDOR' && order.vendor_id !== userId) {
+    //   throw new ForbiddenException('You can only view orders for your vendor account');
+    // }
 
     return this.mapToOrderResponse(order);
   }
