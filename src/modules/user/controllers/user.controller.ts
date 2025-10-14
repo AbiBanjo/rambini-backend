@@ -64,13 +64,29 @@ export class UserController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete current user account' })
-  @ApiResponse({ status: 200, description: 'User account deleted successfully' })
-  @ApiResponse({ status: 400, description: 'Bad request - Invalid reason provided' })
+  @ApiResponse({ status: 200, description: 'User account marked for deletion. Can be reactivated within 30 days.' })
+  @ApiResponse({ status: 400, description: 'Bad request - Account has balance or already marked for deletion' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async deleteCurrentUser(@Body() deleteAccountDto: DeleteAccountDto, @GetUser() user: User): Promise<{ message: string }> {
     await this.userService.deleteUserAccount(user.id, deleteAccountDto.reason);
-    return { message: 'Account deleted successfully' };
+    return { message: 'Account marked for deletion. You have 30 days to reactivate your account if you change your mind.' };
+  }
+
+  @Post('me/reactivate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reactivate deleted user account within 30 days' })
+  @ApiResponse({ status: 200, description: 'User account reactivated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - Account cannot be reactivated or grace period expired' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async reactivateCurrentUser(@GetUser() user: User): Promise<{ message: string; user: User }> {
+    const reactivatedUser = await this.userService.reactivateAccount(user.id);
+    return { 
+      message: 'Account reactivated successfully', 
+      user: reactivatedUser 
+    };
   }
 
   @Post('profile/picture')

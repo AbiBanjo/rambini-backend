@@ -190,6 +190,21 @@ export class OrderService {
       throw new NotFoundException('Failed to retrieve created order');
     }
 
+    // Send push notification to vendor about new order
+     this.notificationService.sendPushNotification(
+      vendor.user_id,
+      NotificationType.ORDER_UPDATE,
+      `New Order #${orderNumber}!`,
+      `You have received a new ${completeOrder.order_type.toLowerCase()} order from a customer.`,
+      {
+        order_id: order.id,
+        order_number: orderNumber,
+        status: completeOrder.order_status,
+        order_type: completeOrder.order_type,
+        total_amount: completeOrder.total_amount,
+      }
+    );
+
     this.logger.log(`Order created successfully: ${order.id} (${orderNumber}) for vendor: ${vendorId}`);
     return this.mapToOrderResponse(completeOrder);
   }

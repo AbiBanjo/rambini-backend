@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus, PaymentStatus, OrderStatus, User } from 'src/entities';
+import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus, PaymentStatus, OrderStatus, User, NotificationType } from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { WalletPaymentService } from './wallet-payment.service';
 import { StripePaymentService } from './stripe-payment.service';
@@ -11,6 +11,7 @@ import { PaymentProviderInterface } from '../interfaces/payment-provider.interfa
 import { ProcessPaymentDto, PaymentResponseDto, PaymentWebhookDto, FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto';
 import { CartService } from '@/modules/cart/services/cart.service';
 import { OrderService } from '@/modules/order/services/order.service';
+import { NotificationService } from '@/modules/notification/notification.service';
 import { getCurrencyForCountry } from '@/utils/currency-mapper';
 
 @Injectable()
@@ -29,6 +30,7 @@ export class PaymentService {
     private readonly cartService: CartService,
     @Inject(forwardRef(() => OrderService))
     private readonly orderService: OrderService,
+    private readonly notificationService: NotificationService,
   ) {
     // Initialize payment providers (excluding wallet as it's handled separately)
     this.paymentProviders = new Map();
@@ -293,10 +295,6 @@ export class PaymentService {
   private async processOrderPaymentWebhook(webhookResult: any): Promise<PaymentResponseDto> {
     this.logger.log(`Processing order payment webhook for reference: ${webhookResult.reference}`);
 
-    // Find payment by reference
-    // if( !webhookResult.reference.startsWith('PAY-')) {
-    //   webhookResult.reference = webhookResult.client_reference_id
-    // }
     const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
     if (!payment) {
       throw new NotFoundException('Payment not found for webhook reference');
@@ -331,6 +329,22 @@ export class PaymentService {
         payment_status: PaymentStatus.PAID,
         order_status: OrderStatus.NEW
       });
+
+      // send push notification to vendor
+      await this.notificationService.sendPushNotification(
+        payment.order.vendor.user_id,
+        NotificationType.ORDER_UPDATE,
+        `New Order #${payment.order.order_number}!`,
+        `You have received a new ${payment.order.order_type.toLowerCase()} order. Payment confirmed.`,
+        {
+          order_id: payment.order.id,
+          order_number: payment.order.order_number,
+          status: OrderStatus.NEW,
+          order_type: payment.order.order_type,
+          total_amount: payment.order.total_amount,
+          payment_status: PaymentStatus.PAID,
+        }
+      );
     }
 
     return this.mapToPaymentResponse(payment);

@@ -5,12 +5,12 @@ import { UserService } from './services/user.service';
 import { UserProfileService } from './services/user-profile.service';
 import { AddressService } from './services/address.service';
 import { AddressController } from './controllers/address.controller';
-import { User, Address, CartItem, MenuItem, Vendor } from 'src/entities';
+import { User, Address, CartItem, MenuItem, Vendor, Wallet } from 'src/entities';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Address, CartItem, MenuItem, Vendor]),
+    TypeOrmModule.forFeature([User, Address, CartItem, MenuItem, Vendor, Wallet]),
     forwardRef(() => AuthModule), 
   ],
   controllers: [UserController, AddressController],

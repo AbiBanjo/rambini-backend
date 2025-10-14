@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { User, UserType, UserStatus, CartItem, MenuItem, Vendor } from 'src/entities';
+import { User, UserType, UserStatus, CartItem, MenuItem, Vendor, Wallet } from 'src/entities';
 import { UpdateUserDto } from '../dto';
 import { OTPService } from '@/modules/auth/services/otp.service';
 
@@ -16,6 +16,8 @@ export class UserService {
     private readonly menuItemRepository: Repository<MenuItem>,
     @InjectRepository(Vendor)
     private readonly vendorRepository: Repository<Vendor>,
+    @InjectRepository(Wallet)
+    private readonly walletRepository: Repository<Wallet>,
     private readonly dataSource: DataSource,
     private readonly otpService: OTPService,
   ) {}
@@ -91,35 +93,41 @@ export class UserService {
   async deleteUserAccount(id: string, reason: string): Promise<void> {
     const user = await this.findById(id);
     
-    // Use a transaction to ensure all deletions are atomic
+    // Check if user has money in their wallet
+    const wallet = await this.walletRepository.findOne({ where: { user_id: id } });
+    if (wallet && wallet.balance > 0) {
+      throw new BadRequestException(
+        `Cannot delete account with existing balance of ${wallet.formatted_balance}. Please withdraw your funds before deleting your account.`
+      );
+    }
+    
+    // Check if account is already marked for deletion within 30 days
+    if (user.status === UserStatus.DELETED && user.deletion_requested_at) {
+      const daysSinceDeletion = Math.floor(
+        (new Date().getTime() - new Date(user.deletion_requested_at).getTime()) / (1000 * 60 * 60 * 24)
+      );
+      
+      if (daysSinceDeletion <= 30) {
+        throw new BadRequestException(
+          `Account is already scheduled for deletion. You have ${30 - daysSinceDeletion} days remaining to reactivate your account.`
+        );
+      }
+    }
+    
+    // Use a transaction to ensure all operations are atomic
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 1. Delete cart items for the user
-      await queryRunner.manager.delete(CartItem, { user_id: id });
-      
-      // 2. If user is a vendor, delete their menu items
-      if (user.user_type === UserType.VENDOR) {
-        const vendor = await queryRunner.manager.findOne(Vendor, { 
-          where: { user_id: id } 
-        });
-        
-        if (vendor) {
-          // Delete all menu items for this vendor
-          await queryRunner.manager.delete(MenuItem, { vendor_id: vendor.id });
-        }
-      }
-      
-      // 3. Finally, delete the user profile (soft delete by setting status to DELETED)
-      user.delete();
+      // Soft delete: Mark account for deletion with 30-day grace period
+      user.requestDeletion();
       await queryRunner.manager.save(user);
       
       await queryRunner.commitTransaction();
       
-      // Log the deletion for audit purposes
-      console.log(`User ${id} account deleted. Reason: ${reason}`);
+      // Log the deletion request for audit purposes
+      console.log(`User ${id} account marked for deletion. Reason: ${reason}. Can be reactivated within 30 days.`);
       
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -178,5 +186,74 @@ export class UserService {
     return {otpId}
   }
     // use otp service to generate OTP
+
+  async reactivateAccount(id: string): Promise<User> {
+    const user = await this.findById(id);
+    
+    if (user.status !== UserStatus.DELETED) {
+      throw new BadRequestException('Account is not marked for deletion');
+    }
+    
+    if (!user.canBeReactivated()) {
+      throw new BadRequestException(
+        'Account cannot be reactivated. The 30-day grace period has expired or deletion was not requested properly.'
+      );
+    }
+    
+    user.reactivate();
+    const reactivatedUser = await this.userRepository.save(user);
+    
+    console.log(`User ${id} account reactivated successfully.`);
+    return reactivatedUser;
+  }
+
+  async permanentlyDeleteAccount(id: string): Promise<void> {
+    const user = await this.findById(id);
+    
+    if (!user.isPermanentlyDeletable()) {
+      throw new BadRequestException(
+        'Account cannot be permanently deleted yet. Either it is not marked for deletion or the 30-day grace period has not expired.'
+      );
+    }
+    
+    // Use a transaction to ensure all deletions are atomic
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Delete cart items for the user
+      await queryRunner.manager.delete(CartItem, { user_id: id });
+      
+      // 2. If user is a vendor, delete their menu items
+      if (user.user_type === UserType.VENDOR) {
+        const vendor = await queryRunner.manager.findOne(Vendor, { 
+          where: { user_id: id } 
+        });
+        
+        if (vendor) {
+          // Delete all menu items for this vendor
+          await queryRunner.manager.delete(MenuItem, { vendor_id: vendor.id });
+        }
+      }
+      
+      // 3. Delete wallet if exists
+      await queryRunner.manager.delete(Wallet, { user_id: id });
+      
+      // 4. Finally, permanently delete the user (hard delete)
+      await queryRunner.manager.delete(User, { id });
+      
+      await queryRunner.commitTransaction();
+      
+      // Log the permanent deletion for audit purposes
+      console.log(`User ${id} account permanently deleted after 30-day grace period.`);
+      
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
 
 } 

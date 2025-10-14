@@ -89,7 +89,6 @@ export class CartService {
     const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item, activeVendorIds));
 
     
-
     return {
       user_id: userId,
       items: cartItemsResponse,

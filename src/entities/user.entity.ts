@@ -86,6 +86,11 @@ export class User extends BaseEntity {
   @IsDateString()
   last_active_at?: Date;
 
+  @Column({ type: 'timestamp', nullable: true })
+  @IsOptional()
+  @IsDateString()
+  deletion_requested_at?: Date;
+
   @Column({ type: 'text', nullable: true })
   @IsOptional()
   @IsString()
@@ -169,6 +174,42 @@ export class User extends BaseEntity {
 
   delete(): void {
     this.status = UserStatus.DELETED;
+  }
+
+  requestDeletion(): void {
+    this.status = UserStatus.DELETED;
+    this.deletion_requested_at = new Date();
+  }
+
+  canBeReactivated(): boolean {
+    if (!this.deletion_requested_at || this.status !== UserStatus.DELETED) {
+      return false;
+    }
+    
+    const daysSinceDeletion = Math.floor(
+      (new Date().getTime() - new Date(this.deletion_requested_at).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    
+    return daysSinceDeletion <= 30;
+  }
+
+  reactivate(): void {
+    if (this.canBeReactivated()) {
+      this.status = UserStatus.ACTIVE;
+      this.deletion_requested_at = null;
+    }
+  }
+
+  isPermanentlyDeletable(): boolean {
+    if (!this.deletion_requested_at || this.status !== UserStatus.DELETED) {
+      return false;
+    }
+    
+    const daysSinceDeletion = Math.floor(
+      (new Date().getTime() - new Date(this.deletion_requested_at).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    
+    return daysSinceDeletion > 30;
   }
 
   // Notification System Methods
