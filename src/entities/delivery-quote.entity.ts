@@ -122,7 +122,7 @@ export class DeliveryQuote {
   labelUrl?: string;
 
   // items price
-  @Column({ name: 'items_price', nullable: true })
+  @Column({ name: 'items_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
   items_price?: number;
 
   // add quantity of items
