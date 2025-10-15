@@ -418,5 +418,26 @@ export class CartService {
     await this.cartRepository.makeCartItemsInactiveForVendor(userId, vendorId, orderId);
   }
 
+  async clearCartByVendor(userId: string, vendorId: string): Promise<{ removed_count: number }> {
+    this.logger.log(`Clearing cart for user ${userId} and vendor ${vendorId}`);
+
+    // Get all active cart items for this user and vendor
+    const cartItems = await this.cartRepository.getCartItemsByVendor(userId, vendorId, true);
+    
+    if (cartItems.length === 0) {
+      this.logger.log(`No active cart items found for user ${userId} and vendor ${vendorId}`);
+      return { removed_count: 0 };
+    }
+
+    // Delete all cart items
+    const cartItemIds = cartItems.map(item => item.id);
+    for (const cartItemId of cartItemIds) {
+      await this.cartRepository.delete(cartItemId);
+    }
+
+    this.logger.log(`Cleared ${cartItems.length} items from cart for user ${userId} and vendor ${vendorId}`);
+    return { removed_count: cartItems.length };
+  }
+
 
 } 

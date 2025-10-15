@@ -162,6 +162,18 @@ export class CartController {
     return await this.cartService.clearCart(user.id);
   }
 
+  @Delete('vendor/:vendorId')
+  @ApiOperation({ summary: 'Clear all active cart items for a specific vendor' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({ status: 200, description: 'Vendor cart items cleared successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async clearCartByVendor(
+    @GetUser() user: User,
+    @Param('vendorId') vendorId: string,
+  ) {
+    return await this.cartService.clearCartByVendor(user.id, vendorId);
+  }
+
   @Post('checkout/validate')
   @ApiOperation({ summary: 'Validate cart before checkout' })
   @ApiResponse({ status: 200, description: 'Cart validation for checkout completed' })

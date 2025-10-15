@@ -21,7 +21,8 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/typeorm-cli.config.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/typeorm-cli.config.ts",
     "schema:sync": "typeorm-ts-node-commonjs schema:sync -d src/database/typeorm-cli.config.ts",
-    "db:seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeder.ts"
+    "db:seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeder.ts",
+    "db:clear": "ts-node -r tsconfig-paths/register scripts/clear-database.ts"
   },
   "dependencies": {
     "@nestjs/axios": "^3.0.0",

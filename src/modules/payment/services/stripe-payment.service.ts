@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
- import { PaymentMethod, PaymentProvider } from 'src/entities';
+import { PaymentMethod, PaymentProvider } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
 import Stripe from 'stripe';
 // Crypto import removed as it's not used in this service
@@ -40,9 +40,6 @@ export class StripePaymentService implements PaymentProviderInterface {
       if (!this.stripeSecretKey) {
         throw new BadRequestException('Stripe configuration missing');
       }
-
-      currency = "USD"
-
       // Validate that only USD and GBP are supported
       const supportedCurrencies = ['USD', 'GBP'];
       if (!supportedCurrencies.includes(currency.toUpperCase())) {
