@@ -53,6 +53,13 @@ export class PaymentController {
     private readonly stripePaymentService: StripePaymentService,
   ) {}
 
+  @Get('saved-cards')
+  @ApiOperation({ summary: 'Get user saved cards' })
+  async getSavedCards(@GetUser() user: User): Promise<{ stripe: any[]; paystack: any[] }> {
+    const stripeCards = await this.stripePaymentService.getUserSavedCards(user.id);
+    const paystackCards = await this.paystackPaymentService.getUserSavedCards(user.id);
+    return { stripe: stripeCards, paystack: paystackCards };
+  }
 
   @Get('banks')
   @ApiOperation({ summary: 'Get list of banks from Paystack' })
@@ -309,14 +316,6 @@ export class PaymentController {
       body.reference,
       body.metadata,
     );
-  }
-
-  @Get('saved-cards')
-  @ApiOperation({ summary: 'Get user saved cards' })
-  async getSavedCards(@GetUser() user: User): Promise<{ stripe: any[]; paystack: any[] }> {
-    const stripeCards = await this.stripePaymentService.getUserSavedCards(user.id);
-    const paystackCards = await this.paystackPaymentService.getUserSavedCards(user.id);
-    return { stripe: stripeCards, paystack: paystackCards };
   }
 
   @Delete('saved-cards/:cardId')
