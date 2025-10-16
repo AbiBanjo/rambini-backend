@@ -268,9 +268,10 @@ export class PaymentController {
   @Post('stripe/attach-payment-method')
   @ApiOperation({ summary: 'Attach a payment method to a Stripe customer and set default' })
   async attachStripePaymentMethod(
+    @GetUser() user: User,
     @Body() body: { customer_id: string; payment_method_id: string },
   ): Promise<{ success: boolean; customer_id?: string; payment_method_id?: string; error?: string }> {
-    return await this.stripePaymentService.attachPaymentMethodLight(body.customer_id, body.payment_method_id);
+    return await this.stripePaymentService.attachPaymentMethodLight(body.customer_id, body.payment_method_id, user);
   }
 
   // ================= Tokenization (Paystack) ================

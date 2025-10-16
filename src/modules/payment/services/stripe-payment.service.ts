@@ -409,16 +409,85 @@ export class StripePaymentService implements PaymentProviderInterface {
   async attachPaymentMethodLight(
     customerId: string,
     paymentMethodId: string,
-  ): Promise<{ success: boolean; customer_id?: string; payment_method_id?: string; error?: string }> {
+    user: { id: string },
+  ): Promise<{
+    success: boolean;
+    customer_id?: string;
+    payment_method_id?: string;
+    card?: {
+      brand: string;
+      last4: string;
+      exp_month: number;
+      exp_year: number;
+    };
+    error?: string;
+  }> {
     try {
-      if (!this.stripeSecretKey) throw new BadRequestException('Stripe configuration missing');
-      await this.stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
-      await this.stripe.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId } });
-      return { success: true, customer_id: customerId, payment_method_id: paymentMethodId };
+      if (!this.stripeSecretKey) {
+        throw new BadRequestException('Stripe configuration missing');
+      }
+  
+      //Attach the payment method to the customer
+      const paymentMethod = await this.stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      });
+  
+      // Set it as the default payment method for invoices
+      await this.stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+  
+      // 3️⃣ Extract card details
+      const card = paymentMethod.card;
+      if (!card) {
+        throw new BadRequestException('Attached payment method has no card details');
+      }
+  
+      // Check if card already exists
+      const existingCard = await this.savedCardRepository.findOne({
+        where: { stripe_payment_method_id: paymentMethod.id },
+      });
+  
+      if (existingCard) {
+        this.logger.log(`Card ${paymentMethod.id} already exists for user ${user.id}`);
+      } else {
+        // Save card in your database
+        const savedCard = this.savedCardRepository.create({
+          user_id: user.id,
+          gateway: PaymentGateway.STRIPE,
+          stripe_customer_id: customerId,
+          stripe_payment_method_id: paymentMethod.id,
+          card_last4: card.last4,
+          card_brand: card.brand,
+          exp_month: card.exp_month,
+          exp_year: card.exp_year,
+          country: card.country,
+          is_default: false,
+          is_active: true,
+        });
+  
+        await this.savedCardRepository.save(savedCard);
+        this.logger.log(`Saved card ${paymentMethod.id} to database for user ${user.id}`);
+      }
+  
+      //Return response
+      return {
+        success: true,
+        customer_id: customerId,
+        payment_method_id: paymentMethod.id,
+        card: {
+          brand: card.brand,
+          last4: card.last4,
+          exp_month: card.exp_month,
+          exp_year: card.exp_year,
+        },
+      };
     } catch (error) {
+      this.logger.error(`Failed to attach payment method: ${error.message}`);
       return { success: false, error: this.handleStripeError(error) };
     }
   }
+  
 
   // =============== Webhook handlers for card tokenization ===============
   

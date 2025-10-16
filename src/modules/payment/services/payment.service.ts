@@ -213,7 +213,7 @@ export class PaymentService {
     }
 
     this.logger.log(`Processing webhook for provider: ${provider}`);
-    this.logger.log(`Payload: ${JSON.stringify(payload)}`);
+    // this.logger.log(`Payload: ${JSON.stringify(payload)}`);
     this.logger.log(`Signature: ${signature}`);
 
     const webhookResult = await paymentProvider.processWebhook(payload, signature);
