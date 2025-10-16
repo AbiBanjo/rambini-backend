@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus, PaymentStatus, OrderStatus, User, NotificationType } from 'src/entities';
+import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus, PaymentStatus, OrderStatus, User, NotificationType, SavedCard, PaymentGateway } from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { WalletPaymentService } from './wallet-payment.service';
 import { StripePaymentService } from './stripe-payment.service';
@@ -22,6 +22,8 @@ export class PaymentService {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
+    @InjectRepository(SavedCard)
+    private readonly savedCardRepository: Repository<SavedCard>,
     private readonly paymentRepository: PaymentRepository,
     private readonly walletPaymentService: WalletPaymentService,
     private readonly stripePaymentService: StripePaymentService,
@@ -42,7 +44,7 @@ export class PaymentService {
  
   async processPayment(processPaymentDto: ProcessPaymentDto): Promise<PaymentResponseDto> {
     this.logger.log(`Processing payment for order ${processPaymentDto.order_id} with method ${processPaymentDto.payment_method}`);
-    const { order_id, payment_method, metadata } = processPaymentDto;
+    const { order_id, payment_method, metadata, saved_card_id } = processPaymentDto;
     
 
     this.logger.log(`Processing payment for order ${order_id} with method 2 ${payment_method}`);
@@ -67,7 +69,7 @@ export class PaymentService {
     }
     this.logger.log(`Payment not found for this order`);
 
-    if (payment_method !== PaymentMethod.WALLET) {
+    if (payment_method !== PaymentMethod.WALLET && payment_method !== PaymentMethod.CARD_SAVED) {
 
       const paymentProvider = this.paymentProviders.get(payment_method);
 
@@ -103,6 +105,119 @@ export class PaymentService {
         );
 
         return this.mapToPaymentResponse(walletPayment);
+      } else if (payment_method === PaymentMethod.CARD_SAVED) {
+        // Process payment with saved card
+        this.logger.log(`Processing payment with saved card for order ${order_id}`);
+
+        // Get saved card
+        let savedCard: SavedCard;
+        if (saved_card_id) {
+          savedCard = await this.savedCardRepository.findOne({
+            where: { id: saved_card_id, user_id: order.customer_id, is_active: true }
+          });
+          if (!savedCard) {
+            throw new BadRequestException('Saved card not found or inactive');
+          }
+        } else {
+          // Use default card
+          savedCard = await this.savedCardRepository.findOne({
+            where: { user_id: order.customer_id, is_default: true, is_active: true }
+          });
+          if (!savedCard) {
+            throw new BadRequestException('No default saved card found');
+          }
+        }
+
+        // Check if card is expired
+        if (savedCard.isExpired()) {
+          throw new BadRequestException('Card has expired');
+        }
+
+        // Determine gateway and charge the saved card
+        let chargeResult: any;
+        let gateway: PaymentGateway;
+
+        if (savedCard.gateway === PaymentGateway.STRIPE) {
+          gateway = PaymentGateway.STRIPE;
+          chargeResult = await this.stripePaymentService.chargeSavedCard(
+            order.customer_id,
+            order.total_amount,
+            order.currency || 'USD',
+            `Order #${order.id}`,
+            savedCard.id,
+            { order_id: order.id, payment_reference: paymentReference, ...metadata }
+          );
+        } else {
+          gateway = PaymentGateway.PAYSTACK;
+          chargeResult = await this.paystackPaymentService.chargeSavedCard(
+            order.customer_id,
+            order.total_amount,
+            order.currency || 'NGN',
+            order.customer.email,
+            paymentReference,
+            savedCard.id,
+            { order_id: order.id, payment_reference: paymentReference, ...metadata }
+          );
+        }
+
+        if (!chargeResult.success) {
+          throw new BadRequestException(chargeResult.error || 'Card charge failed');
+        }
+
+        // Update payment record
+        payment.saved_card_id = savedCard.id;
+        payment.external_reference = chargeResult.payment_intent_id || chargeResult.reference;
+        payment.gateway_response = chargeResult;
+        payment.provider = gateway === PaymentGateway.STRIPE ? PaymentProvider.STRIPE : PaymentProvider.PAYSTACK;
+
+        // Determine status based on response
+        if (gateway === PaymentGateway.STRIPE) {
+          // Stripe: if no client_secret required, it's immediate success
+          if (chargeResult.payment_intent_id && !chargeResult.client_secret) {
+            payment.status = PaymentTransactionStatus.COMPLETED;
+            payment.markAsCompleted(chargeResult.payment_intent_id, chargeResult);
+            
+            // Credit vendor wallet for completed payment
+            await this.creditVendorForExternalPayment(payment);
+            
+            // Update order status to PAID
+            await this.orderRepository.update(order.id, { 
+              payment_status: PaymentStatus.PAID
+            });
+          } else {
+            // Requires action (3D Secure)
+            payment.status = PaymentTransactionStatus.PENDING;
+          }
+        } else {
+          // Paystack: check status
+          if (chargeResult.status === 'success') {
+            payment.status = PaymentTransactionStatus.COMPLETED;
+            payment.markAsCompleted(chargeResult.reference, chargeResult);
+            
+            // Credit vendor wallet for completed payment
+            await this.creditVendorForExternalPayment(payment);
+            
+            // Update order status to PAID
+            await this.orderRepository.update(order.id, { 
+              payment_status: PaymentStatus.PAID
+            });
+          } else {
+            payment.status = PaymentTransactionStatus.PENDING;
+          }
+        }
+
+        await this.paymentRepository.update(payment.id, payment);
+
+        return {
+          id: payment.id,
+          payment_reference: payment.payment_reference,
+          order_id: payment.order_id,
+          payment_method: payment.payment_method,
+          status: payment.status,
+          amount: payment.amount,
+          external_reference: payment.external_reference,
+          created_at: payment.created_at,
+        };
       } else {
 
         const paymentProvider = this.paymentProviders.get(payment_method);
@@ -508,6 +623,113 @@ export class PaymentService {
     fundWalletDto.email = user.email;
     // get currency from user country 
     fundWalletDto.currency = getCurrencyForCountry(user.country);
+
+    // Handle CARD_SAVED payment method
+    if (fundWalletDto.payment_method === PaymentMethod.CARD_SAVED) {
+      this.logger.log(`Funding wallet with saved card for user ${userId}`);
+
+      // Get saved card
+      let savedCard: SavedCard;
+      if (fundWalletDto.saved_card_id) {
+        savedCard = await this.savedCardRepository.findOne({
+          where: { id: fundWalletDto.saved_card_id, user_id: userId, is_active: true }
+        });
+        if (!savedCard) {
+          throw new BadRequestException('Saved card not found or inactive');
+        }
+      } else {
+        // Use default card
+        savedCard = await this.savedCardRepository.findOne({
+          where: { user_id: userId, is_default: true, is_active: true }
+        });
+        if (!savedCard) {
+          throw new BadRequestException('No default saved card found');
+        }
+      }
+
+      // Check if card is expired
+      if (savedCard.isExpired()) {
+        throw new BadRequestException('Card has expired');
+      }
+
+      // Initiate funding through wallet payment service first
+      const fundingResponse = await this.walletPaymentService.initiateFunding(userId, fundWalletDto);
+
+      try {
+        // Charge the saved card
+        let chargeResult: any;
+        let gateway: PaymentGateway = savedCard.gateway;
+
+        if (gateway === PaymentGateway.STRIPE) {
+          chargeResult = await this.stripePaymentService.chargeSavedCard(
+            userId,
+            fundWalletDto.amount,
+            fundWalletDto.currency,
+            `Wallet funding`,
+            savedCard.id,
+            { 
+              wallet_funding: true,
+              funding_reference: fundingResponse.reference,
+              user_id: userId
+            }
+          );
+        } else {
+          chargeResult = await this.paystackPaymentService.chargeSavedCard(
+            userId,
+            fundWalletDto.amount,
+            fundWalletDto.currency,
+            fundWalletDto.email,
+            fundingResponse.reference,
+            savedCard.id,
+            { 
+              wallet_funding: true,
+              funding_reference: fundingResponse.reference,
+              user_id: userId
+            }
+          );
+        }
+
+        if (!chargeResult.success) {
+          throw new BadRequestException(chargeResult.error || 'Card charge failed');
+        }
+
+        // Update funding response with external reference
+        fundingResponse.external_reference = chargeResult.payment_intent_id || chargeResult.reference;
+
+        // If immediate success, complete the funding
+        if (gateway === PaymentGateway.STRIPE) {
+          if (chargeResult.payment_intent_id && !chargeResult.client_secret) {
+            // Immediate success - complete funding
+            await this.walletPaymentService.completeFunding(
+              fundingResponse.reference,
+              chargeResult.payment_intent_id,
+              chargeResult
+            );
+            fundingResponse.message = 'Wallet funded successfully';
+          } else {
+            fundingResponse.message = 'Wallet funding initiated - awaiting confirmation';
+          }
+        } else {
+          // Paystack
+          if (chargeResult.status === 'success') {
+            // Immediate success - complete funding
+            await this.walletPaymentService.completeFunding(
+              fundingResponse.reference,
+              chargeResult.reference,
+              chargeResult
+            );
+            fundingResponse.message = 'Wallet funded successfully';
+          } else {
+            fundingResponse.message = 'Wallet funding initiated - awaiting confirmation';
+          }
+        }
+
+        return fundingResponse;
+      } catch (error) {
+        this.logger.error(`Failed to charge saved card for wallet funding: ${error.message}`);
+        throw error;
+      }
+    }
 
     // Get payment provider for external payment methods
     const provider = this.paymentProviders.get(fundWalletDto.payment_method);

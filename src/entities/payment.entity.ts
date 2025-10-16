@@ -9,6 +9,7 @@ import { IsEnum, IsOptional, IsNumber, IsString, IsDateString, IsJSON, Min } fro
 import { BaseEntity } from './base.entity';
 import { PaymentMethod } from './order.entity';
 import { Order } from './order.entity';
+import { SavedCard } from './saved-card.entity';
 
 export enum PaymentTransactionStatus {
   PENDING = 'PENDING',
@@ -25,6 +26,7 @@ export enum PaymentProvider {
   STRIPE = 'STRIPE',
   PAYSTACK = 'PAYSTACK',
   MERCURY = 'MERCURY',
+  CARD = 'CARD',
 }
 
 @Entity('payments')
@@ -109,10 +111,19 @@ export class Payment extends BaseEntity {
   @IsJSON()
   metadata?: Record<string, any>;
 
+  @Column({ type: 'varchar', nullable: true })
+  @IsOptional()
+  @IsString()
+  saved_card_id?: string;
+
   // Relationships
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order: Order;
+
+  @ManyToOne(() => SavedCard, { nullable: true })
+  @JoinColumn({ name: 'saved_card_id' })
+  saved_card?: SavedCard;
 
   // Virtual properties
   get is_pending(): boolean {

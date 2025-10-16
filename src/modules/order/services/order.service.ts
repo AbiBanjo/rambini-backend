@@ -164,6 +164,7 @@ export class OrderService {
           order_id: order.id,
           payment_method: createOrderDto.payment_method,
           currency: orderCurrency,
+          saved_card_id: createOrderDto.saved_card_id,
         });
 
         this.logger.log(`Payment result: ${JSON.stringify(paymentResult)}`);

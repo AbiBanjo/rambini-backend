@@ -41,4 +41,9 @@ export class CreateOrderDto {
   @IsString()
   preferred_delivery_time?: string;
 
+  @ApiPropertyOptional({ description: 'Saved card ID (for CARD_SAVED payment method)' })
+  @IsOptional()
+  @IsString()
+  saved_card_id?: string;
+
 } 

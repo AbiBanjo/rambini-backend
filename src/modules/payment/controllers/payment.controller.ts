@@ -287,7 +287,7 @@ export class PaymentController {
   @ApiOperation({ summary: 'Initialize Paystack transaction that will save card (authorization_code)' })
   async paystackInitWithSave(
     @GetUser() user: User,
-    @Body() body: { amount: number; currency: string; reference: string; email?: string; metadata?: Record<string, any> },
+    @Body() body: { reference: string},
   ): Promise<{ success: boolean; authorization_url?: string; access_code?: string; reference?: string; error?: string }> {
     return await this.paystackPaymentService.initializePaymentWithCardSaveLight(
       user,

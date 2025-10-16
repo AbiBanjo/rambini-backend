@@ -59,6 +59,11 @@ export class FundWalletDto {
   @IsString()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({ description: 'Saved card ID (for CARD_SAVED payment method)' })
+  @IsOptional()
+  @IsString()
+  saved_card_id?: string;
 }
 
 export class WalletFundingResponseDto {

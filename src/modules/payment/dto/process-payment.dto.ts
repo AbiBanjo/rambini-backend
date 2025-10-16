@@ -19,6 +19,11 @@ export class ProcessPaymentDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Saved card ID (for CARD_SAVED payment method)' })
+  @IsOptional()
+  @IsString()
+  saved_card_id?: string;
 }
 
 export class WalletPaymentDto {

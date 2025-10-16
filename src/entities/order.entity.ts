@@ -37,6 +37,7 @@ export enum PaymentMethod {
   STRIPE = 'STRIPE',
   PAYSTACK = 'PAYSTACK',
   MERCURY = 'MERCURY',
+  CARD_SAVED = 'CARD_SAVED',
 }
 
 export enum PaymentStatus {

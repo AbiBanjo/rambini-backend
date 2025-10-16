@@ -115,7 +115,8 @@ export class PaystackPaymentService implements PaymentProviderInterface {
 
   // =============== Minimal tokenization helpers (no DB writes) ===============
   async initializePaymentWithCardSaveLight(
-    user:User, reference : string
+    user:User,
+    reference : string
   ): Promise<{ success: boolean; authorization_url?: string; access_code?: string; reference?: string; error?: string }> {
     try {
       if (!this.paystackSecretKey) throw new BadRequestException('Paystack configuration missing');
@@ -445,9 +446,6 @@ export class PaystackPaymentService implements PaymentProviderInterface {
 
   // =============== Webhook handlers for card tokenization ===============
   
-  /**
-   * Handle charge.success webhook - save authorization_code to database
-   */
   private async handleChargeSuccess(chargeData: any): Promise<void> {
     try {
       this.logger.log(`Processing charge.success for ${chargeData.reference}`);
@@ -500,9 +498,6 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     }
   }
 
-  /**
-   * Get user's saved cards from database
-   */
   async getUserSavedCards(userId: string): Promise<SavedCard[]> {
     return await this.savedCardRepository.find({
       where: { 
@@ -514,9 +509,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     });
   }
 
-  /**
-   * Delete a saved card
-   */
+
   async deleteSavedCard(userId: string, cardId: string): Promise<{ success: boolean; error?: string }> {
     try {
       const card = await this.savedCardRepository.findOne({
