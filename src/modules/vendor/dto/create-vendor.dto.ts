@@ -7,6 +7,11 @@ export class CreateVendorDto {
   @IsNotEmpty()
   business_name: string;
 
+  @ApiProperty({ description: 'Business registration number' })
+  @IsString()
+  @IsOptional()
+  certificate_number: string;
+
   @ApiProperty({ description: 'Address line 1' })
   @IsString()
   @IsNotEmpty()

@@ -1,6 +1,9 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject } from '@nestjs/common';
 import { PaymentMethod, PaymentProvider } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
+import { SavedCard, PaymentGateway } from 'src/entities';
+import { Repository } from 'typeorm';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import Stripe from 'stripe';
 // Crypto import removed as it's not used in this service
 
@@ -11,7 +14,10 @@ export class StripePaymentService implements PaymentProviderInterface {
   private readonly stripeWebhookSecret: string;
   private readonly stripe: Stripe;
 
-  constructor() {
+  constructor(
+    @Inject(getRepositoryToken(SavedCard))
+    private savedCardRepository: Repository<SavedCard>,
+  ) {
     // Initialize Stripe with secret key from environment
     this.stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
     this.stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -283,6 +289,12 @@ export class StripePaymentService implements PaymentProviderInterface {
           reference = event.data.object.id;
           amount = event.data.object.amount / 100; // Convert from cents
           break;
+        case 'setup_intent.succeeded':
+          // Handle card tokenization - save card to database
+          await this.handleSetupIntentSucceeded(event.data.object);
+          status = 'completed';
+          reference = event.data.object.id;
+          break;
         case 'payment_intent.payment_failed':
           status = 'failed';
           reference = event.data.object.id;
@@ -366,6 +378,248 @@ export class StripePaymentService implements PaymentProviderInterface {
 
   getSupportedPaymentMethods(): PaymentMethod[] {
     return [PaymentMethod.STRIPE];
+  }
+
+  // =============== Minimal tokenization helpers (no DB writes) ===============
+  async createSetupIntentLight(email: string, userId?: string): Promise<{ success: boolean; client_secret?: string; customer_id?: string; error?: string }> {
+    try {
+      if (!this.stripeSecretKey) throw new BadRequestException('Stripe configuration missing');
+
+      // Create or reuse a Customer implicitly by passing email; client can store customer id if needed
+      const customer = await this.stripe.customers.create({ 
+        email,
+        metadata: userId ? { user_id: userId } : {}
+      });
+      const setupIntent = await this.stripe.setupIntents.create({
+        customer: customer.id,
+        payment_method_types: ['card'],
+        usage: 'off_session',
+        metadata: userId ? { user_id: userId } : {}
+      });
+      return { 
+        success: true, 
+        client_secret: setupIntent.client_secret || undefined,
+        customer_id: customer.id
+      };
+    } catch (error) {
+      return { success: false, error: this.handleStripeError(error) };
+    }
+  }
+
+  async attachPaymentMethodLight(
+    customerId: string,
+    paymentMethodId: string,
+  ): Promise<{ success: boolean; customer_id?: string; payment_method_id?: string; error?: string }> {
+    try {
+      if (!this.stripeSecretKey) throw new BadRequestException('Stripe configuration missing');
+      await this.stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+      await this.stripe.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId } });
+      return { success: true, customer_id: customerId, payment_method_id: paymentMethodId };
+    } catch (error) {
+      return { success: false, error: this.handleStripeError(error) };
+    }
+  }
+
+  // =============== Webhook handlers for card tokenization ===============
+  
+  /**
+   * Handle setup_intent.succeeded webhook - save card to database
+   */
+  private async handleSetupIntentSucceeded(setupIntent: Stripe.SetupIntent): Promise<void> {
+    try {
+      this.logger.log(`Processing setup_intent.succeeded for ${setupIntent.id}`);
+      
+      if (!setupIntent.payment_method || typeof setupIntent.payment_method === 'string') {
+        this.logger.warn('Setup intent does not have payment method attached');
+        return;
+      }
+
+      const paymentMethod = setupIntent.payment_method as Stripe.PaymentMethod;
+      const customer = setupIntent.customer as Stripe.Customer;
+      
+      if (!paymentMethod.card || !customer) {
+        this.logger.warn('Setup intent missing card or customer data');
+        return;
+      }
+
+      // Extract user_id from metadata or customer metadata
+      const userId = setupIntent.metadata?.user_id || customer.metadata?.user_id;
+      if (!userId) {
+        this.logger.warn('No user_id found in setup intent metadata');
+        return;
+      }
+
+      // Check if card already exists
+      const existingCard = await this.savedCardRepository.findOne({
+        where: { stripe_payment_method_id: paymentMethod.id }
+      });
+
+      if (existingCard) {
+        this.logger.log(`Card ${paymentMethod.id} already exists in database`);
+        return;
+      }
+
+      // Save card to database
+      const savedCard = this.savedCardRepository.create({
+        user_id: userId,
+        gateway: PaymentGateway.STRIPE,
+        stripe_customer_id: customer.id,
+        stripe_payment_method_id: paymentMethod.id,
+        card_last4: paymentMethod.card.last4,
+        card_brand: paymentMethod.card.brand,
+        exp_month: paymentMethod.card.exp_month,
+        exp_year: paymentMethod.card.exp_year,
+        country: paymentMethod.card.country,
+        is_default: false, // Will be set by client if needed
+        is_active: true,
+      });
+
+      await this.savedCardRepository.save(savedCard);
+      this.logger.log(`Saved card ${paymentMethod.id} to database for user ${userId}`);
+      
+    } catch (error) {
+      this.logger.error(`Failed to handle setup_intent.succeeded: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get user's saved cards from database
+   */
+  async getUserSavedCards(userId: string): Promise<SavedCard[]> {
+    return await this.savedCardRepository.find({
+      where: { 
+        user_id: userId, 
+        gateway: PaymentGateway.STRIPE,
+        is_active: true 
+      },
+      order: { is_default: 'DESC', created_at: 'DESC' }
+    });
+  }
+
+  /**
+   * Delete a saved card
+   */
+  async deleteSavedCard(userId: string, cardId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const card = await this.savedCardRepository.findOne({
+        where: { id: cardId, user_id: userId, gateway: PaymentGateway.STRIPE }
+      });
+
+      if (!card) {
+        return { success: false, error: 'Card not found' };
+      }
+
+      // Detach from Stripe
+      if (card.stripe_payment_method_id) {
+        await this.stripe.paymentMethods.detach(card.stripe_payment_method_id);
+      }
+
+      // Mark as inactive in database
+      await this.savedCardRepository.update(cardId, { is_active: false });
+      
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: this.handleStripeError(error) };
+    }
+  }
+
+  /**
+   * Set a card as default
+   */
+  async setDefaultCard(userId: string, cardId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const card = await this.savedCardRepository.findOne({
+        where: { id: cardId, user_id: userId, gateway: PaymentGateway.STRIPE }
+      });
+
+      if (!card) {
+        return { success: false, error: 'Card not found' };
+      }
+
+      // Unset all other default cards for this user
+      await this.savedCardRepository.update(
+        { user_id: userId, gateway: PaymentGateway.STRIPE },
+        { is_default: false }
+      );
+
+      // Set this card as default
+      await this.savedCardRepository.update(cardId, { is_default: true });
+
+      // Update Stripe customer default payment method
+      if (card.stripe_customer_id && card.stripe_payment_method_id) {
+        await this.stripe.customers.update(card.stripe_customer_id, {
+          invoice_settings: { default_payment_method: card.stripe_payment_method_id }
+        });
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: this.handleStripeError(error) };
+    }
+  }
+
+  /**
+   * Charge a saved card
+   */
+  async chargeSavedCard(
+    userId: string,
+    amount: number,
+    currency: string,
+    description: string,
+    cardId?: string,
+    metadata?: Record<string, any>
+  ): Promise<{ success: boolean; payment_intent_id?: string; client_secret?: string; error?: string }> {
+    try {
+      let card: SavedCard;
+
+      if (cardId) {
+        // Charge specific card
+        card = await this.savedCardRepository.findOne({
+          where: { id: cardId, user_id: userId, gateway: PaymentGateway.STRIPE, is_active: true }
+        });
+      } else {
+        // Charge default card
+        card = await this.savedCardRepository.findOne({
+          where: { user_id: userId, gateway: PaymentGateway.STRIPE, is_default: true, is_active: true }
+        });
+      }
+
+      if (!card) {
+        return { success: false, error: 'No valid card found' };
+      }
+
+      if (card.isExpired()) {
+        return { success: false, error: 'Card has expired' };
+      }
+
+      // Create payment intent with saved card
+      const paymentIntent = await this.stripe.paymentIntents.create({
+        amount: Math.round(amount * 100),
+        currency: currency.toLowerCase(),
+        customer: card.stripe_customer_id,
+        payment_method: card.stripe_payment_method_id,
+        confirmation_method: 'automatic',
+        confirm: true,
+        description,
+        metadata: {
+          user_id: userId,
+          saved_card_id: card.id,
+          ...metadata,
+        },
+      });
+
+      // Mark card as used
+      card.markAsUsed();
+      await this.savedCardRepository.save(card);
+
+      return {
+        success: true,
+        payment_intent_id: paymentIntent.id,
+        client_secret: paymentIntent.client_secret,
+      };
+    } catch (error) {
+      return { success: false, error: this.handleStripeError(error) };
+    }
   }
 
   // Private helper methods for Stripe API integration

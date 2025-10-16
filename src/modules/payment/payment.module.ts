@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { 
   Payment, 
   Wallet, 
@@ -8,7 +9,8 @@ import {
   User, 
   Vendor,
   Withdrawal,
-  Bank
+  Bank,
+  SavedCard
 } from 'src/entities';
 import { AuthModule } from 'src/modules/auth/auth.module';
 
@@ -46,6 +48,7 @@ import { RedisService } from '../../database/redis.service';
       Vendor,
       Withdrawal,
       Bank,
+      SavedCard,
     ]),
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
     forwardRef(() => CartModule),
@@ -63,8 +66,22 @@ import { RedisService } from '../../database/redis.service';
     // Services
     PaymentService,
     WalletPaymentService,
-    StripePaymentService,
-    PaystackPaymentService,
+    {
+      provide: StripePaymentService,
+      useFactory: (savedCardRepository) => {
+        const service = new StripePaymentService(savedCardRepository);
+        return service;
+      },
+      inject: [getRepositoryToken(SavedCard)],
+    },
+    {
+      provide: PaystackPaymentService,
+      useFactory: (savedCardRepository) => {
+        const service = new PaystackPaymentService(savedCardRepository);
+        return service;
+      },
+      inject: [getRepositoryToken(SavedCard)],
+    },
     MercuryPaymentService,
     WithdrawalService,
     RedisService,

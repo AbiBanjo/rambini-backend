@@ -48,6 +48,7 @@ export class VendorService {
     const vendor = this.vendorRepository.create({
       user_id: userId,
       business_name: createVendorDto.business_name,
+      certificate_number: createVendorDto.certificate_number,
       address_id: address.id,
       is_active: true,
     });

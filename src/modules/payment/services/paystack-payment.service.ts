@@ -1,7 +1,11 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { PaymentMethod, PaymentProvider } from 'src/entities';
+import { Injectable, Logger, BadRequestException, Inject } from '@nestjs/common';
+import { PaymentMethod, PaymentProvider, User } from 'src/entities';
 import { PaymentProviderInterface, PaymentInitiationResult, PaymentVerificationResult, PaymentWebhookResult, RefundResult } from '../interfaces/payment-provider.interface';
+import { SavedCard, PaymentGateway } from 'src/entities';
+import { Repository } from 'typeorm';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { createHmac } from 'crypto';
+import { UserBindingContextSolution } from 'twilio/lib/rest/ipMessaging/v2/service/user/userBinding';
 
 @Injectable()
 export class PaystackPaymentService implements PaymentProviderInterface {
@@ -12,7 +16,10 @@ export class PaystackPaymentService implements PaymentProviderInterface {
   private readonly paystackBaseUrl: string = 'https://api.paystack.co';
   private readonly paystackCallbackUrl: string;
 
-  constructor() {
+  constructor(
+    @Inject(getRepositoryToken(SavedCard))
+    private savedCardRepository: Repository<SavedCard>,
+  ) {
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || '';
     this.paystackPublicKey = process.env.PAYSTACK_PUBLIC_KEY || '';
     this.pay = process.env.PAYSTACK_WEBHOOK_SECRET || '';
@@ -106,6 +113,96 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     }
   }
 
+  // =============== Minimal tokenization helpers (no DB writes) ===============
+  async initializePaymentWithCardSaveLight(
+    user:User, reference : string
+  ): Promise<{ success: boolean; authorization_url?: string; access_code?: string; reference?: string; error?: string }> {
+    try {
+      if (!this.paystackSecretKey) throw new BadRequestException('Paystack configuration missing');
+      const url = `${this.paystackBaseUrl}/transaction/initialize`;
+      const requestBody = {
+        amount: Math.round(50 * 100),
+        currency: "ngn",
+        email:user.id,
+        reference,
+        channels: ['card'],
+        metadata: { 
+          save_card: true, 
+          user_id: user.id,
+        },
+        callback_url: this.paystackCallbackUrl,
+      };
+      const response = await this.makePaystackRequest('POST', url, requestBody);
+      return {
+        success: true,
+        authorization_url: response.data.authorization_url,
+        access_code: response.data.access_code,
+        reference: response.data.reference,
+      };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  async extractAuthorizationFromReference(
+    reference: string,
+  ): Promise<{ success: boolean; authorization_code?: string; customer_code?: string; card?: any; error?: string }> {
+    try {
+      const verification = await this.verifyPaystackTransaction(reference);
+      if (!verification.status || verification.data.status !== 'success') {
+        throw new BadRequestException('Transaction not successful');
+      }
+      const authorization = verification.data.authorization;
+      const customer = verification.data.customer;
+      return {
+        success: true,
+        authorization_code: authorization.authorization_code,
+        customer_code: customer.customer_code,
+        card: {
+          last4: authorization.last4,
+          brand: authorization.card_type || authorization.brand,
+          exp_month: parseInt(authorization.exp_month),
+          exp_year: parseInt(authorization.exp_year),
+          country: authorization.country_code,
+        },
+      };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  async chargeAuthorizationLight(
+    authorizationCode: string,
+    email: string,
+    amount: number,
+    currency: string,
+    reference: string,
+    metadata?: Record<string, any>,
+  ): Promise<{ success: boolean; reference?: string; amount?: number; currency?: string; status?: string; error?: string }> {
+    try {
+      if (!this.paystackSecretKey) throw new BadRequestException('Paystack configuration missing');
+      const url = `${this.paystackBaseUrl}/transaction/charge_authorization`;
+      const requestBody = {
+        authorization_code: authorizationCode,
+        email,
+        amount: Math.round(amount * 100),
+        currency: currency.toUpperCase(),
+        reference,
+        metadata,
+      };
+      const response = await this.makePaystackRequest('POST', url, requestBody);
+      return {
+        success: true,
+        reference: response.data.reference,
+        amount: response.data.amount / 100,
+        currency: response.data.currency,
+        status: response.data.status,
+      };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
   async processWebhook(payload: any, signature: string): Promise<PaymentWebhookResult> {
     try {
       this.logger.log('Processing Paystack webhook');
@@ -132,6 +229,8 @@ export class PaystackPaymentService implements PaymentProviderInterface {
           status = 'completed';
           reference = event.data.reference;
           amount = event.data.amount / 100; // Convert from kobo
+          // Handle card tokenization - save authorization_code to database
+          await this.handleChargeSuccess(event.data);
           break;
         case 'charge.failed':
           status = 'failed';
@@ -341,6 +440,188 @@ export class PaystackPaymentService implements PaymentProviderInterface {
     } catch (error) {
       this.logger.error(`Paystack API request failed: ${error.message}`);
       throw error;
+    }
+  }
+
+  // =============== Webhook handlers for card tokenization ===============
+  
+  /**
+   * Handle charge.success webhook - save authorization_code to database
+   */
+  private async handleChargeSuccess(chargeData: any): Promise<void> {
+    try {
+      this.logger.log(`Processing charge.success for ${chargeData.reference}`);
+      
+      const authorization = chargeData.authorization;
+      const customer = chargeData.customer;
+      
+      if (!authorization || !authorization.authorization_code) {
+        this.logger.warn('Charge success missing authorization data');
+        return;
+      }
+
+      // Extract user_id from metadata
+      const userId = chargeData.metadata?.user_id || customer?.metadata?.user_id;
+      if (!userId) {
+        this.logger.warn('No user_id found in charge metadata');
+        return;
+      }
+
+      // Check if card already exists
+      const existingCard = await this.savedCardRepository.findOne({
+        where: { paystack_authorization_code: authorization.authorization_code }
+      });
+
+      if (existingCard) {
+        this.logger.log(`Card ${authorization.authorization_code} already exists in database`);
+        return;
+      }
+
+      // Save card to database
+      const savedCard = this.savedCardRepository.create({
+        user_id: userId,
+        gateway: PaymentGateway.PAYSTACK,
+        paystack_customer_code: customer?.customer_code,
+        paystack_authorization_code: authorization.authorization_code,
+        card_last4: authorization.last4,
+        card_brand: authorization.card_type || authorization.brand,
+        exp_month: parseInt(authorization.exp_month),
+        exp_year: parseInt(authorization.exp_year),
+        country: authorization.country_code,
+        is_default: false, // Will be set by client if needed
+        is_active: true,
+      });
+
+      await this.savedCardRepository.save(savedCard);
+      this.logger.log(`Saved card ${authorization.authorization_code} to database for user ${userId}`);
+      
+    } catch (error) {
+      this.logger.error(`Failed to handle charge.success: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get user's saved cards from database
+   */
+  async getUserSavedCards(userId: string): Promise<SavedCard[]> {
+    return await this.savedCardRepository.find({
+      where: { 
+        user_id: userId, 
+        gateway: PaymentGateway.PAYSTACK,
+        is_active: true 
+      },
+      order: { is_default: 'DESC', created_at: 'DESC' }
+    });
+  }
+
+  /**
+   * Delete a saved card
+   */
+  async deleteSavedCard(userId: string, cardId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const card = await this.savedCardRepository.findOne({
+        where: { id: cardId, user_id: userId, gateway: PaymentGateway.PAYSTACK }
+      });
+
+      if (!card) {
+        return { success: false, error: 'Card not found' };
+      }
+
+      // Mark as inactive in database (Paystack doesn't have a detach API)
+      await this.savedCardRepository.update(cardId, { is_active: false });
+      
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Set a card as default
+   */
+  async setDefaultCard(userId: string, cardId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const card = await this.savedCardRepository.findOne({
+        where: { id: cardId, user_id: userId, gateway: PaymentGateway.PAYSTACK }
+      });
+
+      if (!card) {
+        return { success: false, error: 'Card not found' };
+      }
+
+      // Unset all other default cards for this user
+      await this.savedCardRepository.update(
+        { user_id: userId, gateway: PaymentGateway.PAYSTACK },
+        { is_default: false }
+      );
+
+      // Set this card as default
+      await this.savedCardRepository.update(cardId, { is_default: true });
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Charge a saved card using authorization_code
+   */
+  async chargeSavedCard(
+    userId: string,
+    amount: number,
+    currency: string,
+    email: string,
+    reference: string,
+    cardId?: string,
+    metadata?: Record<string, any>
+  ): Promise<{ success: boolean; reference?: string; amount?: number; currency?: string; status?: string; error?: string }> {
+    try {
+      let card: SavedCard;
+
+      if (cardId) {
+        // Charge specific card
+        card = await this.savedCardRepository.findOne({
+          where: { id: cardId, user_id: userId, gateway: PaymentGateway.PAYSTACK, is_active: true }
+        });
+      } else {
+        // Charge default card
+        card = await this.savedCardRepository.findOne({
+          where: { user_id: userId, gateway: PaymentGateway.PAYSTACK, is_default: true, is_active: true }
+        });
+      }
+
+      if (!card) {
+        return { success: false, error: 'No valid card found' };
+      }
+
+      if (card.isExpired()) {
+        return { success: false, error: 'Card has expired' };
+      }
+
+      if (!card.paystack_authorization_code) {
+        return { success: false, error: 'Card authorization code missing' };
+      }
+
+      // Charge the saved card
+      const result = await this.chargeAuthorizationLight(
+        card.paystack_authorization_code,
+        email,
+        amount,
+        currency,
+        reference,
+        metadata
+      );
+
+      if (result.success) {
+        // Mark card as used
+        card.markAsUsed();
+        await this.savedCardRepository.save(card);
+      }
+
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
     }
   }
 }

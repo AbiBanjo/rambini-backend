@@ -197,13 +197,7 @@ export class PaymentService {
     return this.mapToPaymentResponse(payment);
   }
 
-  /**
-   * Process payment webhook
-   * @param provider Payment provider
-   * @param payload Webhook payload
-   * @param signature Webhook signature
-   * @returns Promise<PaymentResponseDto | WalletFundingStatusDto>
-   */
+
   async processWebhook(
     provider: PaymentProvider,
     payload: any,
@@ -237,16 +231,12 @@ export class PaymentService {
 
     if (isWalletFunding) {
       return await this.processWalletFundingWebhook(webhookResult);
-    } else {
+    } else  {
       return await this.processOrderPaymentWebhook(webhookResult);
     }
   }
 
-  /**
-   * Process wallet funding webhook
-   * @param webhookResult Webhook result
-   * @returns Promise<WalletFundingStatusDto>
-   */
+  
   private async processWalletFundingWebhook(webhookResult: any): Promise<WalletFundingStatusDto> {
     this.logger.log(`Processing wallet funding webhook for reference: ${webhookResult.reference}`);
 
@@ -287,11 +277,7 @@ export class PaymentService {
     return await this.walletPaymentService.getFundingStatus(webhookResult.reference);
   }
 
-  /**
-   * Process order payment webhook
-   * @param webhookResult Webhook result
-   * @returns Promise<PaymentResponseDto>
-   */
+
   private async processOrderPaymentWebhook(webhookResult: any): Promise<PaymentResponseDto> {
     this.logger.log(`Processing order payment webhook for reference: ${webhookResult.reference}`);
 

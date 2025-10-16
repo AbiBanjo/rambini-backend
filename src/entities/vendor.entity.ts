@@ -25,6 +25,11 @@ export class Vendor extends BaseEntity {
   @IsString()
   address_id?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  @IsOptional()
+  @IsString()
+  certificate_number?: string;
+
   @Column({ type: 'boolean', default: true })
   @IsBoolean()
   is_active: boolean;
@@ -54,4 +59,4 @@ export class Vendor extends BaseEntity {
   }
 
 
-} 
+}
