@@ -581,6 +581,8 @@ export class PaymentService {
         return PaymentProvider.PAYSTACK;
       case PaymentMethod.MERCURY:
         return PaymentProvider.MERCURY;
+      case PaymentMethod.CARD_SAVED:
+        return PaymentProvider.CARD_SAVED;
       default:
         throw new BadRequestException(`Unsupported payment method: ${paymentMethod}`);
     }
