@@ -630,6 +630,8 @@ export class WalletPaymentService {
         return PaymentProvider.MERCURY;
       case PaymentMethod.WALLET:
         return PaymentProvider.WALLET;
+      case PaymentMethod.CARD_SAVED:
+        return PaymentProvider.CARD_SAVED;
       default:
         throw new BadRequestException(`Unsupported payment method for wallet funding: ${paymentMethod}`);
     }

@@ -26,7 +26,7 @@ export enum PaymentProvider {
   STRIPE = 'STRIPE',
   PAYSTACK = 'PAYSTACK',
   MERCURY = 'MERCURY',
-  CARD = 'CARD',
+  CARD_SAVED = 'CARD_SAVED',
 }
 
 @Entity('payments')

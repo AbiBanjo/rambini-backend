@@ -601,6 +601,8 @@ export class PaymentService {
         return PaymentMethod.PAYSTACK;
       case PaymentProvider.MERCURY:
         return PaymentMethod.MERCURY;
+      case PaymentProvider.CARD_SAVED:
+        return PaymentMethod.CARD_SAVED;
       default:
         throw new BadRequestException(`Unsupported payment provider: ${provider}`);
     }
@@ -768,13 +770,7 @@ export class PaymentService {
     return fundingResponse;
   }
 
-  /**
-   * Complete wallet funding after successful payment
-   * @param reference Funding reference
-   * @param externalReference External payment reference
-   * @param gatewayResponse Gateway response data
-   * @returns Promise<WalletFundingStatusDto>
-   */
+
   async completeFunding(
     reference: string,
     externalReference?: string,
