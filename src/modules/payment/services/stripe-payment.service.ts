@@ -13,6 +13,7 @@ export class StripePaymentService implements PaymentProviderInterface {
   private readonly stripeSecretKey: string;
   private readonly stripeWebhookSecret: string;
   private readonly stripe: Stripe;
+  private readonly redirectUrl: string;
 
   constructor(
     @Inject(getRepositoryToken(SavedCard))
@@ -21,6 +22,7 @@ export class StripePaymentService implements PaymentProviderInterface {
     // Initialize Stripe with secret key from environment
     this.stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
     this.stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    this.redirectUrl = process.env.PAYSTACK_CALLBACK_URL || 'https://www.rambinifoods.com/wallet/funding/success'
     
     if (!this.stripeSecretKey) {
       this.logger.warn('Stripe secret key not configured');
@@ -669,12 +671,14 @@ export class StripePaymentService implements PaymentProviderInterface {
         payment_method: card.stripe_payment_method_id,
         confirmation_method: 'automatic',
         confirm: true,
+        return_url:this.redirectUrl,
         description,
         metadata: {
           user_id: userId,
           saved_card_id: card.id,
           ...metadata,
         },
+
       });
 
       // Mark card as used
