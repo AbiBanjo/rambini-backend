@@ -176,7 +176,7 @@ export class WalletPaymentService {
 
     // Credit vendor wallet
     this.logger.log(`vendor wallet balance: ${balanceBefore}`)
-    vendorWallet.credit(amount);
+    vendorWallet.creditVendor(amount);
 
     await this.walletRepository.save(vendorWallet);
 

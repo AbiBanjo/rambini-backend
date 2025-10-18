@@ -37,6 +37,20 @@ export class Wallet extends BaseEntity {
   @Min(0)
   balance: number;
 
+  @Column({ 
+    type: 'decimal', 
+    precision: 15, 
+    scale: 2, 
+    default: 0.0,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => parseFloat(value) || 0
+    }
+  })
+  @IsNumber()
+  @Min(0)
+  vendor_balance: number;
+
   @Column({ type: 'enum', enum: Currency, default: Currency.NGN })
   @IsEnum(Currency)
   currency: Currency;
@@ -70,6 +84,14 @@ export class Wallet extends BaseEntity {
     if (amount > 0) {
       const currentBalance = Number(this.balance) || 0; // force numeric
       this.balance = currentBalance + Number(amount);
+      this.last_transaction_at = new Date();
+    }
+  }
+
+  creditVendor(amount: number): void {
+    if (amount > 0) {
+      const currentBalance = Number(this.vendor_balance) || 0; // force numeric
+      this.vendor_balance = currentBalance + Number(amount);
       this.last_transaction_at = new Date();
     }
   }

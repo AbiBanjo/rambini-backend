@@ -139,7 +139,7 @@ export class WithdrawalService {
     const totalAmount = withdrawalData.amount 
 
     // Check if user has sufficient balance
-    if (user.wallet.balance < totalAmount) {
+    if (user.wallet.vendor_balance < totalAmount) {
       throw new BadRequestException(`Insufficient balance. Required: ${totalAmount} ${withdrawalData.currency}, Available: ${user.wallet.balance} ${user.wallet.currency}`);
     }
 

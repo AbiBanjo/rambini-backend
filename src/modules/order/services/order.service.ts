@@ -839,6 +839,7 @@ export class OrderService {
       order_number: order.order_number,
       customer_id: order.customer_id,
       customer_name: order.customer?.first_name + ' ' + order.customer?.last_name || 'Unknown',
+      customer_phone: order.customer?.phone_number || '',
       vendor_id: order.vendor_id,
       vendor_name: order.vendor?.business_name || 'Unknown',
       delivery_address_id: order.delivery_address_id,

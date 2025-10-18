@@ -22,13 +22,9 @@ export class CreateMenuItemDto {
   @Transform(({ value }) => parseFloat(value))
   price: number;
 
-  @ApiPropertyOptional({ description: 'Preparation time in minutes', minimum: 1, maximum: 480, default: 15 })
+  @IsString()
   @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(480)
-  @Transform(({ value }) => parseInt(value))
-  preparation_time_minutes?: number;
+  prep_time: string
 
   @ApiPropertyOptional({ description: 'Whether the item is available for ordering', default: true })
   @IsOptional()

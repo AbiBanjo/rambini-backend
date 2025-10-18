@@ -479,12 +479,7 @@ export class PaymentService {
     return this.mapToPaymentResponse(payment);
   }
 
-  /**
-   * Refund payment
-   * @param paymentId Payment ID
-   * @param amount Refund amount (optional)
-   * @param reason Refund reason (optional)
-   */
+
   async refundPayment(
     paymentId: string,
     amount?: number,
@@ -519,10 +514,7 @@ export class PaymentService {
     }
   }
 
-  /**
-   * Credit vendor wallet for external payment
-   * @param payment Payment record
-   */
+  
   private async creditVendorForExternalPayment(payment: any): Promise<void> {
     this.logger.log(`Credit vendor for external payment: ${payment.id}`);
     if (payment.payment_method === PaymentMethod.WALLET) {
@@ -547,11 +539,7 @@ export class PaymentService {
     this.logger.log(`Vendor wallet credited: ${order.vendor_id}, amount: ${payment.amount}`);
   }
 
-  /**
-   * Map verification status to payment status
-   * @param status Verification status
-   * @returns PaymentTransactionStatus
-   */
+
   private mapVerificationStatusToPaymentStatus(status: string): PaymentTransactionStatus {
     switch (status) {
       case 'completed':
@@ -566,11 +554,7 @@ export class PaymentService {
     }
   }
 
-  /**
-   * Get provider from payment method
-   * @param paymentMethod Payment method
-   * @returns PaymentProvider
-   */
+
   private getProviderFromPaymentMethod(paymentMethod: PaymentMethod): PaymentProvider {
     switch (paymentMethod) {
       case PaymentMethod.WALLET:
@@ -588,11 +572,7 @@ export class PaymentService {
     }
   }
 
-  /**
-   * Get payment method from provider
-   * @param provider Payment provider
-   * @returns PaymentMethod
-   */
+ 
   private getPaymentMethodFromProvider(provider: PaymentProvider): PaymentMethod {
     switch (provider) {
       case PaymentProvider.WALLET:
