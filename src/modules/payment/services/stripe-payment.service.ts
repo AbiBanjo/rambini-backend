@@ -288,7 +288,7 @@ export class StripePaymentService implements PaymentProviderInterface {
           break;
         case 'payment_intent.succeeded':
           status = 'completed';
-          reference = event.data.object.id;
+          reference = event.data.object?.metadata?.funding_reference ;
           amount = event.data.object.amount / 100; // Convert from cents
           break;
         case 'setup_intent.succeeded':
