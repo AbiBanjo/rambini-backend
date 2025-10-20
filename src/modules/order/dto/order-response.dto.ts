@@ -43,6 +43,10 @@ export class OrderResponseDto {
   @ApiProperty({ description: 'Customer ID' })
   customer_id: string;
 
+
+  @ApiPropertyOptional({ description: 'Vendor phone number' })
+  vendor_phone?: string;
+
   @ApiProperty({ description: 'Customer name' })
   customer_name: string;
 

@@ -33,6 +33,7 @@ export class OrderRepository {
       relations: [
         'customer',
         'vendor',
+        'vendor.user',
         'vendor.address',
         'delivery_address',
         'order_items',

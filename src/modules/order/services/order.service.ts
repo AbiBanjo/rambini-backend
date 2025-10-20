@@ -842,6 +842,7 @@ export class OrderService {
       customer_phone: order.customer?.phone_number || '',
       vendor_id: order.vendor_id,
       vendor_name: order.vendor?.business_name || 'Unknown',
+      vendor_phone: order.vendor?.user?.phone_number || '',
       delivery_address_id: order.delivery_address_id,
       order_status: order.order_status,
       order_type: order.order_type,
