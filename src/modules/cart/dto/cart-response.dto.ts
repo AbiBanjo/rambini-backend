@@ -56,6 +56,9 @@ export class CartItemResponseDto {
 
   @ApiPropertyOptional({ description: 'Address phone if this cart item is part of an order' })
   address_phone?: string;
+
+  // is_preOrder
+  is_preOrder?:boolean
 }
 
 export class CartResponseDto {

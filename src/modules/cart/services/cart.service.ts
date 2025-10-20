@@ -280,6 +280,7 @@ export class CartService {
       total_price: cartItem.total_price,
       created_at: cartItem.created_at,
       updated_at: cartItem.updated_at,
+      is_preOrder: cartItem.menu_item?.is_preOrder,
       menu_item_name: cartItem.menu_item?.name || 'Unknown',
       menu_item_image: cartItem.menu_item?.image_url,
       vendor_id: vendorId,

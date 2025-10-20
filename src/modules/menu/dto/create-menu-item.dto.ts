@@ -31,4 +31,11 @@ export class CreateMenuItemDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   is_available?: boolean;
+
+  // is_preOrder has boolean default false
+  @ApiPropertyOptional({ description: 'Whether the item is a pre-order', default: false })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  is_preOrder?: boolean;
 } 
