@@ -540,6 +540,7 @@ export class WalletPaymentService {
       is_active: wallet.is_active,
       formatted_balance: wallet.formatted_balance,
       last_transaction_at: wallet.last_transaction_at,
+      vendor_balance: wallet.vendor_balance,
       created_at: wallet.created_at,
       updated_at: wallet.updated_at,
     };

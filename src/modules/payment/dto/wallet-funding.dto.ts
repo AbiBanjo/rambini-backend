@@ -181,4 +181,15 @@ export class WalletBalanceDto {
 
   @ApiProperty({ description: 'When wallet was last updated' })
   updated_at: Date;
+
+  @ApiPropertyOptional({ description: 'Vendor balance' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  vendor_balance?: number;
+
+  @ApiPropertyOptional({ description: 'Vendor currency', enum: Currency })
+  @IsOptional()
+  @IsEnum(Currency)
+  vendor_currency?: Currency;
 }
