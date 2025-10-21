@@ -555,10 +555,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
       return { success: false, error: error.message };
     }
   }
-
-  /**
-   * Charge a saved card using authorization_code
-   */
+  
   async chargeSavedCard(
     userId: string,
     amount: number,

@@ -40,6 +40,7 @@ export class OrderRepository {
         'order_items.menu_item',
         'order_items.menu_item.vendor',
         'order_items.menu_item.category',
+        'delivery_quote',
       ],
     });
   }

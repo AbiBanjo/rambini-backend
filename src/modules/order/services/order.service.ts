@@ -173,6 +173,7 @@ export class OrderService {
           payment_url: paymentResult?.payment_url,
           external_payment_reference: paymentResult?.external_reference,
           payment_processing_status: paymentResult?.status as PaymentTransactionStatus,
+          order_id:order.id
         }
       }
     } catch (error) {
@@ -852,6 +853,7 @@ export class OrderService {
       subtotal: order.subtotal,
       delivery_fee: order.delivery_fee,
       total_amount: order.total_amount,
+      tracking_url:order.delivery_quote.labelUrl,
       currency: order.currency,
       estimated_prep_time_minutes: order.estimated_prep_time_minutes,
       estimated_delivery_time: order.estimated_delivery_time,

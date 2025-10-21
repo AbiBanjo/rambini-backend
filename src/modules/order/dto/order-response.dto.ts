@@ -44,6 +44,9 @@ export class OrderResponseDto {
   customer_id: string;
 
 
+  tracking_url?:string
+
+
   @ApiPropertyOptional({ description: 'Vendor phone number' })
   vendor_phone?: string;
 
@@ -172,5 +175,7 @@ export class OrderPaymentResponseDto {
 
   @ApiProperty({ description: 'Payment processing status' })
   payment_processing_status: PaymentTransactionStatus;
+
+  order_id?:string
 
 }

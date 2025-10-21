@@ -105,7 +105,8 @@ export class PaymentService {
         );
 
         return this.mapToPaymentResponse(walletPayment);
-      } else if (payment_method === PaymentMethod.CARD_SAVED) {
+      } 
+      else if (payment_method === PaymentMethod.CARD_SAVED) {
         // Process payment with saved card
         this.logger.log(`Processing payment with saved card for order ${order_id}`);
 
@@ -267,11 +268,7 @@ export class PaymentService {
     }
   }
 
-  /**
-   * Verify payment status
-   * @param paymentReference Payment reference
-   * @returns Promise<PaymentResponseDto>
-   */
+
   async verifyPayment(paymentReference: string): Promise<PaymentResponseDto> {
     this.logger.log(`Verifying payment: ${paymentReference}`);
 
