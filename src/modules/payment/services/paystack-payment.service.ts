@@ -125,7 +125,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
         amount: "10000",
         currency: "ngn",
         email:user.email,
-        reference,
+        reference: reference,
         channels: ['card'],
         metadata: { 
           save_card: true, 
