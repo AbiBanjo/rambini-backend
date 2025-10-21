@@ -122,7 +122,7 @@ export class PaystackPaymentService implements PaymentProviderInterface {
       if (!this.paystackSecretKey) throw new BadRequestException('Paystack configuration missing');
       const url = `${this.paystackBaseUrl}/transaction/initialize`;
       const requestBody = {
-        amount: Math.round(50 * 100),
+        amount: Math.round(100 * 100),
         currency: "ngn",
         email:user.id,
         reference,
