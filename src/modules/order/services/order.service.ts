@@ -870,16 +870,16 @@ export class OrderService {
       created_at: order.created_at,
       updated_at: order.updated_at,
       order_items: order.order_items?.map(item => this.mapToOrderItemResponse(item)) || [],
-      delivery_address: order.delivery_address ? {
-        address_line_1: order.delivery_address.address_line_1,
-        address_line_2: order.delivery_address.address_line_2,
-        city: order.delivery_address.city,
-        state: order.delivery_address.state,
-        postal_code: order.delivery_address.postal_code,
-        country: order.delivery_address.country,
-        latitude: order.delivery_address.latitude,
-        longitude: order.delivery_address.longitude,
-      } : {
+      delivery_address: order.delivery_quote?.destination_address ? {
+        address_line_1: order.delivery_quote.destination_address.address,
+        address_line_2: '',
+        city: order.delivery_quote.destination_address.city,
+        state: order.delivery_quote.destination_address.state,
+        postal_code: order.delivery_quote.destination_address.postalCode,
+        country: order.delivery_quote.destination_address.country,
+        latitude: order.delivery_quote.destination_address.latitude,
+        longitude: order.delivery_quote.destination_address.longitude,
+      } :{
         address_line_1: '',
         city: '',
         state: '',

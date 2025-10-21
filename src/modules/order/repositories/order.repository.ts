@@ -35,7 +35,6 @@ export class OrderRepository {
         'vendor',
         'vendor.user',
         'vendor.address',
-        'delivery_address',
         'order_items',
         'order_items.menu_item',
         'order_items.menu_item.vendor',
