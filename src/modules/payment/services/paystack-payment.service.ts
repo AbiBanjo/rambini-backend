@@ -123,7 +123,6 @@ export class PaystackPaymentService implements PaymentProviderInterface {
       const url = `${this.paystackBaseUrl}/transaction/initialize`;
       const requestBody = {
         amount: "10000",
-        currency: "ngn",
         email:user.email,
         reference: reference,
         channels: ['card'],
