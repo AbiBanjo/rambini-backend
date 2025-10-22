@@ -7,6 +7,7 @@ import { Payment } from 'src/entities/payment.entity';
 import { VendorService } from '@/modules/vendor/services/vendor.service';
 import { FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto/wallet-funding.dto';
 import { TransactionHistoryResponseDto, TransactionQueryDto, TransactionDto } from '../dto/transaction-history.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class WalletPaymentService {
@@ -19,19 +20,13 @@ export class WalletPaymentService {
     private readonly transactionRepository: Repository<Transaction>,
     private readonly paymentRepository: PaymentRepository,
     private readonly vendorService: VendorService,
+    private readonly configService: ConfigService,
   ) {}
 
-  /**
-   * Process wallet payment for an order
-   * @param orderId Order ID
-   * @param amount Payment amount
-   * @param customerId Customer ID
-   * @param vendorId Vendor ID
-   * @returns Promise<Payment>
-   */
+ 
   async processWalletPayment(
     orderId: string,
-    amount: number,
+    amount: {total_amount: number, subtotal: number},
     customerId: string,
     vendorId: string,
   ): Promise<Payment> {
@@ -54,7 +49,7 @@ export class WalletPaymentService {
 
     this.logger.log(`Checking if customer has sufficient balance`);
     // Check if customer has sufficient balance
-    if (!customerWallet.can_transact(amount)) {
+    if (!customerWallet.can_transact(amount.total_amount)) {
       throw new BadRequestException('Insufficient wallet balance');
     }
 
@@ -77,7 +72,7 @@ export class WalletPaymentService {
 
       this.logger.log(`Processing wallet debit transaction`);
       // Process wallet debit transaction
-      const debitSuccess = customerWallet.debit(amount);
+      const debitSuccess = customerWallet.debit(amount.total_amount);
       if (!debitSuccess) {
         throw new BadRequestException('Failed to debit customer wallet');
       }
@@ -93,8 +88,8 @@ export class WalletPaymentService {
       const debitTransaction = await this.transactionRepository.create({
         wallet_id: customerWallet.id,
         transaction_type: TransactionType.DEBIT,
-        amount: Number(amount),
-        balance_before: Number(customerWallet.balance) + Number(amount),
+        amount: Number(amount.total_amount),
+        balance_before: Number(customerWallet.balance) + Number(amount.total_amount),
         balance_after: Number(customerWallet.balance),
         description: `Payment for order ${orderId}`,
         reference_id: paymentReference,
@@ -107,7 +102,7 @@ export class WalletPaymentService {
 
       // Credit vendor wallet
       this.logger.log(`Credit vendor wallet`);
-      await this.creditVendorWallet(vendorId, amount, orderId, paymentReference);
+      await this.creditVendorWallet(vendorId, amount.subtotal, orderId, paymentReference);
       this.logger.log(`Vendor wallet credited`);
 
       this.logger.log(`Marking payment as completed`);
@@ -129,13 +124,7 @@ export class WalletPaymentService {
     }
   }
 
-  /**
-   * Credit vendor wallet after successful payment
-   * @param vendorId Vendor ID
-   * @param amount Amount to credit
-   * @param orderId Order ID
-   * @param paymentReference Payment reference
-   */
+ 
   private async creditVendorWallet(
     vendorId: string,
     amount: number,
@@ -144,9 +133,24 @@ export class WalletPaymentService {
   ): Promise<void> {
     // Get vendor wallet
     this.logger.log(`Getting vendor wallet for: ${vendorId}`);
-    this.logger.log(`Amount: ${amount}`);
+    this.logger.log(`Original amount: ${amount}`);
     this.logger.log(`Order ID: ${orderId}`);
     this.logger.log(`Payment reference: ${paymentReference}`);
+
+    // Get service fee and commission percentages from config
+    const serviceFeePercentage = this.configService.get<number>('fees.serviceFeePercentage', 15);
+    const commissionPercentage = this.configService.get<number>('fees.commissionPercentage', 20);
+
+    // Calculate deductions
+    const serviceFee = (amount * serviceFeePercentage) / 100;
+    const commission = (amount * commissionPercentage) / 100;
+    const totalDeductions = serviceFee + commission;
+    const amountToCreditVendor = amount - totalDeductions;
+
+    this.logger.log(`Service fee (${serviceFeePercentage}%): ${serviceFee}`);
+    this.logger.log(`Commission (${commissionPercentage}%): ${commission}`);
+    this.logger.log(`Total deductions: ${totalDeductions}`);
+    this.logger.log(`Amount to credit vendor: ${amountToCreditVendor}`);
 
     // get vendor with vendor id
     const vendor = await this.vendorService.getVendorById(vendorId);
@@ -174,9 +178,9 @@ export class WalletPaymentService {
     // Store balance before credit for transaction record
     const balanceBefore = vendorWallet.balance;
 
-    // Credit vendor wallet
+    // Credit vendor wallet with amount after deductions
     this.logger.log(`vendor wallet balance: ${balanceBefore}`)
-    vendorWallet.creditVendor(amount);
+    vendorWallet.creditVendor(amountToCreditVendor);
 
     await this.walletRepository.save(vendorWallet);
 
@@ -188,19 +192,28 @@ export class WalletPaymentService {
     const creditTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
       transaction_type: TransactionType.CREDIT,
-      amount: Number(amount),
+      amount: Number(amountToCreditVendor),
       balance_before: Number(balanceBefore),
       balance_after: Number(vendorWallet.balance),
       description: `Payment received for order ${orderId}`,
       reference_id: paymentReference,
       status: TransactionStatus.COMPLETED,
       processed_at: new Date(),
+      metadata: {
+        original_amount: Number(amount),
+        service_fee: Number(serviceFee),
+        service_fee_percentage: serviceFeePercentage,
+        commission: Number(commission),
+        commission_percentage: commissionPercentage,
+        total_deductions: Number(totalDeductions),
+        net_amount: Number(amountToCreditVendor),
+      },
     });
 
 
     await this.transactionRepository.save(creditTransaction);
 
-    this.logger.log(`Vendor wallet credited: ${vendorId}, amount: ${amount}`);
+    this.logger.log(`Vendor wallet credited: ${vendorId}, net amount: ${amountToCreditVendor} (after ${serviceFeePercentage}% service fee and ${commissionPercentage}% commission)`);
     return 
   }
 

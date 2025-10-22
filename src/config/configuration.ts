@@ -102,4 +102,9 @@ export default () => ({
     sms: process.env.SMS_NOTIFICATIONS_ENABLED === 'true',
     email: process.env.EMAIL_NOTIFICATIONS_ENABLED === 'true',
   },
+  
+  fees: {
+    serviceFeePercentage: parseFloat(process.env.SERVICE_FEE_PERCENTAGE) || 15,
+    commissionPercentage: parseFloat(process.env.COMMISSION_PERCENTAGE) || 20,
+  },
 }); 

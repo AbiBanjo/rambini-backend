@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CartRepository } from '../repositories/cart.repository';
 import { OrderRepository } from 'src/modules/order/repositories/order.repository';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
@@ -10,6 +11,7 @@ import { VendorService } from '@/modules/vendor/services/vendor.service';
 @Injectable()
 export class CartService {
   private readonly logger = new Logger(CartService.name);
+  private readonly serviceFeePercentage: number;
  
 
   constructor(
@@ -17,7 +19,10 @@ export class CartService {
     private readonly orderRepository: OrderRepository,
     private readonly menuItemService: MenuItemService,
     private readonly vendorService: VendorService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.serviceFeePercentage = this.configService.get<number>('fees.serviceFeePercentage') || 15;
+  }
 
   async addToCart(userId: string, addToCartDto: AddToCartDto): Promise<CartItemResponseDto> {
     this.logger.log(`Adding item ${addToCartDto.menu_item_id} to cart for user ${userId}`);
@@ -272,12 +277,17 @@ export class CartService {
     const vendorId = cartItem.menu_item?.vendor_id || cartItem.vendor_id;
     const hasTrackingOrder = activeVendorIds ? activeVendorIds.has(vendorId) : false;
 
+    // Calculate service fee as percentage of (unit_price * quantity)
+    const itemSubtotal = Number(cartItem.unit_price) * Number(cartItem.quantity);
+    const serviceFee = (itemSubtotal * this.serviceFeePercentage) / 100;
+
     return {
       id: cartItem.id,
       menu_item_id: cartItem.menu_item_id,
       quantity: cartItem.quantity,
       unit_price: cartItem.unit_price,
-      total_price: cartItem.total_price,
+      service_fee: Number(serviceFee.toFixed(2)),
+      total_price: Number(cartItem.total_price) + Number(serviceFee.toFixed(2)) ,
       created_at: cartItem.created_at,
       updated_at: cartItem.updated_at,
       is_preOrder: cartItem.menu_item?.is_preOrder,
@@ -306,6 +316,7 @@ export class CartService {
         vendors: [],
         total_items: 0,
         subtotal: 0,
+        service_fee:0,
         total_amount: 0,
         is_empty: true,
         vendor_count: 0,
@@ -352,12 +363,16 @@ export class CartService {
       totalSubtotal += Number(vendorSubtotal);
     }
 
+    // service charge
+    const serviceCharge = (totalSubtotal * this.serviceFeePercentage) / 100
+
     return {
       user_id: userId,
       vendors,
       total_items: totalItems,
       subtotal: totalSubtotal,
-      total_amount: totalSubtotal, // No fees applied yet
+      service_fee:serviceCharge,
+      total_amount:totalSubtotal + serviceCharge , // No fees applied yet
       is_empty: false,
       vendor_count: vendors.length,
     };
@@ -379,6 +394,8 @@ export class CartService {
       ? cartItems[0]?.menu_item?.vendor?.business_name || 'Unknown Vendor'
       : 'Unknown Vendor';
 
+      const serviceCharge = (Number(summary.subtotal)  * this.serviceFeePercentage) / 100
+
     return {
       user_id: userId,
       vendor_id: vendorId,
@@ -386,6 +403,8 @@ export class CartService {
       items: cartItemsResponse,
       total_items: summary.total_items,
       subtotal: summary.subtotal,
+      service_fee:serviceCharge,
+      total_amount:summary.subtotal + serviceCharge,
       is_empty: summary.is_empty,
     };
   }

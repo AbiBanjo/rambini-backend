@@ -99,7 +99,7 @@ export class PaymentService {
         // Process wallet payment directly
         const walletPayment = await this.walletPaymentService.processWalletPayment(
           order_id,
-          order.total_amount,
+          {total_amount: order.total_amount, subtotal: order.subtotal},
           order.customer_id,
           order.vendor_id,
         );
@@ -529,7 +529,7 @@ export class PaymentService {
     // Use wallet payment service to credit vendor
     await this.walletPaymentService['creditVendorWallet'](
       order.vendor_id,
-      payment.amount,
+      order.subtotal,
       order.id,
       payment.payment_reference,
     );

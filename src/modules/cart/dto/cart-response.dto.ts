@@ -16,6 +16,9 @@ export class CartItemResponseDto {
   @ApiProperty({ description: 'Total price for this item' })
   total_price: number;
 
+  @ApiProperty({ description: 'Service fee for this item' })
+  service_fee: number;
+
 
   @ApiProperty({ description: 'When added to cart' })
   created_at: Date;
@@ -122,6 +125,8 @@ export class GroupedCartResponseDto {
 
   @ApiProperty({ description: 'Number of unique vendors in cart' })
   vendor_count: number;
+
+  service_fee:number;
 }
 
 export class VendorCartResponseDto {
@@ -142,6 +147,12 @@ export class VendorCartResponseDto {
 
   @ApiProperty({ description: 'Subtotal for this vendor' })
   subtotal: number;
+
+  @ApiProperty({ description: 'Service fee for this vendor' })
+  service_fee: number;
+
+  @ApiProperty({ description: 'Total amount including fees' })
+  total_amount: number;
 
   @ApiProperty({ description: 'Whether vendor cart is empty' })
   is_empty: boolean;

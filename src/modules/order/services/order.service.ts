@@ -24,11 +24,13 @@ import {
 import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, PaymentMethod, DeliveryProvider, Currency, PaymentTransactionStatus } from 'src/entities';
 import { ShipbubblePackageCategoryDto } from '@/modules/delivery/dto/delivery-rate.dto';
 import { getCurrencyForCountry } from 'src/utils/currency-mapper';
+import { ConfigService } from '@nestjs/config';
 
 
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
+  private readonly serviceFeePercentage: number;
 
   constructor(
     private readonly orderRepository: OrderRepository,
@@ -43,7 +45,10 @@ export class OrderService {
     private readonly vendorService: VendorService,
     private readonly notificationSSEService: NotificationSSEService,
     private readonly notificationService: NotificationService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.serviceFeePercentage = this.configService.get<number>('fees.serviceFeePercentage') || 15;
+  }
 
   async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto | OrderPaymentResponseDto> {
     this.logger.log(`Creating order for customer ${customerId} with cart items: ${createOrderDto.vendor_id}`);
@@ -95,8 +100,10 @@ export class OrderService {
     const { cartItems, vendorId, subtotal } = cartValidation
 
     this.logger.log(`Delivery fee: ${deliveryFee}`);
+
+    const serviceFee = (Number(subtotal) * this.serviceFeePercentage) / 100
   
-    const totalAmount =Number(subtotal) + Number(deliveryFee)
+    const totalAmount =Number(subtotal) + Number(deliveryFee) + Number(serviceFee)
 
     // Determine currency based on delivery address or use provided currency
     let orderCurrency = vendorCurrency;
@@ -211,113 +218,6 @@ export class OrderService {
     return this.mapToOrderResponse(completeOrder);
   }
 
-  async calculateOrderCost(customerId: string, calculateOrderCostDto: CalculateOrderCostDto): Promise<OrderCostResponseDto> {
-    this.logger.log(`Calculating order cost for customer ${customerId} with cart items: ${calculateOrderCostDto.cart_item_ids.join(', ')}`);
-
-    // Validate cart items for checkout
-    const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, calculateOrderCostDto.cart_item_ids);
-    
-    if (!cartValidation.is_valid) {
-      throw new BadRequestException(`Cart validation failed: ${cartValidation.issues.join(', ')}`);
-    }
-
-    const { cartItems, vendorId, subtotal } = cartValidation;
-
-    // Get vendor information
-    const vendor = await this.vendorService.getVendorById(vendorId);
-    if (!vendor) {
-      throw new NotFoundException('Vendor not found');
-    }
-
-
-    // Initialize delivery fee and provider
-    let deliveryFee = 0;
-    let selectedDeliveryProvider = null;
-    let deliveryAddress = null;
-
-    // Handle delivery orders
-    if (calculateOrderCostDto.order_type === OrderType.DELIVERY) {
-      if (!calculateOrderCostDto.delivery_address_id) {
-        throw new BadRequestException('Delivery address is required for delivery orders');
-      }
-      
-      deliveryAddress = await this.addressService.getAddressById(customerId, calculateOrderCostDto.delivery_address_id);
-      if (!deliveryAddress) {
-        throw new NotFoundException('Delivery address not found');
-      }
-      
-      // Select delivery provider based on vendor's country
-      selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(vendor.address.country);
-      this.logger.log(`Selected delivery provider: ${selectedDeliveryProvider} for vendor country: ${vendor.address.country}`);
-
-      try {
-        // Validate and get delivery quotes
-        const deliveryQuoteResult = await this.getDeliveryQuoteForOrder(
-          vendor,
-          deliveryAddress,
-          cartItems,
-          subtotal,
-          selectedDeliveryProvider
-        );
-        
-        deliveryFee = deliveryQuoteResult.lowestFee;
-        this.logger.log(`Delivery fee calculated: ${deliveryFee} via ${selectedDeliveryProvider}`);
-
-        // save the delivery quote to db??
-
-        
-      } catch (error) {
-        throw new BadRequestException('Failed to get delivery quotes');
-      }
-    }
-
-    const totalAmount = Number(subtotal) + Number(deliveryFee) 
-
-    // Prepare response
-    const response: OrderCostResponseDto = {
-      subtotal,
-      delivery_fee: deliveryFee,
-      total_amount: totalAmount,
-      order_type: calculateOrderCostDto.order_type,
-      delivery_provider: selectedDeliveryProvider,
-      vendor: {
-        id: vendor.id,
-        business_name: vendor.business_name,
-      },
-    };
-
-    // Add appropriate address based on order type
-    if (calculateOrderCostDto.order_type === OrderType.PICKUP) {
-      // Include vendor address for pickup orders
-      if (vendor.address) {
-        response.pickup_address = {
-          address_line_1: vendor.address.address_line_1,
-          address_line_2: vendor.address.address_line_2,
-          city: vendor.address.city,
-          state: vendor.address.state,
-          postal_code: vendor.address.postal_code,
-          country: vendor.address.country,
-          latitude: vendor.address.latitude,
-          longitude: vendor.address.longitude,
-        };
-      }
-    } else if (calculateOrderCostDto.order_type === OrderType.DELIVERY && deliveryAddress) {
-      // Include customer delivery address for delivery orders
-      response.delivery_address = {
-        address_line_1: deliveryAddress.address_line_1,
-        address_line_2: deliveryAddress.address_line_2,
-        city: deliveryAddress.city,
-        state: deliveryAddress.state,
-        postal_code: deliveryAddress.postal_code,
-        country: deliveryAddress.country,
-        latitude: deliveryAddress.latitude,
-        longitude: deliveryAddress.longitude,
-      };
-    }
-
-    this.logger.log(`Order cost calculated successfully for vendor: ${vendorId}, total: ${totalAmount}`);
-    return response;
-  }
 
   async getOrderById(orderId: string, userId: string, userType: string): Promise<OrderResponseDto> {
     const order = await this.orderRepository.findById(orderId);
