@@ -46,6 +46,8 @@ export class OrderResponseDto {
 
   tracking_url?:string
 
+  @ApiProperty({ description: 'Service fee' })
+  service_fee: number;
 
   @ApiPropertyOptional({ description: 'Vendor phone number' })
   vendor_phone?: string;

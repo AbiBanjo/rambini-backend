@@ -682,7 +682,7 @@ export class OrderService {
 
   private calculateServiceFee(subtotal: number): number {
     // 5% service fee
-    return subtotal * 0.05;
+    return subtotal * this.serviceFeePercentage / 100;
   }
 
   private calculateTaxAmount(subtotal: number): number {
@@ -735,6 +735,8 @@ export class OrderService {
   }
 
   private mapToOrderResponse(order: Order): OrderResponseDto {
+    // add service fee to response
+    const service_fee = this.calculateServiceFee(order.subtotal);
     return {
       id: order.id,
       order_number: order.order_number,
@@ -749,6 +751,7 @@ export class OrderService {
       order_type: order.order_type,
       payment_method: order.payment_method,
       payment_status: order.payment_status,
+      service_fee: service_fee,
       payment_reference: order.payment_reference,
       subtotal: order.subtotal,
       delivery_fee: order.delivery_fee,

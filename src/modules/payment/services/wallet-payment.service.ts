@@ -142,14 +142,14 @@ export class WalletPaymentService {
     const commissionPercentage = this.configService.get<number>('fees.commissionPercentage', 20);
 
     // Calculate deductions
-    const serviceFee = (amount * serviceFeePercentage) / 100;
-    const commission = (amount * commissionPercentage) / 100;
-    const totalDeductions = serviceFee + commission;
-    const amountToCreditVendor = amount - totalDeductions;
+    // const serviceFee = (amount * serviceFeePercentage) / 100;
+    const commission = ((amount) * commissionPercentage) / 100;
+    // const totalDeductions = commission;
+    const amountToCreditVendor = amount - commission;
 
-    this.logger.log(`Service fee (${serviceFeePercentage}%): ${serviceFee}`);
+    // this.logger.log(`Service fee (${serviceFeePercentage}%): ${serviceFee}`);
     this.logger.log(`Commission (${commissionPercentage}%): ${commission}`);
-    this.logger.log(`Total deductions: ${totalDeductions}`);
+    // this.logger.log(`Total deductions: ${totalDeductions}`);
     this.logger.log(`Amount to credit vendor: ${amountToCreditVendor}`);
 
     // get vendor with vendor id
@@ -201,11 +201,11 @@ export class WalletPaymentService {
       processed_at: new Date(),
       metadata: {
         original_amount: Number(amount),
-        service_fee: Number(serviceFee),
+        // service_fee: Number(serviceFee),
         service_fee_percentage: serviceFeePercentage,
         commission: Number(commission),
         commission_percentage: commissionPercentage,
-        total_deductions: Number(totalDeductions),
+        // total_deductions: Number(totalDeductions),
         net_amount: Number(amountToCreditVendor),
       },
     });
