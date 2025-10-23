@@ -43,7 +43,6 @@ import { GetUser } from '@/common/decorators/get-user.decorator';
 
 @ApiTags('menu-items')
 @Controller('menu-items')
-@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class MenuItemController {
   constructor(
@@ -52,6 +51,7 @@ export class MenuItemController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
   @VendorOnly()
   @UseInterceptors(FileInterceptor('image'))
   @ApiOperation({ summary: 'Create a new menu item with optional image upload' })
@@ -128,6 +128,7 @@ export class MenuItemController {
   }
 
   @Get('vendor')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get menu items by vendor' })
   @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
   @ApiResponse({ status: 200, description: 'Vendor menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
@@ -138,6 +139,7 @@ export class MenuItemController {
   }
 
   @Get('category/:categoryId')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get menu items by category' })
   @ApiParam({ name: 'categoryId', description: 'Category ID' })
   @ApiResponse({ status: 200, description: 'Category menu items retrieved successfully', type: [MenuItemWithDistanceDto] })
@@ -159,6 +161,7 @@ export class MenuItemController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard)
   @AccessControl({
     roles: [UserType.VENDOR],
     requireVendorOwnership: 'id'
@@ -211,6 +214,7 @@ export class MenuItemController {
 
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   @AccessControl({
     roles: [UserType.VENDOR],
     requireVendorOwnership: 'id'
@@ -225,6 +229,7 @@ export class MenuItemController {
   }
 
   @Put(':id/availability')
+  @UseGuards(JwtAuthGuard)
   @AccessControl({
     roles: [UserType.VENDOR],
     requireVendorOwnership: 'id'
@@ -241,6 +246,7 @@ export class MenuItemController {
   }
 
   @Post('bulk-operations')
+  @UseGuards(JwtAuthGuard)
   @VendorOnly()
   @ApiOperation({ summary: 'Perform bulk operations on menu items' })
   @ApiResponse({ status: 200, description: 'Bulk operation completed successfully' })
@@ -254,6 +260,7 @@ export class MenuItemController {
   }
 
   @Post(':id/image')
+  @UseGuards(JwtAuthGuard)
   @AccessControl({
     roles: [UserType.VENDOR],
     requireVendorOwnership: 'id'
