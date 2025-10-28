@@ -1,12 +1,15 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { User, UserType, UserStatus, CartItem, MenuItem, Vendor, Wallet } from 'src/entities';
 import { UpdateUserDto } from '../dto';
 import { OTPService } from '@/modules/auth/services/otp.service';
+import { EmailNotificationService } from '@/modules/notification/services/email-notification.service';
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -20,6 +23,7 @@ export class UserService {
     private readonly walletRepository: Repository<Wallet>,
     private readonly dataSource: DataSource,
     private readonly otpService: OTPService,
+    private readonly emailNotificationService: EmailNotificationService,
   ) {}
 
   async createUser(userData: Partial<User>): Promise<User> {
@@ -95,10 +99,22 @@ export class UserService {
     
     // Check if user has money in their wallet
     const wallet = await this.walletRepository.findOne({ where: { user_id: id } });
-    if (wallet && wallet.balance > 0) {
-      throw new BadRequestException(
-        `Cannot delete account with existing balance of ${wallet.formatted_balance}. Please withdraw your funds before deleting your account.`
-      );
+    
+    if (wallet) {
+      // Check customer balance
+      if (wallet.balance > 0) {
+        throw new BadRequestException(
+          `Cannot delete account with existing customer balance of ${wallet.formatted_balance}. Please withdraw your funds before deleting your account.`
+        );
+      }
+      
+      // Check vendor balance if user is a vendor
+      if (user.user_type === UserType.VENDOR && wallet.vendor_balance > 0) {
+        const vendorBalanceFormatted = `${wallet.currency} ${wallet.vendor_balance.toFixed(2)}`;
+        throw new BadRequestException(
+          `Cannot delete account with existing vendor balance of ${vendorBalanceFormatted}. Please withdraw your vendor earnings before deleting your account.`
+        );
+      }
     }
     
     // Check if account is already marked for deletion within 30 days
@@ -127,7 +143,25 @@ export class UserService {
       await queryRunner.commitTransaction();
       
       // Log the deletion request for audit purposes
-      console.log(`User ${id} account marked for deletion. Reason: ${reason}. Can be reactivated within 30 days.`);
+      this.logger.log(`User ${id} account marked for deletion. Reason: ${reason}. Can be reactivated within 30 days.`);
+      
+      // Send email notification to the user
+      // Email failure should not block account deletion
+      try {
+        const emailSent = await this.emailNotificationService.sendAccountDeletionEmail(user);
+        if (emailSent) {
+          this.logger.log(`Account deletion email sent successfully to user ${id}`);
+        } else {
+          this.logger.warn(
+            `Account deletion email could not be sent to user ${id} (email service returned false). Account deletion completed successfully.`
+          );
+        }
+      } catch (emailError) {
+        this.logger.warn(
+          `Failed to send account deletion email to user ${id}: ${emailError.message}. Account deletion completed successfully.`
+        );
+        // Don't throw error - the account deletion is already processed
+      }
       
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -225,7 +259,7 @@ export class UserService {
       // 1. Delete cart items for the user
       await queryRunner.manager.delete(CartItem, { user_id: id });
       
-      // 2. If user is a vendor, delete their menu items
+      // 2. If user is a vendor, delete their menu items and vendor profile
       if (user.user_type === UserType.VENDOR) {
         const vendor = await queryRunner.manager.findOne(Vendor, { 
           where: { user_id: id } 
@@ -234,6 +268,9 @@ export class UserService {
         if (vendor) {
           // Delete all menu items for this vendor
           await queryRunner.manager.delete(MenuItem, { vendor_id: vendor.id });
+          
+          // Delete the vendor profile
+          await queryRunner.manager.delete(Vendor, { id: vendor.id });
         }
       }
       
@@ -246,7 +283,7 @@ export class UserService {
       await queryRunner.commitTransaction();
       
       // Log the permanent deletion for audit purposes
-      console.log(`User ${id} account permanently deleted after 30-day grace period.`);
+      this.logger.log(`User ${id} account permanently deleted after 30-day grace period.`);
       
     } catch (error) {
       await queryRunner.rollbackTransaction();

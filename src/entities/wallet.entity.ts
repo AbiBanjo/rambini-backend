@@ -106,6 +106,17 @@ export class Wallet extends BaseEntity {
     return false;
   }
 
+  // debit vendor wallet 
+  debitVendorWallet(amount: number): boolean {
+    const currentBalance = Number(this.vendor_balance) || 0;
+    if (amount > 0 && currentBalance >= amount) {
+      this.vendor_balance = currentBalance - Number(amount);
+      this.last_transaction_at = new Date();
+      return true;
+    }
+    return false;
+  }
+
 
   can_transact(amount: number): boolean {
     return this.is_active && this.balance >= amount;

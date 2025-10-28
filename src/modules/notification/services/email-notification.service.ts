@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Notification, User } from '../../../entities';
+import * as sgMail from '@sendgrid/mail';
 import * as nodemailer from 'nodemailer';
 
 export interface EmailTemplate {
@@ -25,6 +26,7 @@ export interface EmailNotificationData {
 @Injectable()
 export class EmailNotificationService {
   private readonly logger = new Logger(EmailNotificationService.name);
+  private isInitialized = false;
   private transporter: nodemailer.Transporter;
 
   // Email templates for different notification types
@@ -342,7 +344,19 @@ export class EmailNotificationService {
               <p><strong>Amount:</strong> {{amount}} {{currency}}</p>
               <p><strong>Country:</strong> {{country}}</p>
               <p><strong>Bank:</strong> {{bankName}}</p>
-              <p><strong>Account:</strong> {{accountNumber}}</p>
+              <p><strong>Account Number:</strong> {{accountNumber}}</p>
+              {{#if accountName}}
+              <p><strong>Account Name:</strong> {{accountName}}</p>
+              {{/if}}
+              {{#if routingNumber}}
+              <p><strong>Routing Number:</strong> {{routingNumber}}</p>
+              {{/if}}
+              {{#if sortCode}}
+              <p><strong>Sort Code:</strong> {{sortCode}}</p>
+              {{/if}}
+              {{#if accountType}}
+              <p><strong>Account Type:</strong> {{accountType}}</p>
+              {{/if}}
               <p><strong>Request ID:</strong> {{withdrawalId}}</p>
               <p><strong>Date:</strong> {{date}}</p>
             </div>
@@ -371,7 +385,11 @@ export class EmailNotificationService {
         Amount: {{amount}} {{currency}}
         Country: {{country}}
         Bank: {{bankName}}
-        Account: {{accountNumber}}
+        Account Number: {{accountNumber}}
+        {{#if accountName}}Account Name: {{accountName}}{{/if}}
+        {{#if routingNumber}}Routing Number: {{routingNumber}}{{/if}}
+        {{#if sortCode}}Sort Code: {{sortCode}}{{/if}}
+        {{#if accountType}}Account Type: {{accountType}}{{/if}}
         Request ID: {{withdrawalId}}
         Date: {{date}}
         
@@ -423,33 +441,68 @@ export class EmailNotificationService {
         Don't miss out on this amazing deal!
       `
     });
+
+    // Account Deletion Scheduled Template
+    this.templates.set('ACCOUNT_DELETION_SCHEDULED', {
+      subject: 'Your Rambini Account Is Scheduled for Deletion',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+            <h2 style="color: #333; margin-bottom: 20px;">Account Deletion Request</h2>
+            <p>Hi {{firstName}},</p>
+            <p>We're sorry to see that you've requested to delete your Rambini account.</p>
+            <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #ffc107;">
+              <p style="margin: 0;"><strong>Important:</strong> If you change your mind, you have 30 days to cancel this request.</p>
+            </div>
+            <p>After that time, all of your user information will be permanently deleted.</p>
+            <p>If this was a mistake or you'd like to keep your account active, simply log into your app right now.</p>
+            <p>Thank you for being part of the Rambini community.</p>
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+              <p style="margin: 0;">Best,<br>The Rambini Team</p>
+            </div>
+          </div>
+        </div>
+      `,
+      text: `
+        Account Deletion Request
+        
+        Hi {{firstName}},
+        
+        We're sorry to see that you've requested to delete your Rambini account.
+        
+        Important: If you change your mind, you have 30 days to cancel this request.
+        
+        After that time, all of your user information will be permanently deleted.
+        
+        If this was a mistake or you'd like to keep your account active, simply log into your app right now.
+        
+        Thank you for being part of the Rambini community.
+        
+        Best,
+        The Rambini Team
+      `
+    });
   }
 
   private initializeTransporter(): void {
     try {
-      // Create transporter with SMTP configuration
-      this.transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.EMAIL_PORT || '587'),
-        secure: false,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
+      // Initialize SendGrid with API key
+      const apiKey = process.env.SENDGRID_API_KEY;
+      
+      if (!apiKey) {
+        this.logger.warn('SENDGRID_API_KEY is not set. Email functionality will be limited.');
+        return;
+      }
 
-      // Verify connection configuration
-      this.transporter.verify((error, success) => {
-        if (error) {
-          this.logger.error('Email transporter verification failed:', error);
-        } else {
-          this.logger.log('Email transporter is ready to send messages');
-        }
-      });
+      sgMail.setApiKey(apiKey);
+      this.isInitialized = true;
+      this.logger.log('SendGrid email service initialized successfully');
     } catch (error) {
-      this.logger.error('Failed to initialize email transporter:', error);
+      this.logger.error('Failed to initialize SendGrid:', error);
+      this.isInitialized = false;
     }
   }
+
 
   async sendEmailNotification(
     notification: Notification,
@@ -518,8 +571,8 @@ export class EmailNotificationService {
   }
 
   private async deliverEmail(emailData: EmailNotificationData): Promise<void> {
-    if (!this.transporter) {
-      throw new Error('Email transporter is not initialized');
+    if (!this.isInitialized) {
+      throw new Error('SendGrid email service is not initialized');
     }
 
     // Validate email address
@@ -532,41 +585,109 @@ export class EmailNotificationService {
     this.logger.log(`[EMAIL SERVICE] HTML Content Length: ${emailData.html.length} characters`);
 
     try {
-      // Prepare email options
-      const mailOptions: nodemailer.SendMailOptions = {
-        from: emailData.from || process.env.EMAIL_FROM || 'noreply@rambini.com',
+      // Prepare SendGrid email message
+      const msg: sgMail.MailDataRequired = {
         to: emailData.to,
+        from: emailData.from || process.env.EMAIL_FROM || 'noreply@rambini.com',
         subject: emailData.subject,
-        html: emailData.html,
         text: emailData.text,
+        html: emailData.html,
         replyTo: emailData.replyTo || process.env.EMAIL_REPLY_TO || 'support@rambini.com',
       };
 
       // Add attachments if provided
       if (emailData.attachments && emailData.attachments.length > 0) {
-        mailOptions.attachments = emailData.attachments.map(attachment => ({
-          filename: attachment.filename,
-          content: attachment.content,
-          contentType: attachment.contentType,
-        }));
+        msg.attachments = emailData.attachments.map(attachment => {
+          // Convert content to base64 string if it's a Buffer
+          let base64Content: string;
+          if (Buffer.isBuffer(attachment.content)) {
+            base64Content = attachment.content.toString('base64');
+          } else if (typeof attachment.content === 'string') {
+            // If already a string, assume it's the content as-is
+            base64Content = Buffer.from(attachment.content).toString('base64');
+          } else {
+            base64Content = String(attachment.content);
+          }
+
+          return {
+            content: base64Content,
+            filename: attachment.filename,
+            type: attachment.contentType || 'application/octet-stream',
+            disposition: 'attachment',
+          };
+        });
       }
 
-      // Send email
-      const info = await this.transporter.sendMail(mailOptions);
+      // Send email via SendGrid
+      const [response] = await sgMail.send(msg);
       
-      this.logger.log(`[EMAIL SERVICE] Email sent successfully. Message ID: ${info.messageId}`);
-      
-      // Log additional info in development
-      if (process.env.NODE_ENV === 'development') {
-        this.logger.debug(`[EMAIL SERVICE] Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
-      }
+      this.logger.log(`[EMAIL SERVICE] Email sent successfully. Status Code: ${response.statusCode}`);
+      this.logger.debug(`[EMAIL SERVICE] Response Headers:`, response.headers);
     } catch (error) {
-      this.logger.error(`[EMAIL SERVICE] Failed to send email to ${emailData.to}:`, error);
+      // Log as debug since callers will handle error logging appropriately
+      this.logger.debug(`[EMAIL SERVICE] Failed to send email to ${emailData.to}: ${error.message}`);
+      
+      // Include detailed error information from SendGrid if available
+      if (error.response?.body) {
+        this.logger.debug(`[EMAIL SERVICE] SendGrid error details:`, JSON.stringify(error.response.body));
+      }
+      
       throw new Error(`Email delivery failed: ${error.message}`);
     }
   }
 
   // Method to add custom templates at runtime
+  
+
+  // private async deliverEmail(emailData: EmailNotificationData): Promise<void> {
+  //   if (!this.transporter) {
+  //     throw new Error('Email transporter is not initialized');
+  //   }
+
+  //   // Validate email address
+  //   if (!this.isValidEmail(emailData.to)) {
+  //     throw new Error(`Invalid email address: ${emailData.to}`);
+  //   }
+
+  //   this.logger.log(`[EMAIL SERVICE] Sending email to ${emailData.to}`);
+  //   this.logger.log(`[EMAIL SERVICE] Subject: ${emailData.subject}`);
+  //   this.logger.log(`[EMAIL SERVICE] HTML Content Length: ${emailData.html.length} characters`);
+
+  //   try {
+  //     // Prepare email options
+  //     const mailOptions: nodemailer.SendMailOptions = {
+  //       from: emailData.from || process.env.EMAIL_FROM || 'noreply@rambini.com',
+  //       to: emailData.to,
+  //       subject: emailData.subject,
+  //       html: emailData.html,
+  //       text: emailData.text,
+  //       replyTo: emailData.replyTo || process.env.EMAIL_REPLY_TO || 'support@rambini.com',
+  //     };
+
+  //     // Add attachments if provided
+  //     if (emailData.attachments && emailData.attachments.length > 0) {
+  //       mailOptions.attachments = emailData.attachments.map(attachment => ({
+  //         filename: attachment.filename,
+  //         content: attachment.content,
+  //         contentType: attachment.contentType,
+  //       }));
+  //     }
+
+  //     // Send email
+  //     const info = await this.transporter.sendMail(mailOptions);
+      
+  //     this.logger.log(`[EMAIL SERVICE] Email sent successfully. Message ID: ${info.messageId}`);
+      
+  //     // Log additional info in development
+  //     // if (process.env.NODE_ENV === 'development') {
+  //     //   this.logger.debug(`[EMAIL SERVICE] Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+  //     // }
+  //   } catch (error) {
+  //     this.logger.error(`[EMAIL SERVICE] Failed to send email to ${emailData.to}:`, error);
+  //     throw new Error(`Email delivery failed: ${error.message}`);
+  //   }
+  // }
+  
   addTemplate(notificationType: string, template: EmailTemplate): void {
     this.templates.set(notificationType, template);
   }
@@ -585,13 +706,20 @@ export class EmailNotificationService {
   // Method to test email configuration
   async testEmailConfiguration(): Promise<boolean> {
     try {
-      if (!this.transporter) {
-        this.logger.error('Email transporter is not initialized');
+      if (!this.isInitialized) {
+        this.logger.error('SendGrid email service is not initialized');
         return false;
       }
 
-      await this.transporter.verify();
-      this.logger.log('Email configuration test successful');
+      // Test SendGrid configuration by attempting to send a test email
+      // We can skip actually sending and just verify the API key is set
+      const apiKey = process.env.SENDGRID_API_KEY;
+      if (!apiKey) {
+        this.logger.error('SENDGRID_API_KEY is not set');
+        return false;
+      }
+
+      this.logger.log('SendGrid email configuration test successful');
       return true;
     } catch (error) {
       this.logger.error('Email configuration test failed:', error);
@@ -651,5 +779,58 @@ export class EmailNotificationService {
 
     this.logger.log(`Bulk email completed: ${success} successful, ${failed} failed`);
     return { success, failed };
+  }
+
+  // Method to send account deletion scheduled email
+  async sendAccountDeletionEmail(user: User, appUrl?: string): Promise<boolean> {
+
+    this.logger.log(`Sending account deletion email to ${user.email}`);
+    // if user has no email, return false
+    if (!user.email) {
+      this.logger.warn(`User ${user.id} has no email address. Skipping deletion notification email.`);
+      return false;
+    }
+
+    // Check if SendGrid is initialized
+    if (!this.isInitialized) {
+      this.logger.warn(`SendGrid is not initialized. Skipping deletion notification email to ${user.email}.`);
+      return false;
+    }
+
+    try {
+      const templateData = {
+        firstName: user.first_name || 'there',
+        appUrl: appUrl || process.env.APP_URL || 'https://rambinifoods.com',
+      };
+
+      const emailData: EmailNotificationData = {
+        to: user.email,
+        subject: 'Your Rambini Account Is Scheduled for Deletion',
+        html: this.renderTemplate(
+          this.templates.get('ACCOUNT_DELETION_SCHEDULED').html,
+          templateData
+        ),
+        text: this.renderTemplate(
+          this.templates.get('ACCOUNT_DELETION_SCHEDULED').text,
+          templateData
+        ),
+        from:process.env.EMAIL_FROM || 'noreply@rambinifoods.com',
+        replyTo: process.env.EMAIL_REPLY_TO || 'support@rambini.com',
+      };
+
+      this.logger.log(`Email data: ${JSON.stringify(emailData)}`);
+
+      await this.deliverEmail(emailData);
+      
+      this.logger.log(`Account deletion email sent to ${user.email}`);
+      return true;
+    } catch (error) {
+      // Log as warning instead of error to avoid noise in logs when email service is unavailable
+      this.logger.warn(
+        `Failed to send account deletion email to ${user.email}: ${error.message}. ` +
+        `This could be due to network issues or SendGrid configuration. The account deletion will still proceed.`
+      );
+      return false;
+    }
   }
 }

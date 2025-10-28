@@ -568,13 +568,7 @@ export class WalletPaymentService {
     return `wallet_${uuidv4()}`;
   }
 
-  /**
-   * Debit wallet for withdrawal
-   * @param userId User ID
-   * @param amount Amount to debit
-   * @param description Transaction description
-   * @returns Promise<void>
-   */
+
   async debitWalletForWithdrawal(userId: string, amount: number, description: string): Promise<void> {
     this.logger.log(`Debiting wallet for withdrawal: user ${userId}, amount: ${amount}`);
 
@@ -599,7 +593,7 @@ export class WalletPaymentService {
     try {
       // Debit wallet
       const balanceBefore = wallet.balance;
-      const debitSuccess = wallet.debit(amount);
+      const debitSuccess = wallet.debitVendorWallet(amount);
       if (!debitSuccess) {
         throw new BadRequestException('Failed to debit wallet');
       }

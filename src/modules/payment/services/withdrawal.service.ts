@@ -464,6 +464,10 @@ export class WithdrawalService {
             country: withdrawal.country,
             bankName: withdrawal.bank_name,
             accountNumber: withdrawal.account_number,
+            accountName: withdrawal.account_name,
+            routingNumber: withdrawal.routing_number,
+            sortCode: withdrawal.sort_code,
+            accountType: withdrawal.account_type,
             date: withdrawal.created_at.toISOString(),
             baseUrl: process.env.APP_URL || 'http://localhost:3000',
           },
@@ -474,7 +478,7 @@ export class WithdrawalService {
       // Create a mock admin user for email sending
       const adminUser = {
         id: 'admin',
-        email: process.env.ADMIN_EMAIL || 'admin@rambini.com',
+        email: process.env.ADMIN_EMAIL || 'info@bankfields.com',
         first_name: 'Admin',
         last_name: 'User',
         full_name: 'Admin User',
@@ -489,6 +493,10 @@ export class WithdrawalService {
         country: withdrawal.country,
         bankName: withdrawal.bank_name,
         accountNumber: withdrawal.account_number,
+        accountName: withdrawal.account_name,
+        routingNumber: withdrawal.routing_number,
+        sortCode: withdrawal.sort_code,
+        accountType: withdrawal.account_type,
         date: withdrawal.created_at.toISOString(),
         baseUrl: process.env.APP_URL || 'http://localhost:3000',
       });

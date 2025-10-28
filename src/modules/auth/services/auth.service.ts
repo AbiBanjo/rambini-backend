@@ -31,6 +31,8 @@ export class AuthService {
   constructor(
     @InjectRepository(Wallet)
     private readonly walletRepository: Repository<Wallet>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly userService: UserService,
     @Inject(forwardRef(() => AddressService))
     private readonly addressService: AddressService,
@@ -78,13 +80,28 @@ export class AuthService {
     }
 
     // Check if user exists
-    const existingUser = await this.userService.findByPhoneNumber(phoneNumber);
+    let existingUser = await this.userService.findByPhoneNumber(phoneNumber);
 
     if (!existingUser) {
       throw new NotFoundException('User not found. Please register first.');
     }
 
-    // Check if user is active
+    // Check if user account was deleted and can be reactivated
+    if (existingUser.status === UserStatus.DELETED) {
+      if (existingUser.canBeReactivated()) {
+        // Reactivate the account
+        existingUser.reactivate();
+        await this.userRepository.save(existingUser);
+        
+        // Reload the user to get the updated status from database
+        existingUser = await this.userService.findByPhoneNumber(phoneNumber);
+        this.logger.log(`Reactivated deleted account for user: ${existingUser.id}`);
+      } else {
+        throw new BadRequestException('This account was permanently deleted and cannot be restored. Please contact support to create a new account.');
+      }
+    }
+
+    // Check if user is active (after potential reactivation)
     if (existingUser.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Account is not active. Please contact support.');
     }
