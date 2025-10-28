@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Twilio } from 'twilio';
 
 export interface SMSOptions {
   to: string;
@@ -10,27 +11,24 @@ export interface SMSOptions {
 @Injectable()
 export class SMSService {
   private readonly logger = new Logger(SMSService.name);
-  private readonly twilioClient: any;
+  private readonly twilioClient: Twilio;
+  private readonly twilioPhoneNumber: string;
   private readonly isEnabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    this.isEnabled = !!(
-      this.configService.get('TWILIO_ACCOUNT_SID') &&
-      this.configService.get('TWILIO_AUTH_TOKEN') &&
-      this.configService.get('TWILIO_PHONE_NUMBER')
-    );
+    const accountSid = this.configService.get('TWILIO_ACCOUNT_SID');
+    const authToken = this.configService.get('TWILIO_AUTH_TOKEN');
+    const phoneNumber = this.configService.get('TWILIO_PHONE_NUMBER');
+
+    this.isEnabled = !!(accountSid && authToken && phoneNumber);
 
     if (this.isEnabled) {
       try {
-        // Dynamically import Twilio to avoid issues in development
-        const twilio = require('twilio');
-        this.twilioClient = twilio(
-          this.configService.get('TWILIO_ACCOUNT_SID'),
-          this.configService.get('TWILIO_AUTH_TOKEN')
-        );
-        this.logger.log('Twilio SMS service initialized');
+        this.twilioClient = new Twilio(accountSid, authToken);
+        this.twilioPhoneNumber = phoneNumber;
+        this.logger.log('Twilio SMS service initialized successfully');
       } catch (error) {
-        this.logger.warn('Twilio not available, SMS service disabled');
+        this.logger.error('Twilio initialization failed:', error.message);
         this.isEnabled = false;
       }
     } else {
@@ -54,7 +52,7 @@ export class SMSService {
     }
 
     try {
-      const from = options.from || this.configService.get('TWILIO_PHONE_NUMBER');
+      const from =  this.twilioPhoneNumber;
       
       const result = await this.twilioClient.messages.create({
         body: options.message,
@@ -65,31 +63,33 @@ export class SMSService {
       this.logger.log(`SMS sent successfully to ${options.to}, SID: ${result.sid}`);
       return true;
     } catch (error) {
-      // Check if it's a network/DNS error
-      if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-        this.logger.warn(`Network issue connecting to Twilio. SMS not sent to ${options.to}. Using mock OTP for development.`);
-        this.logger.warn(`OTP Code for ${options.to}: ${options.message.match(/\d{6}/)?.[0] || 'N/A'}`);
-        return true; // Return true to not block authentication in development
-      }
-      
-      // Log detailed error information
-      const errorDetails = {
+      // Log error details
+      this.logger.error('Error sending SMS:', error.message);
+      this.logger.error('Error details:', {
         message: error.message,
         code: error.code,
         status: error.status,
         moreInfo: error.moreInfo,
-        to: options.to,
-      };
-      
-      this.logger.error(`Failed to send SMS to ${options.to}:`, errorDetails);
+      });
+
+      // Check if it's a network/DNS error
+      if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+        this.logger.warn(`Network issue connecting to Twilio. SMS not sent to ${options.to}`);
+        this.logger.warn(`OTP Code for ${options.to}: ${options.message.match(/\d{6}/)?.[0] || 'N/A'}`);
+        return true; // Return true to not block authentication in development
+      }
       
       // Check if it's an authentication error
       if (error.message?.toLowerCase().includes('authenticate') || error.status === 401) {
         this.logger.error('Twilio authentication failed. Please verify TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are correct.');
-        this.logger.error('For now, logging OTP for manual verification:');
-        this.logger.warn(`OTP Code for ${options.to}: ${options.message.match(/\d{6}/)?.[0] || 'N/A'}`);
-        // Return false to indicate failure, but log the OTP for manual use
+        this.logger.warn(`OTP Code for manual verification ${options.to}: ${options.message.match(/\d{6}/)?.[0] || 'N/A'}`);
         return false;
+      }
+      
+      // Extract OTP for manual verification
+      const otpMatch = options.message.match(/\d{6}/)?.[0];
+      if (otpMatch) {
+        this.logger.warn(`Manual OTP for ${options.to}: ${otpMatch}`);
       }
       
       return false;
