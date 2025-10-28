@@ -114,7 +114,7 @@ export class AuthService {
     
     if (!smsSent) {
       this.logger.warn(`Failed to send SMS to ${phoneNumber}, but OTP was generated`);
-      throw new BadRequestException('Failed to send SMS');
+      // throw new BadRequestException('Failed to send SMS');
     }
 
     this.logger.log(`Login OTP sent to ${phoneNumber}`);
