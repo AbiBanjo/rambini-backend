@@ -24,10 +24,8 @@ export class OTPService {
 
   async generateOTP(phoneNumber: string): Promise<{ otpId: string; otpCode: string }> {
     // Generate 6-digit OTP
-    // const otpCode = process.env.NODE_ENV === 'production' 
-    //   ? Math.floor(100000 + Math.random() * 900000).toString()
-    //   : "123456";
-    const otpCode = "123456"
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
+    // const otpCode = "123456"
     const otpId = uuidv4();
     
     const now = new Date();
