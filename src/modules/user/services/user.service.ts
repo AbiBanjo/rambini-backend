@@ -5,6 +5,7 @@ import { User, UserType, UserStatus, CartItem, MenuItem, Vendor, Wallet } from '
 import { UpdateUserDto } from '../dto';
 import { OTPService } from '@/modules/auth/services/otp.service';
 import { EmailNotificationService } from '@/modules/notification/services/email-notification.service';
+import { SMSService } from '@/modules/auth/services/sms.service';
 
 @Injectable()
 export class UserService {
@@ -24,6 +25,7 @@ export class UserService {
     private readonly dataSource: DataSource,
     private readonly otpService: OTPService,
     private readonly emailNotificationService: EmailNotificationService,
+    private readonly smsService: SMSService,
   ) {}
 
   async createUser(userData: Partial<User>): Promise<User> {
@@ -217,6 +219,8 @@ export class UserService {
 
   async generateOTP(phoneNumber: string): Promise<{ otpId: string }> {
     const { otpId, otpCode } = await this.otpService.generateOTP(phoneNumber);
+    // send OTP to phone number
+    await this.smsService.sendOTP(phoneNumber, otpCode);
     return {otpId}
   }
     // use otp service to generate OTP
