@@ -71,7 +71,27 @@ export class SMSService {
         this.logger.warn(`OTP Code for ${options.to}: ${options.message.match(/\d{6}/)?.[0] || 'N/A'}`);
         return true; // Return true to not block authentication in development
       }
-      this.logger.error(`Failed to send SMS to ${options.to}:`, error.message);
+      
+      // Log detailed error information
+      const errorDetails = {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        moreInfo: error.moreInfo,
+        to: options.to,
+      };
+      
+      this.logger.error(`Failed to send SMS to ${options.to}:`, errorDetails);
+      
+      // Check if it's an authentication error
+      if (error.message?.toLowerCase().includes('authenticate') || error.status === 401) {
+        this.logger.error('Twilio authentication failed. Please verify TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are correct.');
+        this.logger.error('For now, logging OTP for manual verification:');
+        this.logger.warn(`OTP Code for ${options.to}: ${options.message.match(/\d{6}/)?.[0] || 'N/A'}`);
+        // Return false to indicate failure, but log the OTP for manual use
+        return false;
+      }
+      
       return false;
     }
   }
