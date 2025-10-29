@@ -48,7 +48,9 @@ export class FileStorageService {
   constructor(private readonly configService: ConfigService) {
     this.uploadDir = this.configService.get('UPLOAD_DIR', 'uploads');
     this.maxFileSize = this.configService.get('MAX_FILE_SIZE', 10 * 1024 * 1024); // 10MB
-    this.allowedMimeTypes = this.configService.get('ALLOWED_MIME_TYPES', 'image/jpeg,image/png,image/webp').split(',');
+    this.allowedMimeTypes = this.configService
+      .get('ALLOWED_MIME_TYPES', 'image/*')
+      .split(',');
     this.cdnUrl = this.configService.get('CDN_URL', '');
     
     // AWS S3 Configuration
@@ -242,7 +244,16 @@ export class FileStorageService {
       throw new BadRequestException(`File size exceeds maximum limit of ${this.maxFileSize / (1024 * 1024)}MB`);
     }
 
-    if (!this.allowedMimeTypes.includes(file.mimetype)) {
+    const isAllowed = this.allowedMimeTypes.some((allowed) => {
+      const trimmed = allowed.trim();
+      if (trimmed.endsWith('/*')) {
+        const prefix = trimmed.slice(0, -2);
+        return file.mimetype.startsWith(prefix + '/');
+      }
+      return file.mimetype === trimmed;
+    });
+
+    if (!isAllowed) {
       throw new BadRequestException(`File type ${file.mimetype} is not allowed`);
     }
   }
