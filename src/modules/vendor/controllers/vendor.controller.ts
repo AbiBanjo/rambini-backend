@@ -32,7 +32,7 @@ export class VendorController {
     @GetUser() user: User,
     @Body() createVendorDto: CreateVendorDto,
   ): Promise<Vendor> {
-    return await this.vendorService.createVendor(user.id, createVendorDto);
+    return await this.vendorService.createVendor(user, createVendorDto);
   }
 
   @Get('profile')

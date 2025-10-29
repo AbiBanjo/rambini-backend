@@ -482,6 +482,30 @@ export class EmailNotificationService {
         The Rambini Team
       `
     });
+
+    // Vendor Profile Created Template
+    this.templates.set('VENDOR_PROFILE_CREATED', {
+      subject: 'Your Vendor Profile Has Been Created',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+            <h2 style="color: #333; margin-bottom: 20px;">Your Vendor Profile Has Been Created</h2>
+            <p>Hello {{userName}},</p>
+            <p>Your vendor profile has been created successfully.</p>
+            <p>Thank you for using Rambini!</p>
+          </div>
+        </div>
+      `,
+      text: `
+        Your Vendor Profile Has Been Created
+        
+        Hello {{userName}},
+        
+        Your vendor profile has been created successfully.
+        
+        Thank you for using Rambini!
+      `
+    });
   }
 
   private initializeTransporter(): void {

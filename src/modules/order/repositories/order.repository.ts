@@ -224,7 +224,7 @@ export class OrderRepository {
   async generateOrderNumber(): Promise<string> {
     // Generate UUID-based order number - simple and no race conditions!
     const { v4: uuidv4 } = await import('uuid');
-    const orderNumber = `ORD-${uuidv4()}`;
+    const orderNumber = `ORD-${uuidv4().substring(0, 8)}`;
     this.logger.log(`Generated UUID-based order number: ${orderNumber}`);
     return orderNumber;
   }

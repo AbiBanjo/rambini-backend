@@ -1,12 +1,15 @@
 import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Vendor, UserType } from '../../../entities';
+import { Vendor, UserType, User, NotificationType } from '../../../entities';
 import { CreateVendorDto } from '../dto/create-vendor.dto';
 import { AddressService } from '../../user/services/address.service';
 import { AddressType } from '../../../entities/address.entity';
 import { ErrorHandlerService } from '../../../common/services';
 import { UserService } from '../../user/services/user.service';
+import { EmailNotificationService } from '../../notification/services/email-notification.service';
+import { NotificationService } from '../../notification/notification.service';
+
 
 @Injectable()
 export class VendorService {
@@ -18,12 +21,14 @@ export class VendorService {
     private readonly addressService: AddressService,
     private readonly userService: UserService,
     private readonly errorHandler: ErrorHandlerService,
+    private readonly emailNotificationService: EmailNotificationService,
+    private readonly notificationService: NotificationService,
   ) {}
 
-  async createVendor(userId: string, createVendorDto: CreateVendorDto): Promise<Vendor> {
+  async createVendor(user: User, createVendorDto: CreateVendorDto): Promise<Vendor> {
     // Check if user already has a vendor profile
     const existingVendor = await this.vendorRepository.findOne({
-      where: { user_id: userId }
+      where: { user_id: user.id }
     });
 
     if (existingVendor) {
@@ -31,7 +36,7 @@ export class VendorService {
     }
 
     // Create vendor address using address service
-    const address = await this.addressService.createAddress(userId, {
+    const address = await this.addressService.createAddress(user.id, {
       address_line_1: createVendorDto.address_line_1,
       address_line_2: createVendorDto.address_line_2,
       city: createVendorDto.city,
@@ -46,7 +51,7 @@ export class VendorService {
 
     // Create vendor profile
     const vendor = this.vendorRepository.create({
-      user_id: userId,
+      user_id: user.id,
       business_name: createVendorDto.business_name,
       certificate_number: createVendorDto.certificate_number,
       address_id: address.id,
@@ -54,8 +59,20 @@ export class VendorService {
     });
 
     // change user role to vendor
-    await this.userService.updateUser(userId, { user_type: UserType.VENDOR });
+    await this.userService.updateUser(user.id, { user_type: UserType.VENDOR });
 
+    // send an email notification to the vendor , you will need to create a notification in the notification service
+    await this.notificationService.sendEmailNotification(
+      user.id,
+      NotificationType.VENDOR_PROFILE_CREATED,
+      'Vendor Profile Created',
+      'Your vendor profile has been created successfully',
+      {
+        vendor_name: createVendorDto.business_name,
+      }
+    );
+
+    // send an email notification to the vendor
     return await this.vendorRepository.save(vendor);
   }
 
