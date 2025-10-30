@@ -23,8 +23,15 @@ export class OTPService {
   ) {}
 
   async generateOTP(phoneNumber: string): Promise<{ otpId: string; otpCode: string }> {
+    // if number starts with +234 use mat h random if not use  123456
+    let otpCode = "";
+    if (phoneNumber.startsWith('+234')) {
+      otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    } else {
+      otpCode = "123456";
+    }
     // Generate 6-digit OTP
-    const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
+    // const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
     // const otpCode = "123456"
     const otpId = uuidv4();
     
