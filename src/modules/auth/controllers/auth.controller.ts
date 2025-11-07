@@ -15,7 +15,14 @@ import {
   CompleteProfileDto, 
   LoginDto, 
   ResendOtpDto, 
-  RefreshTokenDto 
+  RefreshTokenDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  ChangePasswordDto,
+  VerifyEmailDto,
+  ResendVerificationEmailDto,
+  GoogleAuthDto,
+  AppleAuthDto
 } from '../dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { Public } from '../decorators/public.decorator';
@@ -37,7 +44,7 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto.phoneNumber);
+    return this.authService.login(loginDto);
   }
 
   @Post('verify-otp')
@@ -83,6 +90,59 @@ export class AuthController {
       lastName: user.last_name,
       email: user.email,
       country: user.country,
+      emailVerified: !!user.email_verified_at,
     };
+  }
+
+  @Post('verify-email')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    return this.authService.verifyEmail(verifyEmailDto);
+  }
+
+  @Post('resend-verification-email')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async resendVerificationEmail(@Body() resendVerificationEmailDto: ResendVerificationEmailDto) {
+    return this.authService.resendVerificationEmail(resendVerificationEmailDto.email, resendVerificationEmailDto.otpId);
+  }
+
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('reset-password')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(resetPasswordDto);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @GetUser() user: User,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.id, changePasswordDto);
+  }
+
+  @Post('google')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async googleSignIn(@Body() googleAuthDto: GoogleAuthDto) {
+    return this.authService.googleSignIn(googleAuthDto);
+  }
+
+  @Post('apple')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async appleSignIn(@Body() appleAuthDto: AppleAuthDto) {
+    return this.authService.appleSignIn(appleAuthDto);
   }
 } 

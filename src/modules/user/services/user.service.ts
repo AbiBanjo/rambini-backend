@@ -51,13 +51,22 @@ export class UserService {
 
   async updateUser(id: string, updateData: UpdateUserDto): Promise<User> {
     // Extract OTP fields from updateData
-    const { otpCode, otpId, ...userUpdateData } = updateData;
+    const {otpId, otpCode, ...userUpdateData } = updateData;
 
     // Check for email conflicts if email is being updated
     if (userUpdateData.email) {
       const existingUserWithEmail = await this.findByEmail(userUpdateData.email);
       if (existingUserWithEmail && existingUserWithEmail.id !== id) {
         throw new ConflictException('Email is already taken by another user');
+      }
+
+      if (!otpId || !otpCode) {
+        throw new BadRequestException('OTP ID and OTP code are required when updating email');
+      }
+      
+      const { isValid } = await this.otpService.validateEmailOTP(otpId, otpCode,'password_reset');
+      if (!isValid) {
+        throw new BadRequestException('Invalid OTP');
       }
 
       // If the email is the same as the current user's email, remove it from updateData to avoid unnecessary update
@@ -74,21 +83,13 @@ export class UserService {
       }
       
       // Validate OTP if both otpId and otpCode are provided
-      if (!otpId || !otpCode) {
-        throw new BadRequestException('OTP ID and OTP code are required when updating phone number');
-      }
-      
-      const { isValid } = await this.otpService.validateOTP(otpId, otpCode);
-      if (!isValid) {
-        throw new BadRequestException('Invalid OTP');
-      }
+  
     }
 
     const user = await this.findById(id);
     Object.assign(user, userUpdateData);
     return await this.userRepository.save(user);
   }
-
 
   async deleteUser(id: string): Promise<void> {
     const user = await this.findById(id);
@@ -217,14 +218,50 @@ export class UserService {
     return await this.userRepository.find({ where: { user_type: userType } });
   }
 
-  async generateOTP(phoneNumber: string): Promise<{ otpId: string }> {
-    const { otpId, otpCode } = await this.otpService.generateOTP(phoneNumber);
-    // send OTP to phone number
-    await this.smsService.sendOTP(phoneNumber, otpCode);
-    return {otpId}
+  async generateOTP(email: string): Promise<{ otpId: string }> {
+    // Generate email OTP (using a generic type since this is for general use)
+    const { otpId, otpCode } = await this.otpService.generateEmailOTP(email, 'password_reset');
+    
+    // Send OTP to email
+    await this.sendOTPEmail(email, otpCode);
+    
+    return { otpId };
+  }
+
+  private async sendOTPEmail(email: string, otpCode: string): Promise<void> {
+    const emailData = {
+      to: email,
+      subject: 'Your OTP Code - Rambini',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+            <h2 style="color: #333; margin-bottom: 20px;">Your OTP Code</h2>
+            <p>You requested an OTP code for your Rambini account.</p>
+            <p>Your OTP code is:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <div style="background-color: #007bff; color: white; padding: 20px; border-radius: 8px; font-size: 32px; font-weight: bold; letter-spacing: 8px; display: inline-block;">
+                ${otpCode}
+              </div>
+            </div>
+            <p>Enter this code to complete your request.</p>
+            <p style="margin-top: 30px; font-size: 12px; color: #666;">
+              This code will expire in 10 minutes. If you didn't request this code, please ignore this email.
+            </p>
+          </div>
+        </div>
+      `,
+      text: `Your OTP Code\n\nYou requested an OTP code for your Rambini account.\n\nYour OTP code is: ${otpCode}\n\nEnter this code to complete your request.\n\nThis code will expire in 10 minutes. If you didn't request this code, please ignore this email.`,
+    };
+
+    try {
+      await this.emailNotificationService.sendEmail(emailData);
+      this.logger.log(`OTP email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send OTP email to ${email}:`, error.message);
+      throw new BadRequestException('Failed to send OTP email');
+    }
   }
     // use otp service to generate OTP
-
   async reactivateAccount(id: string): Promise<User> {
     const user = await this.findById(id);
     

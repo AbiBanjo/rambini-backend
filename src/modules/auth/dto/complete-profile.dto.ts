@@ -97,13 +97,16 @@ export class CompleteProfileDto {
   lastName: string;
 
   @ApiProperty({
-    description: 'User email address (optional)',
-    example: 'john.doe@example.com',
-    required: false
+    description: 'Phone number in E.164 format',
+    example: '+1234567890',
+    pattern: '^\\+[1-9]\\d{1,14}$'
   })
-  @IsOptional()
-  @IsEmail()
-  email?: string;
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\+[1-9]\d{1,14}$/, {
+    message: 'Invalid phone number format. Use E.164 format (e.g., +1234567890)'
+  })
+  phoneNumber: string;
 
   @ApiProperty({
     description: 'User country code (ISO 3166-1 alpha-2)',

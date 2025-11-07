@@ -54,7 +54,10 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
     Bank,
     SavedCard
   ],
-  migrations: [__dirname + '/migrations/*{.ts,.js}'],
+  // Optional: Only load migrations if DB_USE_MIGRATIONS is true
+  migrations: configService.get('DB_USE_MIGRATIONS') === 'true' 
+    ? [__dirname + '/migrations/*{.ts,.js}'] 
+    : [],
   synchronize: configService.get('DB_SYNCHRONIZE') === 'true',
   logging: configService.get('DB_LOGGING') === 'true',
   ssl: configService.get('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
