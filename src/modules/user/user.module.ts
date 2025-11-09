@@ -14,8 +14,7 @@ import { NotificationModule } from '../notification/notification.module';
   imports: [
     TypeOrmModule.forFeature([User, Address, CartItem, MenuItem, Vendor, Wallet]),
     forwardRef(() => AuthModule),
-    NotificationModule,
-    AuthModule,
+    forwardRef(() => NotificationModule),
   ],
   controllers: [UserController, AddressController],
   providers: [UserService, UserProfileService, AddressService, AccountCleanupService],

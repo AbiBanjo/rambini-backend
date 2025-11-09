@@ -22,7 +22,8 @@
     "migration:revert": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm-ts-node-commonjs/dist/cli.js migration:revert -d src/database/typeorm-cli.config.ts",
     "schema:sync": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm-ts-node-commonjs/dist/cli.js schema:sync -d src/database/typeorm-cli.config.ts",
     "db:seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeder.ts",
-    "db:clear": "ts-node -r tsconfig-paths/register scripts/clear-database.ts"
+    "db:clear": "ts-node -r tsconfig-paths/register scripts/clear-database.ts",
+    "db:fix-null-emails": "ts-node -r tsconfig-paths/register run-fix-null-emails.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.658.1",
@@ -52,7 +53,10 @@
     "class-validator": "^0.14.0",
     "cors": "^2.8.5",
     "firebase-admin": "^12.7.0",
+    "google-auth-library": "^9.0.0",
     "helmet": "^7.0.0",
+    "jwks-rsa": "^3.1.0",
+    "jsonwebtoken": "^9.0.2",
     "nest-winston": "^1.1.0",
     "nodemailer": "^7.0.6",
     "passport": "^0.6.0",
@@ -76,6 +80,7 @@
     "@types/cors": "^2.8.13",
     "@types/express": "^4.17.17",
     "@types/jest": "^29.5.2",
+    "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.3.1",
     "@types/passport-jwt": "^3.0.8",
     "@types/passport-local": "^1.0.35",

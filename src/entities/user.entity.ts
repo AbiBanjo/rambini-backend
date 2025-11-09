@@ -27,15 +27,26 @@ export enum UserStatus {
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
 }
 
-@Entity('users')
-@Index(['phone_number'], { unique: true })
-@Index(['email'], { unique: true })
-@Index(['user_type', 'status'])
-@Index(['created_at'])
+export enum AuthProvider {
+  LOCAL = 'LOCAL',
+  GOOGLE = 'GOOGLE',
+  APPLE = 'APPLE',
+}
+
+  @Entity('users')
+  @Index(['phone_number'], { unique: true })
+  @Index(['email'], { unique: true })
+  @Index(['user_type', 'status'])
+  @Index(['created_at'])
+  @Index(['email_verification_token'])
+  @Index(['password_reset_token'])
+  @Index(['auth_provider'])
+  @Index(['auth_provider', 'provider_id'])
 export class User extends BaseEntity {
-  @Column({ type: 'varchar', length: 20, unique: true, comment: 'E.164 format' })
+  @Column({ type: 'varchar', length: 20, unique: true, nullable: true, comment: 'E.164 format' })
+  @IsOptional()
   @IsPhoneNumber('NG')
-  phone_number: string;
+  phone_number?: string;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   @IsOptional()
@@ -45,10 +56,29 @@ export class User extends BaseEntity {
   @IsOptional()
   last_name?: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true, nullable: true })
-  @IsOptional()
+  @Column({ type: 'varchar', length: 255, unique: true })
   @IsEmail()
-  email?: string;
+  email: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  @IsOptional()
+  @IsString()
+  password?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  @IsOptional()
+  @IsString()
+  email_verification_token?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  @IsOptional()
+  @IsString()
+  password_reset_token?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  @IsOptional()
+  @IsDateString()
+  password_reset_expires?: Date;
 
   @Column({ type: 'varchar', length: 2, nullable: true, comment: 'ISO 3166-1 alpha-2 country code' })
   @IsOptional()
@@ -96,6 +126,20 @@ export class User extends BaseEntity {
   @IsString()
   image_url?: string;
 
+  @Column({ type: 'enum', enum: AuthProvider, default: AuthProvider.LOCAL })
+  @IsEnum(AuthProvider)
+  auth_provider: AuthProvider;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, comment: 'Provider user ID (Google/Apple)' })
+  @IsOptional()
+  @IsString()
+  provider_id?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, comment: 'Email from provider (may differ from user email)' })
+  @IsOptional()
+  @IsString()
+  provider_email?: string;
+
   // Timestamps are inherited from BaseEntity
 
   // Relationships
@@ -127,7 +171,7 @@ export class User extends BaseEntity {
   }
 
   get is_verified(): boolean {
-    return this.is_phone_verified;
+    return this.is_phone_verified || !!this.email_verified_at;
   }
 
   get is_active(): boolean {

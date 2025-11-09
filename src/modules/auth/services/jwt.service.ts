@@ -5,7 +5,7 @@ import { User } from '../../../entities';
 
 export interface JwtPayload {
   sub: string;
-  phoneNumber: string;
+  email: string;
   userType: string;
   iat?: number;
   exp?: number;
@@ -28,7 +28,7 @@ export class JWTService {
   generateTokenPair(user: User): TokenPair {
     const payload: JwtPayload = {
       sub: user.id,
-      phoneNumber: user.phone_number,
+      email: user.email,
       userType: user.user_type,
     };
 
@@ -73,7 +73,7 @@ export class JWTService {
 
       const newPayload: JwtPayload = {
         sub: payload.sub,
-        phoneNumber: payload.phoneNumber,
+        email: payload.email,
         userType: payload.userType,
       };
 

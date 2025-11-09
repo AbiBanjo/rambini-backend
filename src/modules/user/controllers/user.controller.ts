@@ -199,7 +199,7 @@ export class UserController {
   @ApiOperation({ summary: 'Generate OTP' })
   @ApiResponse({ status: 200, description: 'OTP generated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  async generateOTP(@Body() generateOTPRequest: {phone_number: string}): Promise<{ otpId: string }> {
-    return await this.userService.generateOTP(generateOTPRequest.phone_number);
+  async generateOTP(@Body() generateOTPRequest: {email: string}): Promise<{ otpId: string }> {
+    return await this.userService.generateOTP(generateOTPRequest.email);
   }
 } 

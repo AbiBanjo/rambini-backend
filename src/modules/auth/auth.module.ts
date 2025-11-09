@@ -10,6 +10,8 @@ import { AuthService } from './services/auth.service';
 import { OTPService } from './services/otp.service';
 import { SMSService } from './services/sms.service';
 import { JWTService } from './services/jwt.service';
+import { GoogleAuthService } from './services/google-auth.service';
+import { AppleAuthService } from './services/apple-auth.service';
 
 // Controllers
 import { AuthController } from './controllers/auth.controller';
@@ -27,11 +29,16 @@ import { RedisService } from '../../database/redis.service';
 import { AddressService } from '../user/services/address.service';
 import { UserModule } from '../user/user.module';
 
+// Notification services
+import { NotificationModule } from '../notification/notification.module';
+
 @Module({
   imports: [
     PassportModule,
+    ConfigModule,
     TypeOrmModule.forFeature([Wallet, User, Address]),
     forwardRef(() => UserModule),
+    forwardRef(() => NotificationModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -49,6 +56,8 @@ import { UserModule } from '../user/user.module';
     OTPService,
     SMSService,
     JWTService,
+    GoogleAuthService,
+    AppleAuthService,
     JwtAuthGuard,
     JwtStrategy,
     RedisService,

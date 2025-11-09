@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -30,7 +30,7 @@ import {
     ]),
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
-    AuthModule,
+    forwardRef(() => AuthModule),
   ],
   controllers: [NotificationController, NotificationSSEController],
   providers: [

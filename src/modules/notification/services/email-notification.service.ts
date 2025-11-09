@@ -751,6 +751,16 @@ export class EmailNotificationService {
     }
   }
 
+  // Method to send a generic email
+  async sendEmail(emailData: EmailNotificationData): Promise<void> {
+    try {
+      await this.deliverEmail(emailData);
+    } catch (error) {
+      this.logger.error(`Failed to send email to ${emailData.to}:`, error.message);
+      throw error;
+    }
+  }
+
   // Method to send a test email
   async sendTestEmail(to: string, subject: string = 'Test Email from Rambini'): Promise<boolean> {
     try {
