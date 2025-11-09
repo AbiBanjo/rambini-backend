@@ -10,7 +10,7 @@ import { AppleAuthService } from './apple-auth.service';
 import { UserService } from '../../user/services/user.service';
 import { AddressService } from '../../user/services/address.service';
 import { EmailNotificationService } from '../../notification/services/email-notification.service';
-import { RegisterDto, VerifyOtpDto, CompleteProfileDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto, VerifyEmailDto, LoginDto, GoogleAuthDto, AppleAuthDto } from '../dto';
+import { RegisterDto, VerifyOtpDto, CompleteProfileDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto, VerifyEmailDto, LoginDto, GoogleAuthDto, AppleAuthDto, ResendForgotPasswordDto } from '../dto';
 import { getCurrencyForCountry } from '../../../utils/currency-mapper';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
@@ -479,6 +479,12 @@ export class AuthService {
       throw new ForbiddenException("user with email does not exist")
     }
 
+    
+    if (user.auth_provider !== AuthProvider.LOCAL) {
+      throw new ForbiddenException(`user is already registered with ${user.auth_provider} authentication. Please sign in using ${user.auth_provider}.`)
+    }
+   
+
     // Generate password reset OTP
     const { otpId, otpCode } = await this.otpService.generateEmailOTP(email, 'password_reset');
 
@@ -490,6 +496,58 @@ export class AuthService {
     return { 
       otpId,
       message: 'password reset OTP has been sent' 
+    };
+  }
+
+  async resendForgotPasswordOTP(resendForgotPasswordDto: ResendForgotPasswordDto): Promise<{ otpId: string; message: string }> {
+    const { email, otpId } = resendForgotPasswordDto;
+
+    // Find user by email
+    const user = await this.userService.findByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists for security reasons
+      const { otpId: newOtpId } = await this.otpService.generateEmailOTP(email, 'password_reset');
+      return { 
+        otpId: newOtpId,
+        message: 'If the email exists, a password reset OTP has been sent' 
+      };
+    }
+
+    // Check if user is using local authentication
+    if (user.auth_provider !== AuthProvider.LOCAL) {
+      throw new ForbiddenException(`User is already registered with ${user.auth_provider} authentication. Please sign in using ${user.auth_provider}.`);
+    }
+
+    // Resend OTP if otpId provided, otherwise generate new one
+    let otpCode: string;
+    let finalOtpId: string;
+
+    if (otpId) {
+      const resendResult = await this.otpService.resendEmailOTP(otpId, 'password_reset');
+      if (resendResult) {
+        otpCode = resendResult.otpCode;
+        finalOtpId = otpId;
+      } else {
+        // OTP expired, generate new one
+        const newOtp = await this.otpService.generateEmailOTP(email, 'password_reset');
+        otpCode = newOtp.otpCode;
+        finalOtpId = newOtp.otpId;
+      }
+    } else {
+      // Generate new OTP
+      const newOtp = await this.otpService.generateEmailOTP(email, 'password_reset');
+      otpCode = newOtp.otpCode;
+      finalOtpId = newOtp.otpId;
+    }
+
+    // Send password reset email
+    await this.sendPasswordResetEmail(user.email, otpCode);
+
+    this.logger.log(`Password reset OTP resent for user: ${user.id}`);
+
+    return { 
+      otpId: finalOtpId,
+      message: 'Password reset OTP has been sent' 
     };
   }
 
@@ -532,6 +590,10 @@ export class AuthService {
 
     // Find user
     const user = await this.userService.findById(userId);
+
+    if (user.auth_provider !== AuthProvider.LOCAL) {
+      throw new ForbiddenException(`user is already registered with ${user.auth_provider} authentication. Please sign in using ${user.auth_provider}.`)
+    }
 
     // Check if user has a password set
     if (!user.password) {

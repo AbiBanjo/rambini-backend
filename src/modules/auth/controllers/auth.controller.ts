@@ -21,6 +21,7 @@ import {
   ChangePasswordDto,
   VerifyEmailDto,
   ResendVerificationEmailDto,
+  ResendForgotPasswordDto,
   GoogleAuthDto,
   AppleAuthDto
 } from '../dto';
@@ -113,6 +114,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
     return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('resend-forgot-password')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async resendForgotPasswordOTP(@Body() resendForgotPasswordDto: ResendForgotPasswordDto) {
+    return this.authService.resendForgotPasswordOTP(resendForgotPasswordDto);
   }
 
   @Post('reset-password')

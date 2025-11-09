@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { DeliveryRepository } from '../repositories/delivery.repository';
 import { DeliveryProviderFactoryService } from './delivery-provider-factory.service';
 import { Delivery, ShipmentStatus, DeliveryProvider, DeliveryTracking, DeliveryQuote, Order, OrderStatus, OrderType, NotificationType } from 'src/entities';
@@ -55,6 +56,7 @@ export class DeliveryService {
     private readonly userService: UserService,
     private readonly notificationSSEService: NotificationSSEService,
     private readonly notificationService: NotificationService,
+    private readonly configService: ConfigService,
 
   ) {}
 
@@ -91,6 +93,9 @@ export class DeliveryService {
         selectedDeliveryProvider,
         userDetails
       );
+
+
+      this.logger.log('Delivery quote result', deliveryQuoteResult);
       
       deliveryFee = deliveryQuoteResult.fee;
       this.logger.log('Delivery quote result', deliveryQuoteResult);
@@ -103,7 +108,7 @@ export class DeliveryService {
         fee: deliveryQuoteResult.fee,
         provider_quote_id: deliveryQuoteResult.quote_id,
         provider_request_token: deliveryQuoteResult.quote_requestToken,
-        service_code: deliveryQuoteResult.qoute_ServiceCode,
+        service_code: deliveryQuoteResult.quote_ServiceCode,
         courier_id: deliveryQuoteResult.courier_id,
         currency: currency,
         quantity_of_items: items.length,
@@ -601,7 +606,7 @@ export class DeliveryService {
     subtotal: number,
     provider: DeliveryProvider,
     userDetails: {name: string, email: string, phone: string}
-  ): Promise<{fee: number, quote_requestToken?: string , quote_id:string, qoute_ServiceCode?:string, courier_id?:string}> {
+  ): Promise<{fee: number, quote_requestToken?: string , quote_id:string, quote_ServiceCode?:string, courier_id?:string}> {
     this.logger.log(`Getting delivery quotes for provider: ${provider}`);
 
     // Validate addresses and get address codes for Shipbubble
@@ -632,8 +637,8 @@ export class DeliveryService {
       // Validate vendor address and get/save address code
       const vendorAddressValidation = await shipbubbleService.validateAddress({
         name: vendor.business_name || 'Vendor',
-        email: vendor.email || 'vendor@example.com',
-        phone: vendor.phone || '+2348000000000',
+        email: vendor.user?.email || 'vendor@example.com',
+        phone: vendor.user?.phone_number || '+2348000000000',
         address:vendor.address.address_line_1 || vendor.address.address_line_2,
         latitude: vendor.address.latitude,
         longitude: vendor.address.longitude,
@@ -719,27 +724,46 @@ export class DeliveryService {
       throw new Error('No courier options available from Shipbubble');
     }
 
-    // Find the lowest fee, the service code and courier id of the lowest fee
-    const lowestFeeCourier = ratesResponse.couriers.reduce((min, courier) => 
-      courier.total < min.total ? courier : min,
-      ratesResponse.couriers[0]
-    );
+    // Get courier selection strategy from environment variable
+    const selectionStrategy = this.configService.get<string>('shipbubble.courierSelectionStrategy', 'cheapest');
+    this.logger.log(`Using courier selection strategy: ${selectionStrategy}`);
+
+    let selectedCourier: any;
+    let selectionReason: string;
+
+    if (selectionStrategy === 'fastest' && ratesResponse.fastest_courier) {
+      // Use the fastest courier if available
+      selectedCourier = ratesResponse.fastest_courier;
+      selectionReason = 'fastest';
+      this.logger.log(`Selected fastest courier: ${selectedCourier.courier_name} with delivery fee: ${selectedCourier.total}`);
+    } else {
+      // Default to cheapest courier (either from cheapest_courier field or find from array)
+      if (ratesResponse.cheapest_courier) {
+        selectedCourier = ratesResponse.cheapest_courier;
+        selectionReason = 'cheapest (from API)';
+      } else {
+        // Fallback: find the lowest fee from couriers array
+        selectedCourier = ratesResponse.couriers.reduce((min, courier) => 
+          courier.total < min.total ? courier : min,
+          ratesResponse.couriers[0]
+        );
+        selectionReason = 'cheapest (calculated)';
+      }
+      this.logger.log(`Selected cheapest courier: ${selectedCourier.courier_name} with delivery fee: ${selectedCourier.total}`);
+    }
     
-    const lowestFeeServiceCode = lowestFeeCourier.service_code;
-    const lowestFeeCourierId = lowestFeeCourier.courier_id.toString();
-    const lowestFee = lowestFeeCourier.total;
-
-
-    this.logger.log(`Shipbubble lowest delivery fee: ${lowestFee}`);
+    const selectedServiceCode = selectedCourier.service_code;
+    const selectedCourierId = selectedCourier.courier_id.toString();
+    const selectedFee = selectedCourier.total;
 
     // Return request token too for later use
     const requestToken = ratesResponse.request_token;
     return {
-      fee: lowestFee,
+      fee: selectedFee,
       quote_requestToken: requestToken,
-      quote_id: lowestFeeCourierId,
-      quote_ServiceCode: lowestFeeServiceCode,
-      courier_id: lowestFeeCourierId
+      quote_id: selectedCourierId,
+      quote_ServiceCode: selectedServiceCode,
+      courier_id: selectedCourierId
     };
   }
 
@@ -771,7 +795,7 @@ export class DeliveryService {
         zip_code: deliveryAddress.postal_code || '100001',
         country: deliveryAddress.country,
       }),
-      pickup_phone_number: vendor.phone || '+2348020542618',
+      pickup_phone_number: vendor.user?.phone_number || '+2348020542618',
       dropoff_phone_number: user.phone_number || '+2348020542618',
       manifest_total_value: Math.round(subtotal * 100), // Convert to cents
       pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now

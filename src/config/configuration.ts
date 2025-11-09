@@ -83,6 +83,7 @@ export default () => ({
   shipbubble: {
     apiKey: process.env.SHIPBUBBLE_API_KEY,
     webhookSecret: process.env.SHIPBUBBLE_WEBHOOK_SECRET,
+    courierSelectionStrategy: process.env.DELIVERY_COURIER_SELECTION_STRATEGY || 'cheapest', // 'cheapest' or 'fastest'
   },
 
   uber: {
