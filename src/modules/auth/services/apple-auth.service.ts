@@ -62,6 +62,8 @@ export class AppleAuthService {
       // Decode the token without verification first to get the header
       const decoded = jwt.decode(identityToken, { complete: true }) as jwt.JwtPayload;
 
+      this.logger.log(decoded);
+
       if (!decoded || !decoded.header || !decoded.header.kid) {
         throw new UnauthorizedException('Invalid Apple token structure');
       }
