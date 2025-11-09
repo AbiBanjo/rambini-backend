@@ -70,14 +70,32 @@ export class AppleAuthService {
 
       // Get Apple's public key
       const publicKey = await this.getApplePublicKey(decoded.header.kid);
-
+      this.logger.log(publicKey)
       // Verify the token
       const payload = jwt.verify(identityToken, publicKey, {
         algorithms: ['RS256'],
       }) as jwt.JwtPayload;
 
+      this.logger.log(payload)
       // Verify the audience (client_id)
-      if (payload.aud !== this.clientId && payload.aud !== `com.${this.clientId}`) {
+      // Apple tokens can have audience in different formats depending on configuration
+      // Handle both cases: clientId with or without 'com.' prefix
+      const tokenAudience = payload.aud as string;
+      
+      // Normalize both values for comparison
+      const normalizeAudience = (aud: string) => {
+        // Remove 'com.' prefix if present for comparison
+        return aud.startsWith('com.') ? aud.substring(4) : aud;
+      };
+
+      const tokenAudienceNormalized = normalizeAudience(tokenAudience);
+      const clientIdNormalized = normalizeAudience(this.clientId);
+
+      // Check if audiences match (ignoring 'com.' prefix)
+      if (tokenAudienceNormalized !== clientIdNormalized) {
+        this.logger.error(
+          `Token audience mismatch. Token audience: ${tokenAudience}, Expected: ${this.clientId}`,
+        );
         throw new UnauthorizedException('Token audience mismatch');
       }
 
