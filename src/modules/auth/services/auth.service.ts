@@ -454,52 +454,56 @@ export class AuthService {
   }
   
 
-  async resendVerificationEmail(email: string, otpId?: string): Promise<{ otpId: string; message: string }> {
-    // Find user by email
-    const user = await this.userService.findByEmail(email);
-    if (!user) {
-      const { otpId: newOtpId } = await this.otpService.generateEmailOTP(email, 'email_verification');
-      return { 
-        otpId: newOtpId,
-        message: 'If the email exists, a verification OTP has been sent' 
+  async resendVerificationEmail(
+    email: string,
+    otpId?: string
+  ): Promise<{ otpId: string; message: string }> {
+  
+    const cacheKey = `registration:pending:${email}`;
+    const cachedDataRaw = await this.redisService.get(cacheKey);
+  
+    // If no pending registration found in Redis → DO NOT REVEAL THIS
+    if (!cachedDataRaw) {
+      // Always return a generic success message (security best practice)
+      return {
+        otpId: '',
+        message: 'If the email exists, a verification OTP has been sent'
       };
     }
-
-    // Check if already verified
-    if (user.email_verified_at) {
-      throw new BadRequestException('Email is already verified');
-    }
-
-    // Resend OTP if otpId provided, otherwise generate new one
+  
+    // There *is* a pending registration in cache
     let otpCode: string;
     let finalOtpId: string;
-
+  
     if (otpId) {
+      // Try resending using existing otpId
       const resendResult = await this.otpService.resendEmailOTP(otpId, 'email_verification');
+  
       if (resendResult) {
         otpCode = resendResult.otpCode;
         finalOtpId = otpId;
       } else {
-        // OTP expired, generate new one
+        // OTP expired → generate new OTP
         const newOtp = await this.otpService.generateEmailOTP(email, 'email_verification');
         otpCode = newOtp.otpCode;
         finalOtpId = newOtp.otpId;
       }
     } else {
-      // Generate new OTP
+      // No OTP ID provided → generate a new one
       const newOtp = await this.otpService.generateEmailOTP(email, 'email_verification');
       otpCode = newOtp.otpCode;
       finalOtpId = newOtp.otpId;
     }
-
-    // Send verification email
-    await this.sendVerificationEmail(user.email, otpCode);
-
-    return { 
+  
+    // Send email to user
+    await this.sendVerificationEmail(email, otpCode);
+  
+    return {
       otpId: finalOtpId,
-      message: 'Verification email sent successfully' 
+      message: 'Verification email sent successfully'
     };
   }
+  
 
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ otpId: string; message: string }> {
     const { email } = forgotPasswordDto;
