@@ -14,6 +14,7 @@ import { RegisterDto, VerifyOtpDto, CompleteProfileDto, ForgotPasswordDto, Reset
 import { getCurrencyForCountry } from '../../../utils/currency-mapper';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '@/database/redis.service';
 
 export interface AuthResponse {
   user: {
@@ -49,6 +50,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly googleAuthService: GoogleAuthService,
     private readonly appleAuthService: AppleAuthService,
+    private readonly redisService: RedisService,
   ) {}
 
   async register(registerRequest: RegisterDto): Promise<{ otpId: string; message: string }> {
@@ -70,21 +72,40 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // Create user with unverified email
-    const user = await this.userService.createUser({
-      email,
-      password: hashedPassword,
-      user_type: UserType.CUSTOMER,
-      status: UserStatus.PENDING_VERIFICATION,
-      profile_completed: false,
-    });
+    // const user = await this.userService.createUser({
+    //   email,
+    //   password: hashedPassword,
+    //   user_type: UserType.CUSTOMER,
+    //   status: UserStatus.PENDING_VERIFICATION,
+    //   profile_completed: false,
+    // });
+
+    // Cache registration data (REPLACING old cache if exists)
+  const cacheKey = `registration:pending:${email}`;
+
+  const registrationData = {
+    email,
+    password: hashedPassword,
+    user_type: UserType.CUSTOMER,
+    status: UserStatus.PENDING_VERIFICATION,
+    profile_completed: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  await this.redisService.setex(
+    cacheKey,
+    10 * 60, // 24 hours
+    JSON.stringify(registrationData),
+  );
+
 
     // Generate email verification OTP
     const { otpId, otpCode } = await this.otpService.generateEmailOTP(email, 'email_verification');
 
     // Send verification email with OTP
-    await this.sendVerificationEmail(user.email, otpCode);
+    await this.sendVerificationEmail(email, otpCode);
 
-    this.logger.log(`User registered with email: ${email}, ID: ${user.id}`);
+    this.logger.log(`Pending registration cached for ${email}`);
 
     return {
       otpId,
@@ -367,45 +388,55 @@ export class AuthService {
 
   async verifyEmail(verifyEmailDto: VerifyEmailDto): Promise<AuthResponse> {
     const { email, otpId, otpCode } = verifyEmailDto;
-
+  
     // Validate OTP
-    const validation = await this.otpService.validateEmailOTP(otpId, otpCode, 'email_verification');
-    
+    const validation = await this.otpService.validateEmailOTP(
+      otpId,
+      otpCode,
+      'email_verification',
+    );
+  
     if (!validation.isValid) {
       throw new BadRequestException(validation.error || 'Invalid OTP');
     }
-
-    // Verify that the email matches
+  
     if (validation.email !== email) {
-      throw new BadRequestException('Email does not match the OTP');
+      throw new BadRequestException('OTP email mismatch');
     }
-
-    // Find user by email
-    let user = await this.userService.findByEmail(email);
-    if (!user) {
-      throw new NotFoundException('User not found');
+  
+    // Fetch pending registration from Redis
+    const cacheKey = `registration:pending:${email}`;
+    const cachedDataRaw = await this.redisService.get(cacheKey);
+  
+    if (!cachedDataRaw) {
+      throw new BadRequestException(
+        'Registration has expired or was not initiated. Please register again.'
+      );
     }
-
-    // Check if already verified
-    if (user.email_verified_at) {
-      throw new BadRequestException('Email is already verified');
+  
+    const cachedData = JSON.parse(cachedDataRaw);
+  
+    // Prevent duplicate registration
+    const existingUser = await this.userService.findByEmail(email);
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
     }
-
-    // Mark email as verified and update status
-    user.markEmailVerified();
-    if (user.status === UserStatus.PENDING_VERIFICATION) {
-      user.status = UserStatus.ACTIVE;
-    }
-    await this.userRepository.save(user);
-
-    // Reload user to get updated state
-    user = await this.userService.findById(user.id);
-
-    // Generate JWT tokens
+  
+    // Create user in DB
+    const user = await this.userService.createUser({
+      ...cachedData,
+      email_verified_at: new Date(),
+      status: UserStatus.ACTIVE,
+    });
+  
+    // Remove cache
+    await this.redisService.del(cacheKey);
+  
+    // Generate tokens
     const tokens = this.jwtService.generateTokenPair(user);
-
-    this.logger.log(`Email verified for user: ${user.id}`);
-
+  
+    this.logger.log(`Email verified & user created: ${user.id}`);
+  
     return {
       user: {
         id: user.id,
@@ -416,58 +447,63 @@ export class AuthService {
         lastName: user.last_name,
         email: user.email,
         country: user.country,
-        emailVerified: !!user.email_verified_at,
+        emailVerified: true,
       },
       tokens,
     };
   }
+  
 
-  async resendVerificationEmail(email: string, otpId?: string): Promise<{ otpId: string; message: string }> {
-    // Find user by email
-    const user = await this.userService.findByEmail(email);
-    if (!user) {
-      const { otpId: newOtpId } = await this.otpService.generateEmailOTP(email, 'email_verification');
-      return { 
-        otpId: newOtpId,
-        message: 'If the email exists, a verification OTP has been sent' 
+  async resendVerificationEmail(
+    email: string,
+    otpId?: string
+  ): Promise<{ otpId: string; message: string }> {
+  
+    const cacheKey = `registration:pending:${email}`;
+    const cachedDataRaw = await this.redisService.get(cacheKey);
+  
+    // If no pending registration found in Redis → DO NOT REVEAL THIS
+    if (!cachedDataRaw) {
+      // Always return a generic success message (security best practice)
+      return {
+        otpId: '',
+        message: 'If the email exists, a verification OTP has been sent'
       };
     }
-
-    // Check if already verified
-    if (user.email_verified_at) {
-      throw new BadRequestException('Email is already verified');
-    }
-
-    // Resend OTP if otpId provided, otherwise generate new one
+  
+    // There *is* a pending registration in cache
     let otpCode: string;
     let finalOtpId: string;
-
+  
     if (otpId) {
+      // Try resending using existing otpId
       const resendResult = await this.otpService.resendEmailOTP(otpId, 'email_verification');
+  
       if (resendResult) {
         otpCode = resendResult.otpCode;
         finalOtpId = otpId;
       } else {
-        // OTP expired, generate new one
+        // OTP expired → generate new OTP
         const newOtp = await this.otpService.generateEmailOTP(email, 'email_verification');
         otpCode = newOtp.otpCode;
         finalOtpId = newOtp.otpId;
       }
     } else {
-      // Generate new OTP
+      // No OTP ID provided → generate a new one
       const newOtp = await this.otpService.generateEmailOTP(email, 'email_verification');
       otpCode = newOtp.otpCode;
       finalOtpId = newOtp.otpId;
     }
-
-    // Send verification email
-    await this.sendVerificationEmail(user.email, otpCode);
-
-    return { 
+  
+    // Send email to user
+    await this.sendVerificationEmail(email, otpCode);
+  
+    return {
       otpId: finalOtpId,
-      message: 'Verification email sent successfully' 
+      message: 'Verification email sent successfully'
     };
   }
+  
 
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ otpId: string; message: string }> {
     const { email } = forgotPasswordDto;
