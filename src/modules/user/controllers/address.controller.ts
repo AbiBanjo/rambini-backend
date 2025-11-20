@@ -18,7 +18,7 @@ import { Address, User } from '../../../entities';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { ApiTags } from '@nestjs/swagger';
 
-@ApiTags('Addresses')
+@ApiTags('Addresses v2')
 @Controller('addresses')
 @UseGuards(JwtAuthGuard)
 export class AddressController {
