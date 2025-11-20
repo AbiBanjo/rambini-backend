@@ -17,7 +17,7 @@ import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 import { ApiTags } from '@nestjs/swagger';
 
-@ApiTags('Notifications')
+@ApiTags('Notifications SSE')
 @Controller('notifications/sse')
 @UseGuards(JwtAuthGuard)
 export class NotificationSSEController {
