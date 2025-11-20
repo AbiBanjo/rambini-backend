@@ -31,7 +31,7 @@ import {
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
-@ApiTags('orders')
+@ApiTags('Orders')
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

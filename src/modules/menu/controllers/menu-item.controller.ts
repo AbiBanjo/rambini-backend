@@ -41,7 +41,7 @@ import { VendorOnly, AdminOrVendor, AccessControl } from 'src/common/guards';
 import { MenuItem, User, UserType } from 'src/entities';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 
-@ApiTags('menu-items')
+@ApiTags('Menu Items')
 @Controller('menu-items')
 @ApiBearerAuth()
 export class MenuItemController {

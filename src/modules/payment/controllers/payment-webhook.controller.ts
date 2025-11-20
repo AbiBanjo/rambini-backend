@@ -18,7 +18,7 @@ import {
 import { PaymentService } from '../services/payment.service';
 import { PaymentProvider } from 'src/entities';
 
-@ApiTags('payment-webhooks')
+@ApiTags('Payment Webhooks')
 @Controller('webhooks/payments')
 export class PaymentWebhookController {
   private readonly logger = new Logger(PaymentWebhookController.name);

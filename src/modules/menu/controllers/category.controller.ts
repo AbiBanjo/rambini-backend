@@ -29,7 +29,7 @@ import { CategoryService } from '../services/category.service';
 import { FileStorageService } from 'src/modules/file-storage/services/file-storage.service';
 import { Category } from 'src/entities';
 
-@ApiTags('categories')
+@ApiTags('Categories')
 @Controller('categories')
 // @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

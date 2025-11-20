@@ -29,7 +29,7 @@ import {
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
-@ApiTags('cart')
+@ApiTags('Cart')
 @Controller('cart')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

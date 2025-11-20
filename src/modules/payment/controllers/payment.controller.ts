@@ -39,7 +39,7 @@ import { TransactionHistoryResponseDto, TransactionQueryDto, TransactionDto } fr
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
-@ApiTags('payments')
+@ApiTags('Payments')
 @Controller('payments')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

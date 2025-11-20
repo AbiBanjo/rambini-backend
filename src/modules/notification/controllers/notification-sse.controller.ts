@@ -15,7 +15,9 @@ import { NotificationSSEService } from '../services/notification-sse.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard'; // Adjust path as needed
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Notifications')
 @Controller('notifications/sse')
 @UseGuards(JwtAuthGuard)
 export class NotificationSSEController {
