@@ -3,12 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Address, AddressType, User } from '../../../entities';
 import { ConfigService } from '@nestjs/config';
+import { Not } from 'typeorm';
 // import { ShipbubbleDeliveryService } from '../../delivery/services/shipbubble-delivery.service';
 
 import { CreateAddressDto, UpdateAddressDto } from '../dto';
 
-export interface CreateAddressRequest extends CreateAddressDto {}
-export interface UpdateAddressRequest extends UpdateAddressDto {}
+export interface CreateAddressRequest extends CreateAddressDto { }
+export interface UpdateAddressRequest extends UpdateAddressDto { }
 
 export interface GeocodingResult {
   latitude: number;
@@ -83,9 +84,9 @@ export class AddressService {
         });
 
         const savedAddress = await transactionalEntityManager.save(Address, address);
-    
+
         this.logger.log(`Address created for user ${userId}: ${savedAddress.id}`);
-        
+
         return savedAddress;
       } catch (error) {
         this.logger.error(`Failed to create address for user ${userId}:`, error);
@@ -97,7 +98,7 @@ export class AddressService {
   async getUserAddresses(userId: string): Promise<Address[]> {
     // Validate and fix any constraint violations before returning addresses
     await this.validateDefaultAddressConstraint(userId);
-    
+
     return this.addressRepository.find({
       where: { user_id: userId },
       order: { is_default: 'DESC', created_at: 'ASC' },
@@ -129,7 +130,7 @@ export class AddressService {
     const user = await this.userRepository.findOne({
       where: { id: userId },
     });
-    
+
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -189,16 +190,16 @@ export class AddressService {
         // Clear ShipBubble address code if address fields are updated
         // The address will need to be re-validated when used for delivery
         if (updateRequest.address_line_1 ||
-            updateRequest.city ||
-            updateRequest.state ||
-            updateRequest.postal_code ||
-            updateRequest.country || 
-            updateRequest.latitude ||
-            updateRequest.longitude) {
+          updateRequest.city ||
+          updateRequest.state ||
+          updateRequest.postal_code ||
+          updateRequest.country ||
+          updateRequest.latitude ||
+          updateRequest.longitude) {
           address.shipbubble_address_code = null;
         }
 
-    if(updateRequest.is_default === true) {
+        if (updateRequest.is_default === true) {
           // Clear current default address
           const currentDefault = await transactionalEntityManager.findOne(Address, {
             where: { user_id: userId, is_default: true },
@@ -209,7 +210,7 @@ export class AddressService {
             currentDefault.is_default = false;
             await transactionalEntityManager.save(Address, currentDefault);
           }
-    }
+        }
 
         // Update address with correct field mapping
         if (updateRequest.address_line_1 !== undefined) address.address_line_1 = updateRequest.address_line_1;
@@ -221,14 +222,14 @@ export class AddressService {
         if (updateRequest.latitude !== undefined) address.latitude = updateRequest.latitude;
         if (updateRequest.longitude !== undefined) address.longitude = updateRequest.longitude;
         if (updateRequest.address_type !== undefined) address.address_type = updateRequest.address_type;
-        
+
         if (updateRequest.is_default !== undefined) address.is_default = updateRequest.is_default;
-    
+
         const updatedAddress = await transactionalEntityManager.save(Address, address);
-    
-    this.logger.log(`Address ${addressId} updated for user ${userId}`);
-    
-    return updatedAddress;
+
+        this.logger.log(`Address ${addressId} updated for user ${userId}`);
+
+        return updatedAddress;
       } catch (error) {
         this.logger.error(`Failed to update address ${addressId} for user ${userId}:`, error);
         throw error;
@@ -236,52 +237,91 @@ export class AddressService {
     });
   }
 
+  // async deleteAddress(userId: string, addressId: string): Promise<void> {
+  //   await this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
+  //     try {
+  //       const address = await transactionalEntityManager.findOne(Address, {
+  //         where: { id: addressId, user_id: userId },
+  //       });
+
+  //       if (!address) {
+  //         throw new NotFoundException('Address not found');
+  //       }
+
+  //       // If deleting default address, set another address as default
+  //       if (address.is_default) {
+  //         // First clear the current default
+  //         const currentDefault = await transactionalEntityManager.findOne(Address, {
+  //           where: { user_id: userId, is_default: true },
+  //         });
+
+  //         if (currentDefault) {
+  //           this.logger.log(`Clearing current default address ${currentDefault.id} for user ${userId}`);
+  //           currentDefault.is_default = false;
+  //           await transactionalEntityManager.save(Address, currentDefault);
+  //         }
+
+  //         const otherAddresses = await transactionalEntityManager.find(Address, {
+  //           where: { user_id: userId, id: { not: addressId } as any },
+  //           order: { created_at: 'ASC' },
+  //           take: 1,
+  //         });
+
+  //         if (otherAddresses.length > 0) {
+  //           this.logger.log(`Setting address ${otherAddresses[0].id} as new default for user ${userId}`);
+  //           otherAddresses[0].is_default = true;
+  //           await transactionalEntityManager.save(Address, otherAddresses[0]);
+  //         }
+  //       }
+
+  //       await transactionalEntityManager.remove(Address, address);
+
+  //       this.logger.log(`Address ${addressId} deleted for user ${userId}`);
+  //     } catch (error) {
+  //       this.logger.error(`Failed to delete address ${addressId} for user ${userId}:`, error);
+  //       throw error;
+  //     }
+  //   });
+  // }
+
+
   async deleteAddress(userId: string, addressId: string): Promise<void> {
-    await this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
-      try {
-        const address = await transactionalEntityManager.findOne(Address, {
-          where: { id: addressId, user_id: userId },
-        });
-
-        if (!address) {
-          throw new NotFoundException('Address not found');
-        }
-
-    // If deleting default address, set another address as default
-    if (address.is_default) {
-          // First clear the current default
-          const currentDefault = await transactionalEntityManager.findOne(Address, {
-            where: { user_id: userId, is_default: true },
-          });
-
-          if (currentDefault) {
-            this.logger.log(`Clearing current default address ${currentDefault.id} for user ${userId}`);
-            currentDefault.is_default = false;
-            await transactionalEntityManager.save(Address, currentDefault);
-          }
-          
-          const otherAddresses = await transactionalEntityManager.find(Address, {
-        where: { user_id: userId, id: { not: addressId } as any },
-        order: { created_at: 'ASC' },
-        take: 1,
+    await this.addressRepository.manager.transaction(async (manager) => {
+      const address = await manager.findOne(Address, {
+        where: { id: addressId, user_id: userId },
       });
 
-      if (otherAddresses.length > 0) {
-            this.logger.log(`Setting address ${otherAddresses[0].id} as new default for user ${userId}`);
-        otherAddresses[0].is_default = true;
-            await transactionalEntityManager.save(Address, otherAddresses[0]);
+      if (!address) {
+        throw new NotFoundException('Address not found');
       }
-    }
 
-        await transactionalEntityManager.remove(Address, address);
-    
-    this.logger.log(`Address ${addressId} deleted for user ${userId}`);
-      } catch (error) {
-        this.logger.error(`Failed to delete address ${addressId} for user ${userId}:`, error);
-        throw error;
+      const isDefault = address.is_default;
+
+      // Remove the address first (so it won’t interfere with new default selection)
+      await manager.remove(Address, address);
+
+      this.logger.log(`Address ${addressId} deleted for user ${userId}`);
+
+      // If the deleted address was NOT default, no more work is required
+      if (!isDefault) return;
+
+      // Try to set another address as default
+      const newDefault = await manager.findOne(Address, {
+        where: { user_id: userId, id: Not(addressId) },
+        order: { created_at: 'ASC' },
+      });
+
+      if (newDefault) {
+        newDefault.is_default = true;
+        await manager.save(Address, newDefault);
+
+        this.logger.log(
+          `Address ${newDefault.id} set as default for user ${userId} after deleting previous default`
+        );
       }
     });
   }
+
 
   async setDefaultAddress(userId: string, addressId: string): Promise<Address> {
     return this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
@@ -300,7 +340,7 @@ export class AddressService {
           return address;
         }
 
-    // Clear current default address
+        // Clear current default address
         const currentDefault = await transactionalEntityManager.findOne(Address, {
           where: { user_id: userId, is_default: true },
         });
@@ -311,14 +351,14 @@ export class AddressService {
           await transactionalEntityManager.save(Address, currentDefault);
         }
 
-    // Set new default address
-    address.is_default = true;
-    
+        // Set new default address
+        address.is_default = true;
+
         const updatedAddress = await transactionalEntityManager.save(Address, address);
-    
-    this.logger.log(`Address ${addressId} set as default for user ${userId}`);
-    
-    return updatedAddress;
+
+        this.logger.log(`Address ${addressId} set as default for user ${userId}`);
+
+        return updatedAddress;
       } catch (error) {
         this.logger.error(`Failed to set address ${addressId} as default for user ${userId}:`, error);
         throw error;
@@ -329,7 +369,7 @@ export class AddressService {
   async getDefaultAddress(userId: string): Promise<Address | null> {
     // Validate and fix any constraint violations before getting default address
     await this.validateDefaultAddressConstraint(userId);
-    
+
     return this.addressRepository.findOne({
       where: { user_id: userId, is_default: true },
     });
@@ -477,7 +517,7 @@ export class AddressService {
   //       if (validationResult.success && validationResult.data) {
   //         // Save the address code for future use
   //         address.shipbubble_address_code = validationResult.data.address_code.toString();
-          
+
   //         // Update coordinates from ShipBubble response if available
   //         if (validationResult.data.latitude && validationResult.data.longitude) {
   //           address.latitude = validationResult.data.latitude;
@@ -486,7 +526,7 @@ export class AddressService {
 
   //         const updatedAddress = await transactionalEntityManager.save(Address, address);
   //         this.logger.log(`Address ${addressId} validated with ShipBubble, address_code: ${address.shipbubble_address_code}`);
-          
+
   //         return updatedAddress;
   //       } else {
   //         this.logger.warn(`ShipBubble address validation failed for address ${addressId}: ${validationResult.error}`);
@@ -538,7 +578,7 @@ export class AddressService {
 
     if (defaultAddresses.length > 1) {
       this.logger.warn(`Multiple default addresses found for user ${userId}, fixing constraint violation`);
-      
+
       // Keep only the first one as default, set others to false
       for (let i = 1; i < defaultAddresses.length; i++) {
         defaultAddresses[i].is_default = false;
@@ -650,17 +690,17 @@ export class AddressService {
     const R = 6371; // Earth's radius in kilometers
     const dLat = this.toRadians(lat2 - lat1);
     const dLon = this.toRadians(lon2 - lon1);
-    
+
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(this.toRadians(lat1)) *
-        Math.cos(this.toRadians(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    
+      Math.cos(this.toRadians(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c;
-    
+
     return distance;
   }
 
@@ -676,7 +716,7 @@ export class AddressService {
    */
   async updateAddressCode(addressId: string, addressCode: number): Promise<void> {
     this.logger.log(`Updating address ${addressId} with Shipbubble address code: ${addressCode}`);
-    
+
     await this.addressRepository.update(addressId, {
       shipbubble_address_code: addressCode.toString(),
     });
