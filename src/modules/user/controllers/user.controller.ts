@@ -202,4 +202,18 @@ export class UserController {
   async generateOTP(@Body() generateOTPRequest: {email: string}): Promise<{ otpId: string }> {
     return await this.userService.generateOTP(generateOTPRequest.email);
   }
+
+  /**
+   * More user endpoints has been added below by Engr., Isaiah Pius
+   */
+  @Delete('admin/delete/{userId}')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a user' })
+  @ApiResponse({ status: 200, description: 'User deleted successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async deleteUser(@Param('userId') userId: string): Promise<void> {
+    return await this.userService.deleteUser(userId);
+  }
 } 
