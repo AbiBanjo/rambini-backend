@@ -247,6 +247,16 @@ export class OrderService {
     };
   }
 
+  async getAllOrders(filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
+    const result = await this.orderRepository.findAll(filterDto);
+    
+    const orders = result.orders.map(order => this.mapToOrderResponse(order));
+    
+    return {
+      orders,
+    };
+  }
+
   async getVendorOrders(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
     // get vendor with userid
     const vendor = await this.vendorService.getVendorByUserId(vendorId);

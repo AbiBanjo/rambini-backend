@@ -31,7 +31,7 @@ import {
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
-@ApiTags('Orders')
+@ApiTags('Orders Management')
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
@@ -109,5 +109,27 @@ export class OrderController {
     @Body() body: { reason: string },
   ): Promise<OrderResponseDto> {
     return await this.orderService.cancelOrder(id, req.user.id, req.user.user_type, body.reason);
+  }
+
+  @Get('admin/all')
+  @ApiOperation({ summary: '[ADMIN ONLY]: Get all orders with filtering and pagination' })
+  @ApiResponse({ status: 200, description: 'Orders retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiQuery({ name: 'order_status', required: false, enum: ['NEW', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED'] })
+  @ApiQuery({ name: 'order_type', required: false, enum: ['DELIVERY', 'PICKUP'] })
+  @ApiQuery({ name: 'payment_status', required: false, enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED'] })
+  @ApiQuery({ name: 'from_date', required: false, description: 'Filter orders from this date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to_date', required: false, description: 'Filter orders until this date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'min_amount', required: false, description: 'Minimum order amount' })
+  @ApiQuery({ name: 'max_amount', required: false, description: 'Maximum order amount' })
+  @ApiQuery({ name: 'sort_by', required: false, enum: ['created_at', 'total_amount', 'order_number'] })
+  @ApiQuery({ name: 'sort_order', required: false, enum: ['ASC', 'DESC'] })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page' })
+  async getAllOrders(
+    @Request() req,
+    @Query() filterDto: OrderFilterDto,
+  ): Promise<{ orders: OrderResponseDto[] }> {
+    return await this.orderService.getAllOrders(filterDto);
   }
 } 
