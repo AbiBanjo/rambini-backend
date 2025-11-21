@@ -108,7 +108,6 @@ export class UserService {
       // Check vendor balance if user is a vendor
       if (user.user_type === UserType.VENDOR && wallet.vendor_balance > 0) {
         const vendorBalanceFormatted = `${wallet.currency} ${wallet.vendor_balance.toFixed(2)}`;
-        return vendorBalanceFormatted;
         throw new BadRequestException(
           `Cannot delete account with existing vendor balance of ${vendorBalanceFormatted}. Please withdraw your vendor earnings before deleting your account.`
         );
