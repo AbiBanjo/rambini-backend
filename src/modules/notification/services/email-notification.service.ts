@@ -489,9 +489,9 @@ export class EmailNotificationService {
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
-            <h2 style="color: #333; margin-bottom: 20px;">Account Deletion Request</h2>
+            <h2 style="color: #333; margin-bottom: 20px;">Account Deletion Successful</h2>
             <p>Hi {{firstName}},</p>
-            <p>We're sorry to see that you've requested to delete your Rambini account.</p>
+            <p>Your Rambini account has been successfully deleted. We're sorry to see you go.</p>
             <p>Thank you for being part of the Rambini community.</p>
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
               <p style="margin: 0;">Best,<br>The Rambini Team</p>
@@ -500,11 +500,11 @@ export class EmailNotificationService {
         </div>
       `,
       text: `
-        Account Deletion Request
+        Account Deletion Successful
         
         Hi {{firstName}},
         
-        We're sorry to see that you've requested to delete your Rambini account.
+        Your Rambini account has been successfully deleted. We're sorry to see you go.
         
         Thank you for being part of the Rambini community.
         
