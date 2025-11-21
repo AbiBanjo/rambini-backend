@@ -212,6 +212,21 @@ export class PaymentController {
     return await this.paymentService.getWalletBalance(user.id);
   }
 
+  @Get('wallet/:userId')
+  @ApiOperation({ summary: 'Get a user wallet by user ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Wallet retrieved successfully',
+    type: WalletBalanceDto,
+  })
+  @ApiResponse({ status: 404, description: 'Wallet not found' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getUserWallet(
+    @Param('userId') userId: string,
+  ): Promise<WalletBalanceDto> {
+    return this.paymentService.getUserWallet(userId);
+  }
+
   @Get('users-wallets')
   @ApiOperation({ summary: 'Get all users wallet details' })
   @ApiResponse({

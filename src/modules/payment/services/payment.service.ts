@@ -1001,6 +1001,14 @@ export class PaymentService {
     return await this.walletPaymentService.getWalletBalance(userId);
   }
 
+  async getUsersWalletBalance(userId: string): Promise<WalletBalanceDto> {
+    return await this.walletPaymentService.getWalletBalance(userId);
+  }
+
+  async getUserWallet(userId: string): Promise<WalletBalanceDto> {
+    return this.walletPaymentService.getUserWallet(userId);
+  }
+
   async getAllWalletDetails(): Promise<WalletBalanceDto[]> {
     return await this.walletPaymentService.getAllWalletDetails();
   }

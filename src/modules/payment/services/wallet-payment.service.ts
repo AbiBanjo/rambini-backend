@@ -625,6 +625,18 @@ export class WalletPaymentService {
     return this.walletRepository.find();
   }
 
+  async getUserWallet(userId: string): Promise<WalletBalanceDto> {
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('Wallet not found');
+    }
+
+    return wallet;
+  }
+
   /**
    * Generate unique funding reference
    * @returns Promise<string>
