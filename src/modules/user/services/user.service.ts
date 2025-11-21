@@ -91,9 +91,8 @@ export class UserService {
     return await this.userRepository.save(user);
   }
 
-  async deleteUser(id: string): Promise<any> {
+  async deleteUser(id: string): Promise<void> {
     const user = await this.findById(id);
-    return user;
     const wallet = await this.walletRepository.findOne({ where: { user_id: id } });
     
     if (wallet) {
@@ -120,6 +119,7 @@ export class UserService {
 
     try {
       // Soft delete: Mark account for deletion with 30-day grace period
+      await queryRunner.manager.delete(CartItem, { user_id: id });
       await queryRunner.manager.remove(user);
       
       await queryRunner.commitTransaction();
