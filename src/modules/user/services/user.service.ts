@@ -124,10 +124,11 @@ export class UserService {
       if(user.user_type === UserType.VENDOR) {
         // 2. Remove the user record from vendors and wallets table
         await queryRunner.manager.delete(Vendor, { user_id: id });
-        await queryRunner.manager.delete(Wallet, { user_id: id });
       }
+      // 3. Remove the user record from wallets table
+      await queryRunner.manager.delete(Wallet, { user_id: id });
 
-      // 3. Remove the user from the database
+      // 4. Remove the user from the database
       await queryRunner.manager.remove(user);
       
       await queryRunner.commitTransaction();
@@ -138,7 +139,7 @@ export class UserService {
       // Send email notification to the user
       // Email failure should not block account deletion
       try {
-        const emailSent = await this.emailNotificationService.sendAccountDeletionEmail(user);
+        const emailSent = await this.emailNotificationService.sendAccountInstantDeletionEmail(user);
         if (emailSent) {
           this.logger.log(`Account deletion email sent successfully to user ${id}`);
         } else {

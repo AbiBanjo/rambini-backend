@@ -483,6 +483,36 @@ export class EmailNotificationService {
       `
     });
 
+    // Account Deletion Instant Template
+    this.templates.set('ACCOUNT_DELETION_INSTANT', {
+      subject: 'Your Rambini Account Has Been Deleted',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+            <h2 style="color: #333; margin-bottom: 20px;">Account Deletion Request</h2>
+            <p>Hi {{firstName}},</p>
+            <p>We're sorry to see that you've requested to delete your Rambini account.</p>
+            <p>Thank you for being part of the Rambini community.</p>
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+              <p style="margin: 0;">Best,<br>The Rambini Team</p>
+            </div>
+          </div>
+        </div>
+      `,
+      text: `
+        Account Deletion Request
+        
+        Hi {{firstName}},
+        
+        We're sorry to see that you've requested to delete your Rambini account.
+        
+        Thank you for being part of the Rambini community.
+        
+        Best,
+        The Rambini Team
+      `
+    });
+
     // Vendor Profile Created Template
     this.templates.set('VENDOR_PROFILE_CREATED', {
       subject: 'Your Vendor Profile Has Been Created',
@@ -846,6 +876,59 @@ export class EmailNotificationService {
         ),
         text: this.renderTemplate(
           this.templates.get('ACCOUNT_DELETION_SCHEDULED').text,
+          templateData
+        ),
+        from:process.env.EMAIL_FROM || 'noreply@rambinifoods.com',
+        replyTo: process.env.EMAIL_REPLY_TO || 'support@rambini.com',
+      };
+
+      this.logger.log(`Email data: ${JSON.stringify(emailData)}`);
+
+      await this.deliverEmail(emailData);
+      
+      this.logger.log(`Account deletion email sent to ${user.email}`);
+      return true;
+    } catch (error) {
+      // Log as warning instead of error to avoid noise in logs when email service is unavailable
+      this.logger.warn(
+        `Failed to send account deletion email to ${user.email}: ${error.message}. ` +
+        `This could be due to network issues or SendGrid configuration. The account deletion will still proceed.`
+      );
+      return false;
+    }
+  }
+
+  // Method to send account deletion scheduled email
+  async sendAccountInstantDeletionEmail(user: User, appUrl?: string): Promise<boolean> {
+
+    this.logger.log(`Sending account deletion email to ${user.email}`);
+    // if user has no email, return false
+    if (!user.email) {
+      this.logger.warn(`User ${user.id} has no email address. Skipping deletion notification email.`);
+      return false;
+    }
+
+    // Check if SendGrid is initialized
+    if (!this.isInitialized) {
+      this.logger.warn(`SendGrid is not initialized. Skipping deletion notification email to ${user.email}.`);
+      return false;
+    }
+
+    try {
+      const templateData = {
+        firstName: user.first_name || 'there',
+        appUrl: appUrl || process.env.APP_URL || 'https://rambinifoods.com',
+      };
+
+      const emailData: EmailNotificationData = {
+        to: user.email,
+        subject: 'Your Rambini Account Has Been Deleted',
+        html: this.renderTemplate(
+          this.templates.get('ACCOUNT_DELETION_INSTANT').html,
+          templateData
+        ),
+        text: this.renderTemplate(
+          this.templates.get('ACCOUNT_DELETION_INSTANT').text,
           templateData
         ),
         from:process.env.EMAIL_FROM || 'noreply@rambinifoods.com',
