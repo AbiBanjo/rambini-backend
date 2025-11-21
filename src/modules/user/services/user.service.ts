@@ -118,8 +118,12 @@ export class UserService {
     await queryRunner.startTransaction();
 
     try {
-      // Soft delete: Mark account for deletion with 30-day grace period
+      // 1. Delete cart items for the user
       await queryRunner.manager.delete(CartItem, { user_id: id });
+      // 2. Remove the user from vendors table
+      await queryRunner.manager.delete(Vendor, { user_id: id });
+      
+      // 3. Remove the user from the database
       await queryRunner.manager.remove(user);
       
       await queryRunner.commitTransaction();
