@@ -9,7 +9,7 @@ import { GetUser } from '../../../common/decorators/get-user.decorator';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 
-@ApiTags('Users V1')
+@ApiTags('Users V2')
 @Controller('users')
 export class UserController {
   constructor(
@@ -206,7 +206,7 @@ export class UserController {
   /**
    * More user endpoints has been added below by Engr., Isaiah Pius
    */
-  @Delete('admin/delete/{userId}')
+  @Delete('admin/delete/:userId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a user' })
