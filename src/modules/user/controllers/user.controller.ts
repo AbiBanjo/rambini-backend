@@ -9,7 +9,7 @@ import { GetUser } from '../../../common/decorators/get-user.decorator';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 
-@ApiTags('Users V2')
+@ApiTags('Users V1')
 @Controller('users')
 export class UserController {
   constructor(

@@ -91,8 +91,9 @@ export class UserService {
     return await this.userRepository.save(user);
   }
 
-  async deleteUser(id: string): Promise<void> {
+  async deleteUser(id: string): Promise<any> {
     const user = await this.findById(id);
+    return user;
     const wallet = await this.walletRepository.findOne({ where: { user_id: id } });
     
     if (wallet) {
