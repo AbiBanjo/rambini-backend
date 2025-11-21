@@ -94,8 +94,6 @@ export class UserService {
   async deleteUser(id: string): Promise<any> {
     const user = await this.findById(id);
     const wallet = await this.walletRepository.findOne({ where: { user_id: id } });
-
-    return wallet;
     
     if (wallet) {
       // Check customer balance
@@ -124,8 +122,9 @@ export class UserService {
       await queryRunner.manager.delete(CartItem, { user_id: id });
 
       if(user.user_type === UserType.VENDOR) {
-        // 2. Remove the user from vendors table
+        // 2. Remove the user record from vendors and wallets table
         await queryRunner.manager.delete(Vendor, { user_id: id });
+        await queryRunner.manager.delete(Wallet, { user_id: id });
       }
 
       // 3. Remove the user from the database
