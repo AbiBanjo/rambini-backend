@@ -120,9 +120,12 @@ export class UserService {
     try {
       // 1. Delete cart items for the user
       await queryRunner.manager.delete(CartItem, { user_id: id });
-      // 2. Remove the user from vendors table
-      await queryRunner.manager.delete(Vendor, { user_id: id });
-      
+
+      if(user.user_type === UserType.VENDOR) {
+        // 2. Remove the user from vendors table
+        await queryRunner.manager.delete(Vendor, { user_id: id });
+      }
+
       // 3. Remove the user from the database
       await queryRunner.manager.remove(user);
       
