@@ -1,12 +1,35 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Wallet, Transaction, TransactionType, TransactionStatus, PaymentMethod, PaymentProvider, PaymentTransactionStatus, Currency } from 'src/entities';
+import {
+  Wallet,
+  Transaction,
+  TransactionType,
+  TransactionStatus,
+  PaymentMethod,
+  PaymentProvider,
+  PaymentTransactionStatus,
+  Currency,
+} from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { Payment } from 'src/entities/payment.entity';
 import { VendorService } from '@/modules/vendor/services/vendor.service';
-import { FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto/wallet-funding.dto';
-import { TransactionHistoryResponseDto, TransactionQueryDto, TransactionDto } from '../dto/transaction-history.dto';
+import {
+  FundWalletDto,
+  WalletFundingResponseDto,
+  WalletFundingStatusDto,
+  WalletBalanceDto,
+} from '../dto/wallet-funding.dto';
+import {
+  TransactionHistoryResponseDto,
+  TransactionQueryDto,
+  TransactionDto,
+} from '../dto/transaction-history.dto';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -23,14 +46,15 @@ export class WalletPaymentService {
     private readonly configService: ConfigService,
   ) {}
 
- 
   async processWalletPayment(
     orderId: string,
-    amount: {total_amount: number, subtotal: number},
+    amount: { total_amount: number; subtotal: number },
     customerId: string,
     vendorId: string,
   ): Promise<Payment> {
-    this.logger.log(`Processing wallet payment for order ${orderId}, amount: ${amount}`);
+    this.logger.log(
+      `Processing wallet payment for order ${orderId}, amount: ${amount}`,
+    );
 
     // Get customer wallet
     const customerWallet = await this.walletRepository.findOne({
@@ -55,8 +79,6 @@ export class WalletPaymentService {
 
     this.logger.log(`Customer has sufficient balance`);
 
- 
-
     this.logger.log(`Finding payment with order id: ${orderId}`);
     // find payment with order id
     const payment = await this.paymentRepository.findByOrderId(orderId);
@@ -69,7 +91,6 @@ export class WalletPaymentService {
     const paymentReference = payment.payment_reference;
 
     try {
-
       this.logger.log(`Processing wallet debit transaction`);
       // Process wallet debit transaction
       const debitSuccess = customerWallet.debit(amount.total_amount);
@@ -89,7 +110,8 @@ export class WalletPaymentService {
         wallet_id: customerWallet.id,
         transaction_type: TransactionType.DEBIT,
         amount: Number(amount.total_amount),
-        balance_before: Number(customerWallet.balance) + Number(amount.total_amount),
+        balance_before:
+          Number(customerWallet.balance) + Number(amount.total_amount),
         balance_after: Number(customerWallet.balance),
         description: `Payment for order ${orderId}`,
         reference_id: paymentReference,
@@ -102,7 +124,12 @@ export class WalletPaymentService {
 
       // Credit vendor wallet
       this.logger.log(`Credit vendor wallet`);
-      await this.creditVendorWallet(vendorId, amount.subtotal, orderId, paymentReference);
+      await this.creditVendorWallet(
+        vendorId,
+        amount.subtotal,
+        orderId,
+        paymentReference,
+      );
       this.logger.log(`Vendor wallet credited`);
 
       this.logger.log(`Marking payment as completed`);
@@ -112,19 +139,19 @@ export class WalletPaymentService {
 
       this.logger.log(`Wallet payment completed for order ${orderId}`);
       return payment;
-
     } catch (error) {
-      this.logger.error(`Wallet payment failed for order ${orderId}: ${error.message}`);
-      
+      this.logger.error(
+        `Wallet payment failed for order ${orderId}: ${error.message}`,
+      );
+
       // Mark payment as failed
       payment.markAsFailed(error.message);
       await this.paymentRepository.update(payment.id, payment);
-      
+
       throw error;
     }
   }
 
- 
   private async creditVendorWallet(
     vendorId: string,
     amount: number,
@@ -138,12 +165,18 @@ export class WalletPaymentService {
     this.logger.log(`Payment reference: ${paymentReference}`);
 
     // Get service fee and commission percentages from config
-    const serviceFeePercentage = this.configService.get<number>('fees.serviceFeePercentage', 15);
-    const commissionPercentage = this.configService.get<number>('fees.commissionPercentage', 20);
+    const serviceFeePercentage = this.configService.get<number>(
+      'fees.serviceFeePercentage',
+      15,
+    );
+    const commissionPercentage = this.configService.get<number>(
+      'fees.commissionPercentage',
+      20,
+    );
 
     // Calculate deductions
     // const serviceFee = (amount * serviceFeePercentage) / 100;
-    const commission = ((amount) * commissionPercentage) / 100;
+    const commission = (amount * commissionPercentage) / 100;
     // const totalDeductions = commission;
     const amountToCreditVendor = amount - commission;
 
@@ -179,15 +212,16 @@ export class WalletPaymentService {
     const balanceBefore = vendorWallet.balance;
 
     // Credit vendor wallet with amount after deductions
-    this.logger.log(`vendor wallet balance: ${balanceBefore}`)
+    this.logger.log(`vendor wallet balance: ${balanceBefore}`);
     vendorWallet.creditVendor(amountToCreditVendor);
 
     await this.walletRepository.save(vendorWallet);
 
     this.logger.log(`Vendor wallet credited: ${vendorWallet?.id}`);
 
-
-    this.logger.log(`Creating credit transaction record for: ${vendorWallet?.id}`);
+    this.logger.log(
+      `Creating credit transaction record for: ${vendorWallet?.id}`,
+    );
     // Create credit transaction record
     const creditTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
@@ -210,11 +244,12 @@ export class WalletPaymentService {
       },
     });
 
-
     await this.transactionRepository.save(creditTransaction);
 
-    this.logger.log(`Vendor wallet credited: ${vendorId}, net amount: ${amountToCreditVendor} (after ${serviceFeePercentage}% service fee and ${commissionPercentage}% commission)`);
-    return 
+    this.logger.log(
+      `Vendor wallet credited: ${vendorId}, net amount: ${amountToCreditVendor} (after ${serviceFeePercentage}% service fee and ${commissionPercentage}% commission)`,
+    );
+    return;
   }
 
   /**
@@ -239,7 +274,9 @@ export class WalletPaymentService {
 
     const refundAmount = amount || payment.amount;
     if (refundAmount > payment.amount) {
-      throw new BadRequestException('Refund amount cannot exceed payment amount');
+      throw new BadRequestException(
+        'Refund amount cannot exceed payment amount',
+      );
     }
 
     // Get order details
@@ -259,7 +296,9 @@ export class WalletPaymentService {
 
     // Check if vendor has sufficient balance
     if (!vendorWallet.can_transact(refundAmount)) {
-      throw new BadRequestException('Insufficient vendor wallet balance for refund');
+      throw new BadRequestException(
+        'Insufficient vendor wallet balance for refund',
+      );
     }
 
     // Debit vendor wallet
@@ -277,7 +316,9 @@ export class WalletPaymentService {
       amount: Number(refundAmount),
       balance_before: Number(vendorWallet.balance) + Number(refundAmount),
       balance_after: Number(vendorWallet.balance),
-      description: `Refund for order ${order.id}: ${reason || 'No reason provided'}`,
+      description: `Refund for order ${order.id}: ${
+        reason || 'No reason provided'
+      }`,
       reference_id: payment.payment_reference,
       status: TransactionStatus.COMPLETED,
       processed_at: new Date(),
@@ -308,7 +349,9 @@ export class WalletPaymentService {
       amount: Number(refundAmount),
       balance_before: Number(customerBalanceBefore),
       balance_after: Number(customerWallet.balance),
-      description: `Refund for order ${order.id}: ${reason || 'No reason provided'}`,
+      description: `Refund for order ${order.id}: ${
+        reason || 'No reason provided'
+      }`,
       reference_id: payment.payment_reference,
       status: TransactionStatus.COMPLETED,
       processed_at: new Date(),
@@ -320,7 +363,9 @@ export class WalletPaymentService {
     payment.processRefund(refundAmount, reason || 'Refund processed');
     await this.paymentRepository.update(payment.id, payment);
 
-    this.logger.log(`Wallet payment refunded: ${paymentId}, amount: ${refundAmount}`);
+    this.logger.log(
+      `Wallet payment refunded: ${paymentId}, amount: ${refundAmount}`,
+    );
   }
 
   /**
@@ -329,8 +374,13 @@ export class WalletPaymentService {
    * @param fundWalletDto Funding details
    * @returns Promise<WalletFundingResponseDto>
    */
-  async initiateFunding(userId: string, fundWalletDto: FundWalletDto): Promise<WalletFundingResponseDto> {
-    this.logger.log(`Initiating wallet funding for user ${userId}, amount: ${fundWalletDto.amount}`);
+  async initiateFunding(
+    userId: string,
+    fundWalletDto: FundWalletDto,
+  ): Promise<WalletFundingResponseDto> {
+    this.logger.log(
+      `Initiating wallet funding for user ${userId}, amount: ${fundWalletDto.amount}`,
+    );
 
     // Get or create user wallet
     let wallet = await this.walletRepository.findOne({
@@ -384,7 +434,8 @@ export class WalletPaymentService {
       payment_method: fundWalletDto.payment_method,
       status: payment.status,
       created_at: payment.created_at,
-      message: 'Wallet funding initiated. Complete payment using the provided details.',
+      message:
+        'Wallet funding initiated. Complete payment using the provided details.',
     };
 
     this.logger.log(`Wallet funding initiated: ${fundingReference}`);
@@ -403,15 +454,21 @@ export class WalletPaymentService {
     externalReference?: string,
     gatewayResponse?: any,
   ): Promise<WalletFundingStatusDto> {
-    this.logger.log(`Completing wallet funding for reference: ${paymentReference}`);
+    this.logger.log(
+      `Completing wallet funding for reference: ${paymentReference}`,
+    );
 
-    const payment = await this.paymentRepository.findByReference(paymentReference);
+    const payment = await this.paymentRepository.findByReference(
+      paymentReference,
+    );
     if (!payment) {
       throw new NotFoundException('Funding transaction not found');
     }
 
     if (!payment.metadata?.wallet_funding) {
-      throw new BadRequestException('Payment is not a wallet funding transaction');
+      throw new BadRequestException(
+        'Payment is not a wallet funding transaction',
+      );
     }
 
     if (payment.is_completed) {
@@ -470,16 +527,19 @@ export class WalletPaymentService {
         wallet_balance: wallet.balance,
       };
 
-      this.logger.log(`Wallet funding completed: ${paymentReference}, new balance: ${wallet.balance}`);
+      this.logger.log(
+        `Wallet funding completed: ${paymentReference}, new balance: ${wallet.balance}`,
+      );
       return response;
-
     } catch (error) {
-      this.logger.error(`Wallet funding failed for reference ${paymentReference}: ${error.message}`);
-      
+      this.logger.error(
+        `Wallet funding failed for reference ${paymentReference}: ${error.message}`,
+      );
+
       // Mark payment as failed
       payment.markAsFailed(error.message, gatewayResponse);
       await this.paymentRepository.update(payment.id, payment);
-      
+
       throw error;
     }
   }
@@ -496,7 +556,9 @@ export class WalletPaymentService {
     }
 
     if (!payment.metadata?.wallet_funding) {
-      throw new BadRequestException('Payment is not a wallet funding transaction');
+      throw new BadRequestException(
+        'Payment is not a wallet funding transaction',
+      );
     }
 
     const userId = payment.metadata.user_id;
@@ -559,6 +621,22 @@ export class WalletPaymentService {
     };
   }
 
+  async getAllWalletDetails(): Promise<WalletBalanceDto[]> {
+    return this.walletRepository.find();
+  }
+
+  async getUserWallet(userId: string): Promise<WalletBalanceDto> {
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('Wallet not found');
+    }
+
+    return wallet;
+  }
+
   /**
    * Generate unique funding reference
    * @returns Promise<string>
@@ -568,9 +646,14 @@ export class WalletPaymentService {
     return `wallet_${uuidv4()}`;
   }
 
-
-  async debitWalletForWithdrawal(userId: string, amount: number, description: string): Promise<void> {
-    this.logger.log(`Debiting wallet for withdrawal: user ${userId}, amount: ${amount}`);
+  async debitWalletForWithdrawal(
+    userId: string,
+    amount: number,
+    description: string,
+  ): Promise<void> {
+    this.logger.log(
+      `Debiting wallet for withdrawal: user ${userId}, amount: ${amount}`,
+    );
 
     // Get user wallet
     const wallet = await this.walletRepository.findOne({
@@ -618,7 +701,9 @@ export class WalletPaymentService {
 
       this.logger.log(`Wallet debited successfully for withdrawal: ${amount}`);
     } catch (error) {
-      this.logger.error(`Failed to debit wallet for withdrawal: ${error.message}`);
+      this.logger.error(
+        `Failed to debit wallet for withdrawal: ${error.message}`,
+      );
       throw error;
     }
   }
@@ -628,7 +713,9 @@ export class WalletPaymentService {
    * @param paymentMethod Payment method
    * @returns PaymentProvider
    */
-  private getProviderFromPaymentMethod(paymentMethod: PaymentMethod): PaymentProvider {
+  private getProviderFromPaymentMethod(
+    paymentMethod: PaymentMethod,
+  ): PaymentProvider {
     switch (paymentMethod) {
       case PaymentMethod.PAYSTACK:
         return PaymentProvider.PAYSTACK;
@@ -641,12 +728,15 @@ export class WalletPaymentService {
       case PaymentMethod.CARD_SAVED:
         return PaymentProvider.CARD_SAVED;
       default:
-        throw new BadRequestException(`Unsupported payment method for wallet funding: ${paymentMethod}`);
+        throw new BadRequestException(
+          `Unsupported payment method for wallet funding: ${paymentMethod}`,
+        );
     }
   }
 
- 
-  async getTransactionHistory(userId: string): Promise<{ transactions: TransactionDto[] }> {
+  async getTransactionHistory(
+    userId: string,
+  ): Promise<{ transactions: TransactionDto[] }> {
     this.logger.log(`Getting transaction history for user ${userId}`);
 
     // Get user wallet
@@ -663,8 +753,6 @@ export class WalletPaymentService {
       .createQueryBuilder('transaction')
       .where('transaction.wallet_id = :walletId', { walletId: wallet.id })
       .orderBy('transaction.created_at', 'DESC');
-
-
 
     // Execute query
     const transactions = await queryBuilder.getMany();
@@ -696,8 +784,6 @@ export class WalletPaymentService {
       is_reversed: transaction.is_reversed,
     }));
 
-
-
     return {
       transactions: transactionDtos,
     };
@@ -709,7 +795,10 @@ export class WalletPaymentService {
    * @param transactionId Transaction ID
    * @returns Promise<TransactionDto>
    */
-  async getTransactionById(userId: string, transactionId: string): Promise<TransactionDto> {
+  async getTransactionById(
+    userId: string,
+    transactionId: string,
+  ): Promise<TransactionDto> {
     this.logger.log(`Getting transaction ${transactionId} for user ${userId}`);
 
     // Get user wallet

@@ -1,48 +1,29 @@
-import {
-  Controller,
-  Post,
-  Body,
-  HttpCode,
-  HttpStatus,
-  UseGuards,
-  Request,
-  Get,
-} from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Get } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from '../services/auth.service';
 import { 
-  RegisterDto, 
+  LoginDto, 
   VerifyOtpDto, 
   CompleteProfileDto, 
-  LoginDto, 
   ResendOtpDto, 
-  RefreshTokenDto,
-  ForgotPasswordDto,
-  ResetPasswordDto,
-  ChangePasswordDto,
-  VerifyEmailDto,
-  ResendVerificationEmailDto,
-  GoogleAuthDto,
-  AppleAuthDto
+  RefreshTokenDto, 
+  SendOtpDto,
+  VerifyProfileOtpDto 
 } from '../dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { Public } from '../decorators/public.decorator';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('register')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async register(@Body() registerRequest: RegisterDto) {
-    return this.authService.register(registerRequest);
-  }
-
   @Post('login')
   @Public()
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login with email and password' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
@@ -50,13 +31,74 @@ export class AuthController {
   @Post('verify-otp')
   @Public()
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify OTP for phone authentication' })
   async verifyOTP(@Body() verifyRequest: VerifyOtpDto) {
     return this.authService.verifyOTP(verifyRequest);
   }
 
+  @Post('send-otp')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send OTP to phone number for profile completion' })
+  async sendOTP(
+    @GetUser() user: User,
+    @Body() sendOtpDto: SendOtpDto
+  ) {
+    return this.authService.sendProfileOTP(sendOtpDto.phoneNumber);
+  }
+
+  // ✅ NEW ENDPOINT - Verify OTP immediately for instant feedback
+  @Post('verify-profile-otp')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Verify OTP immediately before profile completion',
+    description: 'Validates the OTP code and caches the result in Redis. This gives users instant feedback if their OTP is wrong, before they fill out the complete profile form.'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'OTP validation result',
+    schema: {
+      example: {
+        valid: true,
+        message: 'OTP verified successfully'
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 400, 
+    description: 'Invalid OTP code',
+    schema: {
+      example: {
+        valid: false,
+        message: 'Invalid or expired OTP code'
+      }
+    }
+  })
+  async verifyProfileOTP(
+    @GetUser() user: User,
+    @Body() verifyDto: VerifyProfileOtpDto // ✅ Use proper DTO
+  ): Promise<{ valid: boolean; message: string }> {
+    const validation = await this.authService.verifyProfileOTP(
+      verifyDto.phoneNumber,
+      verifyDto.otpCode
+    );
+    
+    return {
+      valid: validation.isValid,
+      message: validation.isValid 
+        ? 'OTP verified successfully' 
+        : validation.error || 'Invalid OTP code'
+    };
+  }
+
   @Post('complete-profile')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete user profile with phone verification' })
   async completeProfile(
     @GetUser() user: User,
     @Body() profileRequest: CompleteProfileDto,
@@ -67,6 +109,7 @@ export class AuthController {
   @Post('resend-otp')
   @Public()
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend OTP code' })
   async resendOTP(@Body() resendOtpDto: ResendOtpDto) {
     return this.authService.resendOTP(resendOtpDto.otpId);
   }
@@ -74,12 +117,15 @@ export class AuthController {
   @Post('refresh-token')
   @Public()
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access token' })
   async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
     return this.authService.refreshToken(refreshTokenDto.refreshToken);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current user profile' })
   async getCurrentUser(@GetUser() user: User) {
     return {
       id: user.id,
@@ -91,58 +137,7 @@ export class AuthController {
       email: user.email,
       country: user.country,
       emailVerified: !!user.email_verified_at,
+      phoneVerified: !!user.is_phone_verified,
     };
   }
-
-  @Post('verify-email')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
-    return this.authService.verifyEmail(verifyEmailDto);
-  }
-
-  @Post('resend-verification-email')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async resendVerificationEmail(@Body() resendVerificationEmailDto: ResendVerificationEmailDto) {
-    return this.authService.resendVerificationEmail(resendVerificationEmailDto.email, resendVerificationEmailDto.otpId);
-  }
-
-  @Post('forgot-password')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(forgotPasswordDto);
-  }
-
-  @Post('reset-password')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
-    return this.authService.resetPassword(resetPasswordDto);
-  }
-
-  @Post('change-password')
-  @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.OK)
-  async changePassword(
-    @GetUser() user: User,
-    @Body() changePasswordDto: ChangePasswordDto,
-  ) {
-    return this.authService.changePassword(user.id, changePasswordDto);
-  }
-
-  @Post('google')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async googleSignIn(@Body() googleAuthDto: GoogleAuthDto) {
-    return this.authService.googleSignIn(googleAuthDto);
-  }
-
-  @Post('apple')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async appleSignIn(@Body() appleAuthDto: AppleAuthDto) {
-    return this.authService.appleSignIn(appleAuthDto);
-  }
-} 
+}

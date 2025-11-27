@@ -16,7 +16,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FileStorageService, UploadedFile as UploadedFileType, ImageProcessingOptions } from '../services/file-storage.service';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Files')
 @Controller('files')
 @UseGuards(JwtAuthGuard)
 export class FileUploadController {

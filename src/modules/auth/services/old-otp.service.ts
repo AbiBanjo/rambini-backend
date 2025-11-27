@@ -1,18 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@/database/redis.service';
-import { TwilioVerifyService } from './twillo-otp.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface OTPData {
   phoneNumber?: string;
   email?: string;
-  otpCode?: string; // Optional now since Twilio Verify handles it
+  otpCode: string;
   attempts: number;
   createdAt: Date;
   expiresAt: Date;
   type?: 'phone' | 'email_verification' | 'password_reset';
-  twilioSid?: string; // Track Twilio verification SID
 }
 
 @Injectable()
@@ -20,60 +18,45 @@ export class OTPService {
   private readonly logger = new Logger(OTPService.name);
   private readonly OTP_EXPIRY_MINUTES = 10;
   private readonly MAX_ATTEMPTS = 3;
-  private readonly OTP_VERIFICATION_CACHE_TTL = 600; // ✅ NEW: 10 minutes cache for verified OTPs
 
   constructor(
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
-    private readonly twilioVerifyService: TwilioVerifyService,
   ) {}
 
-  /**
-   * Generate and send OTP using Twilio Verify API
-   */
-  async generateOTP(phoneNumber: string): Promise<{ otpId: string; otpCode?: string }> {
+  async generateOTP(phoneNumber: string): Promise<{ otpId: string; otpCode: string }> {
+    // if number starts with +234 use mat h random if not use  123456
+    let otpCode = "";
+    if (phoneNumber.startsWith('+234')) {
+      otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    } else {
+      otpCode = "123456";
+    }
+    // Generate 6-digit OTP
+    // const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
+    // const otpCode = "123456"
     const otpId = uuidv4();
     
-    // Send OTP via Twilio Verify
-    const result = await this.twilioVerifyService.sendOTP(phoneNumber, 'sms');
-    
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to send OTP');
-    }
-
     const now = new Date();
     const expiresAt = new Date(now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
 
     const otpData: OTPData = {
       phoneNumber,
+      otpCode,
       attempts: 0,
       createdAt: now,
       expiresAt,
-      type: 'phone',
-      twilioSid: result.sid,
     };
 
-    // For development mode, include the OTP code
-    if (!this.twilioVerifyService.isServiceEnabled()) {
-      otpData.otpCode = '123456';
-    }
-
-    // Store OTP metadata in Redis
+    // Store OTP in Redis with expiration
     const key = `otp:${otpId}`;
     await this.redisService.setex(key, this.OTP_EXPIRY_MINUTES * 60, JSON.stringify(otpData));
 
-    this.logger.log(`OTP sent to ${phoneNumber}, ID: ${otpId}`);
+    this.logger.log(`OTP generated for ${phoneNumber}: ${otpCode}`);
 
-    // Return otpCode only in development
-    return { 
-      otpId, 
-      ...(otpData.otpCode && { otpCode: otpData.otpCode })
-    };
+    return { otpId, otpCode };
   }
 
-  /**
-   * Validate OTP using Twilio Verify API
-   */
   async validateOTP(otpId: string, otpCode: string): Promise<{ 
     isValid: boolean; 
     phoneNumber?: string; 
@@ -100,148 +83,22 @@ export class OTPService {
       return { isValid: false, error: 'Too many failed attempts' };
     }
 
-    // Verify OTP via Twilio Verify
-    const verifyResult = await this.twilioVerifyService.verifyOTP(
-      otpData.phoneNumber!,
-      otpCode
-    );
-
-    if (!verifyResult.isValid) {
+    // Verify OTP code
+    if (otpCode !== otpData.otpCode) {
       // Increment attempts
       otpData.attempts += 1;
       await this.redisService.setex(key, this.OTP_EXPIRY_MINUTES * 60, JSON.stringify(otpData));
       
-      return { 
-        isValid: false, 
-        error: verifyResult.error || 'Invalid OTP code' 
-      };
+      return { isValid: false, error: 'Invalid OTP code' };
     }
 
     // OTP is valid, clean up
     await this.redisService.del(key);
     
-    this.logger.log(`OTP successfully validated for ${otpData.phoneNumber}`);
-    
     return { isValid: true, phoneNumber: otpData.phoneNumber };
   }
 
-  // ✅ NEW METHOD 1: Validate OTP by phone and cache the result
-  /**
-   * Validates OTP with Twilio and caches successful verifications
-   * This allows immediate validation while preventing double-verification issues
-   * Used by the /verify-profile-otp endpoint for instant user feedback
-   * 
-   * @param phoneNumber - Phone number in E.164 format
-   * @param otpCode - 6-digit OTP code
-   * @returns Validation result with error message if invalid
-   */
-  async validateOTPByPhone(
-    phoneNumber: string,
-    otpCode: string,
-  ): Promise<{ isValid: boolean; error?: string }> {
-    const cacheKey = `otp:verified:${phoneNumber}`;
-    
-    try {
-      // Check if already verified and cached
-      const cached = await this.redisService.get(cacheKey);
-      if (cached === 'true') {
-        this.logger.log(`Using cached OTP verification for ${phoneNumber}`);
-        return { isValid: true };
-      }
-
-      // Verify with Twilio Verify
-      this.logger.log(`Verifying OTP with Twilio for ${phoneNumber}`);
-      const verification = await this.twilioVerifyService.verifyOTP(
-        phoneNumber,
-        otpCode,
-      );
-
-      if (verification.isValid) {
-        // Cache the successful verification for 10 minutes
-        await this.redisService.setex(
-          cacheKey,
-          this.OTP_VERIFICATION_CACHE_TTL,
-          'true',
-        );
-        
-        this.logger.log(`OTP verified and cached for ${phoneNumber}`);
-        return { isValid: true };
-      } else {
-        this.logger.warn(
-          `OTP verification failed for ${phoneNumber}`,
-        );
-        return {
-          isValid: false,
-          error: verification.error || 'Invalid or expired OTP code',
-        };
-      }
-    } catch (error) {
-      this.logger.error(
-        `OTP verification error for ${phoneNumber}:`,
-        error.message,
-      );
-      return {
-        isValid: false,
-        error: 'Failed to verify OTP. Please try again.',
-      };
-    }
-  }
-
-  // ✅ NEW METHOD 2: Check if phone number has been verified (from cache)
-  /**
-   * Checks if a phone number has been verified and cached
-   * Used by ProfileService to skip Twilio verification if already done
-   * 
-   * @param phoneNumber - Phone number in E.164 format
-   * @returns true if verification is cached, false otherwise
-   */
-  async isPhoneVerified(phoneNumber: string): Promise<boolean> {
-    const cacheKey = `otp:verified:${phoneNumber}`;
-    
-    try {
-      const cached = await this.redisService.get(cacheKey);
-      const isVerified = cached === 'true';
-      
-      if (isVerified) {
-        this.logger.log(`Found cached verification for ${phoneNumber}`);
-      }
-      
-      return isVerified;
-    } catch (error) {
-      this.logger.error(
-        `Error checking cached verification for ${phoneNumber}:`,
-        error.message,
-      );
-      return false; // Fail open - will trigger Twilio verification
-    }
-  }
-
-  // ✅ NEW METHOD 3: Clear verification cache
-  /**
-   * Clears the verification cache for a phone number
-   * Should be called after successful profile completion or phone update
-   * 
-   * @param phoneNumber - Phone number in E.164 format
-   */
-  async clearVerificationCache(phoneNumber: string): Promise<void> {
-    const cacheKey = `otp:verified:${phoneNumber}`;
-    
-    try {
-      await this.redisService.del(cacheKey);
-      this.logger.log(`Cleared verification cache for ${phoneNumber}`);
-    } catch (error) {
-      this.logger.error(
-        `Error clearing verification cache for ${phoneNumber}:`,
-        error.message,
-      );
-      // Don't throw - this is not critical
-    }
-  }
-
-  /**
-   * Resend OTP using Twilio Verify API
-   */
-  async resendOTP(otpId: string): Promise<{ otpCode?: string; phoneNumber: string } | null> {
+  async resendOTP(otpId: string): Promise<{ otpCode: string, phoneNumber: string } | null> {
     const key = `otp:${otpId}`;
     const otpDataString = await this.redisService.get(key);
 
@@ -251,38 +108,23 @@ export class OTPService {
 
     const otpData: OTPData = JSON.parse(otpDataString);
     
-    // Send new OTP via Twilio Verify
-    const result = await this.twilioVerifyService.sendOTP(otpData.phoneNumber!, 'sms');
+    // Generate new OTP code
+    const newOtpCode = Math.floor(100000 + Math.random() * 900000).toString();
     
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to resend OTP');
-    }
-
     // Update OTP data
+    otpData.otpCode = newOtpCode;
     otpData.attempts = 0;
     otpData.createdAt = new Date();
     otpData.expiresAt = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
-    otpData.twilioSid = result.sid;
-
-    // For development mode
-    if (!this.twilioVerifyService.isServiceEnabled()) {
-      otpData.otpCode = '123456';
-    }
 
     // Store updated OTP
     await this.redisService.setex(key, this.OTP_EXPIRY_MINUTES * 60, JSON.stringify(otpData));
 
-    this.logger.log(`OTP resent to ${otpData.phoneNumber}`);
+    this.logger.log(`OTP resent for ${otpData.phoneNumber}: ${newOtpCode}`);
 
-    return { 
-      phoneNumber: otpData.phoneNumber!,
-      ...(otpData.otpCode && { otpCode: otpData.otpCode })
-    };
+    return { otpCode: newOtpCode, phoneNumber: otpData.phoneNumber };
   }
 
-  /**
-   * Email OTP methods remain unchanged (using custom implementation)
-   */
   async generateEmailOTP(email: string, type: 'email_verification' | 'password_reset' = 'email_verification'): Promise<{ otpId: string; otpCode: string }> {
     // Generate 6-digit OTP
     let otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -389,7 +231,8 @@ export class OTPService {
   }
 
   async cleanupExpiredOTPs(): Promise<number> {
-    // Redis handles expiration automatically
+    // This would be called by a scheduled job
+    // For now, Redis handles expiration automatically
     return 0;
   }
-}
+} 

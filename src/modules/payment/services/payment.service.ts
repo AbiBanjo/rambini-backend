@@ -1,14 +1,40 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Order, PaymentMethod, PaymentProvider, PaymentTransactionStatus, PaymentStatus, OrderStatus, User, NotificationType, SavedCard, PaymentGateway } from 'src/entities';
+import {
+  Order,
+  PaymentMethod,
+  PaymentProvider,
+  PaymentTransactionStatus,
+  PaymentStatus,
+  OrderStatus,
+  User,
+  NotificationType,
+  SavedCard,
+  PaymentGateway,
+} from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { WalletPaymentService } from './wallet-payment.service';
 import { StripePaymentService } from './stripe-payment.service';
 import { PaystackPaymentService } from './paystack-payment.service';
 import { MercuryPaymentService } from './mercury-payment.service';
 import { PaymentProviderInterface } from '../interfaces/payment-provider.interface';
-import { ProcessPaymentDto, PaymentResponseDto, PaymentWebhookDto, FundWalletDto, WalletFundingResponseDto, WalletFundingStatusDto, WalletBalanceDto } from '../dto';
+import {
+  ProcessPaymentDto,
+  PaymentResponseDto,
+  PaymentWebhookDto,
+  FundWalletDto,
+  WalletFundingResponseDto,
+  WalletFundingStatusDto,
+  WalletBalanceDto,
+} from '../dto';
 import { CartService } from '@/modules/cart/services/cart.service';
 import { OrderService } from '@/modules/order/services/order.service';
 import { NotificationService } from '@/modules/notification/notification.service';
@@ -17,7 +43,10 @@ import { getCurrencyForCountry } from '@/utils/currency-mapper';
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly paymentProviders: Map<PaymentMethod, PaymentProviderInterface>;
+  private readonly paymentProviders: Map<
+    PaymentMethod,
+    PaymentProviderInterface
+  >;
 
   constructor(
     @InjectRepository(Order)
@@ -37,17 +66,25 @@ export class PaymentService {
     // Initialize payment providers (excluding wallet as it's handled separately)
     this.paymentProviders = new Map();
     this.paymentProviders.set(PaymentMethod.STRIPE, this.stripePaymentService);
-    this.paymentProviders.set(PaymentMethod.PAYSTACK, this.paystackPaymentService);
+    this.paymentProviders.set(
+      PaymentMethod.PAYSTACK,
+      this.paystackPaymentService,
+    );
     // this.paymentProviders.set(PaymentMethod.MERCURY, this.mercuryPaymentService);
   }
 
- 
-  async processPayment(processPaymentDto: ProcessPaymentDto): Promise<PaymentResponseDto> {
-    this.logger.log(`Processing payment for order ${processPaymentDto.order_id} with method ${processPaymentDto.payment_method}`);
-    const { order_id, payment_method, metadata, saved_card_id } = processPaymentDto;
-    
+  async processPayment(
+    processPaymentDto: ProcessPaymentDto,
+  ): Promise<PaymentResponseDto> {
+    this.logger.log(
+      `Processing payment for order ${processPaymentDto.order_id} with method ${processPaymentDto.payment_method}`,
+    );
+    const { order_id, payment_method, metadata, saved_card_id } =
+      processPaymentDto;
 
-    this.logger.log(`Processing payment for order ${order_id} with method 2 ${payment_method}`);
+    this.logger.log(
+      `Processing payment for order ${order_id} with method 2 ${payment_method}`,
+    );
 
     // Get order details
     const order = await this.orderRepository.findOne({
@@ -61,7 +98,9 @@ export class PaymentService {
     this.logger.log(`Order found: ${order.id}`);
     this.logger.log(`Checking if payment already exists for this order`);
     // Check if payment already exists for this order
-    const existingPayment = await this.paymentRepository.findByOrderId(order_id);
+    const existingPayment = await this.paymentRepository.findByOrderId(
+      order_id,
+    );
 
     if (existingPayment) {
       this.logger.log(`Payment already exists for this order`);
@@ -69,18 +108,23 @@ export class PaymentService {
     }
     this.logger.log(`Payment not found for this order`);
 
-    if (payment_method !== PaymentMethod.WALLET && payment_method !== PaymentMethod.CARD_SAVED) {
-
+    if (
+      payment_method !== PaymentMethod.WALLET &&
+      payment_method !== PaymentMethod.CARD_SAVED
+    ) {
       const paymentProvider = this.paymentProviders.get(payment_method);
 
       if (!paymentProvider) {
-        throw new BadRequestException(`Unsupported payment method: ${payment_method}`);
+        throw new BadRequestException(
+          `Unsupported payment method: ${payment_method}`,
+        );
       }
     }
 
     // Generate payment reference
     this.logger.log(`Generating payment reference`);
-    const paymentReference = await this.paymentRepository.generatePaymentReference();
+    const paymentReference =
+      await this.paymentRepository.generatePaymentReference();
     this.logger.log(`Payment reference: ${paymentReference}`);
 
     // Create payment record
@@ -97,24 +141,30 @@ export class PaymentService {
     try {
       if (payment_method === PaymentMethod.WALLET) {
         // Process wallet payment directly
-        const walletPayment = await this.walletPaymentService.processWalletPayment(
-          order_id,
-          {total_amount: order.total_amount, subtotal: order.subtotal},
-          order.customer_id,
-          order.vendor_id,
-        );
+        const walletPayment =
+          await this.walletPaymentService.processWalletPayment(
+            order_id,
+            { total_amount: order.total_amount, subtotal: order.subtotal },
+            order.customer_id,
+            order.vendor_id,
+          );
 
         return this.mapToPaymentResponse(walletPayment);
-      } 
-      else if (payment_method === PaymentMethod.CARD_SAVED) {
+      } else if (payment_method === PaymentMethod.CARD_SAVED) {
         // Process payment with saved card
-        this.logger.log(`Processing payment with saved card for order ${order_id}`);
+        this.logger.log(
+          `Processing payment with saved card for order ${order_id}`,
+        );
 
         // Get saved card
         let savedCard: SavedCard;
         if (saved_card_id) {
           savedCard = await this.savedCardRepository.findOne({
-            where: { id: saved_card_id, user_id: order.customer_id, is_active: true }
+            where: {
+              id: saved_card_id,
+              user_id: order.customer_id,
+              is_active: true,
+            },
           });
           if (!savedCard) {
             throw new BadRequestException('Saved card not found or inactive');
@@ -122,7 +172,11 @@ export class PaymentService {
         } else {
           // Use default card
           savedCard = await this.savedCardRepository.findOne({
-            where: { user_id: order.customer_id, is_default: true, is_active: true }
+            where: {
+              user_id: order.customer_id,
+              is_default: true,
+              is_active: true,
+            },
           });
           if (!savedCard) {
             throw new BadRequestException('No default saved card found');
@@ -146,7 +200,11 @@ export class PaymentService {
             order.currency || 'USD',
             `Order #${order.id}`,
             savedCard.id,
-            { order_id: order.id, payment_reference: paymentReference, ...metadata }
+            {
+              order_id: order.id,
+              payment_reference: paymentReference,
+              ...metadata,
+            },
           );
         } else {
           gateway = PaymentGateway.PAYSTACK;
@@ -157,33 +215,46 @@ export class PaymentService {
             order.customer.email,
             paymentReference,
             savedCard.id,
-            { order_id: order.id, payment_reference: paymentReference, ...metadata }
+            {
+              order_id: order.id,
+              payment_reference: paymentReference,
+              ...metadata,
+            },
           );
         }
 
         if (!chargeResult.success) {
-          throw new BadRequestException(chargeResult.error || 'Card charge failed');
+          throw new BadRequestException(
+            chargeResult.error || 'Card charge failed',
+          );
         }
 
         // Update payment record
         payment.saved_card_id = savedCard.id;
-        payment.external_reference = chargeResult.payment_intent_id || chargeResult.reference;
+        payment.external_reference =
+          chargeResult.payment_intent_id || chargeResult.reference;
         payment.gateway_response = chargeResult;
-        payment.provider = gateway === PaymentGateway.STRIPE ? PaymentProvider.STRIPE : PaymentProvider.PAYSTACK;
+        payment.provider =
+          gateway === PaymentGateway.STRIPE
+            ? PaymentProvider.STRIPE
+            : PaymentProvider.PAYSTACK;
 
         // Determine status based on response
         if (gateway === PaymentGateway.STRIPE) {
           // Stripe: if no client_secret required, it's immediate success
           if (chargeResult.payment_intent_id && !chargeResult.client_secret) {
             payment.status = PaymentTransactionStatus.COMPLETED;
-            payment.markAsCompleted(chargeResult.payment_intent_id, chargeResult);
-            
+            payment.markAsCompleted(
+              chargeResult.payment_intent_id,
+              chargeResult,
+            );
+
             // Credit vendor wallet for completed payment
             await this.creditVendorForExternalPayment(payment);
-            
+
             // Update order status to PAID
-            await this.orderRepository.update(order.id, { 
-              payment_status: PaymentStatus.PAID
+            await this.orderRepository.update(order.id, {
+              payment_status: PaymentStatus.PAID,
             });
           } else {
             // Requires action (3D Secure)
@@ -194,13 +265,13 @@ export class PaymentService {
           if (chargeResult.status === 'success') {
             payment.status = PaymentTransactionStatus.COMPLETED;
             payment.markAsCompleted(chargeResult.reference, chargeResult);
-            
+
             // Credit vendor wallet for completed payment
             await this.creditVendorForExternalPayment(payment);
-            
+
             // Update order status to PAID
-            await this.orderRepository.update(order.id, { 
-              payment_status: PaymentStatus.PAID
+            await this.orderRepository.update(order.id, {
+              payment_status: PaymentStatus.PAID,
             });
           } else {
             payment.status = PaymentTransactionStatus.PENDING;
@@ -220,10 +291,11 @@ export class PaymentService {
           created_at: payment.created_at,
         };
       } else {
-
         const paymentProvider = this.paymentProviders.get(payment_method);
         if (!paymentProvider) {
-          throw new BadRequestException(`Unsupported payment method: ${payment_method}`);
+          throw new BadRequestException(
+            `Unsupported payment method: ${payment_method}`,
+          );
         }
         // Process external payment
         const initiationResult = await paymentProvider.initializePayment(
@@ -235,7 +307,9 @@ export class PaymentService {
         );
 
         if (!initiationResult.success) {
-          throw new BadRequestException(initiationResult.error || 'Payment initialization failed');
+          throw new BadRequestException(
+            initiationResult.error || 'Payment initialization failed',
+          );
         }
 
         // Update payment with external reference
@@ -257,22 +331,25 @@ export class PaymentService {
         };
       }
     } catch (error) {
-      this.logger.error(`Payment processing failed for order ${order_id}: ${error.message}`);
-      
+      this.logger.error(
+        `Payment processing failed for order ${order_id}: ${error.message}`,
+      );
+
       // Mark payment as failed
       payment.status = PaymentTransactionStatus.FAILED;
       payment.failure_reason = error.message;
       await this.paymentRepository.update(payment.id, payment);
-      
+
       throw error;
     }
   }
 
-
   async verifyPayment(paymentReference: string): Promise<PaymentResponseDto> {
     this.logger.log(`Verifying payment: ${paymentReference}`);
 
-    const payment = await this.paymentRepository.findByPaymentReference(paymentReference);
+    const payment = await this.paymentRepository.findByPaymentReference(
+      paymentReference,
+    );
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
@@ -285,22 +362,34 @@ export class PaymentService {
     // Verify with external provider
     const paymentProvider = this.paymentProviders.get(payment.payment_method);
     if (!paymentProvider) {
-      throw new BadRequestException(`Unsupported payment method: ${payment.payment_method}`);
+      throw new BadRequestException(
+        `Unsupported payment method: ${payment.payment_method}`,
+      );
     }
 
-    const verificationResult = await paymentProvider.verifyPayment(payment.external_reference!);
+    const verificationResult = await paymentProvider.verifyPayment(
+      payment.external_reference!,
+    );
 
     if (verificationResult.success) {
       // Update payment status based on verification result
-      const newStatus = this.mapVerificationStatusToPaymentStatus(verificationResult.status);
-      
+      const newStatus = this.mapVerificationStatusToPaymentStatus(
+        verificationResult.status,
+      );
+
       if (newStatus === PaymentTransactionStatus.COMPLETED) {
-        payment.markAsCompleted(verificationResult.external_reference, verificationResult.gateway_response);
-        
+        payment.markAsCompleted(
+          verificationResult.external_reference,
+          verificationResult.gateway_response,
+        );
+
         // Credit vendor wallet for external payments
         await this.creditVendorForExternalPayment(payment);
       } else if (newStatus === PaymentTransactionStatus.FAILED) {
-        payment.markAsFailed(verificationResult.error || 'Payment verification failed', verificationResult.gateway_response);
+        payment.markAsFailed(
+          verificationResult.error || 'Payment verification failed',
+          verificationResult.gateway_response,
+        );
       }
 
       await this.paymentRepository.update(payment.id, payment);
@@ -308,7 +397,6 @@ export class PaymentService {
 
     return this.mapToPaymentResponse(payment);
   }
-
 
   async processWebhook(
     provider: PaymentProvider,
@@ -319,21 +407,28 @@ export class PaymentService {
 
     const paymentMethod = this.getPaymentMethodFromProvider(provider);
     const paymentProvider = this.paymentProviders.get(paymentMethod);
-    
+
     if (!paymentProvider) {
-      throw new BadRequestException(`Unsupported payment provider: ${provider}`);
+      throw new BadRequestException(
+        `Unsupported payment provider: ${provider}`,
+      );
     }
 
     this.logger.log(`Processing webhook for provider: ${provider}`);
     // this.logger.log(`Payload: ${JSON.stringify(payload)}`);
     this.logger.log(`Signature: ${signature}`);
 
-    const webhookResult = await paymentProvider.processWebhook(payload, signature);
+    const webhookResult = await paymentProvider.processWebhook(
+      payload,
+      signature,
+    );
 
     this.logger.log(`Webhook result: ${JSON.stringify(webhookResult)}`);
 
     if (!webhookResult.success) {
-      throw new BadRequestException(webhookResult.error || 'Webhook processing failed');
+      throw new BadRequestException(
+        webhookResult.error || 'Webhook processing failed',
+      );
     }
 
     this.logger.log(`Finding payment by reference: ${webhookResult.reference}`);
@@ -343,30 +438,41 @@ export class PaymentService {
 
     if (isWalletFunding) {
       return await this.processWalletFundingWebhook(webhookResult);
-    } else  {
+    } else {
       return await this.processOrderPaymentWebhook(webhookResult);
     }
   }
 
-  
-  private async processWalletFundingWebhook(webhookResult: any): Promise<WalletFundingStatusDto> {
-    this.logger.log(`Processing wallet funding webhook for reference: ${webhookResult.reference}`);
+  private async processWalletFundingWebhook(
+    webhookResult: any,
+  ): Promise<WalletFundingStatusDto> {
+    this.logger.log(
+      `Processing wallet funding webhook for reference: ${webhookResult.reference}`,
+    );
 
     // if( !webhookResult.reference.startsWith('wallet_')) {
     //   webhookResult.reference = webhookResult.client_reference_id
     // }
 
-    const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
+    const payment = await this.paymentRepository.findByPaymentReference(
+      webhookResult.reference,
+    );
     if (!payment) {
-      throw new NotFoundException('Wallet funding transaction not found for webhook reference');
+      throw new NotFoundException(
+        'Wallet funding transaction not found for webhook reference',
+      );
     }
 
     if (!payment.metadata?.wallet_funding) {
-      throw new BadRequestException('Payment is not a wallet funding transaction');
+      throw new BadRequestException(
+        'Payment is not a wallet funding transaction',
+      );
     }
 
-    const newStatus = this.mapVerificationStatusToPaymentStatus(webhookResult.status);
-    
+    const newStatus = this.mapVerificationStatusToPaymentStatus(
+      webhookResult.status,
+    );
+
     if (newStatus === PaymentTransactionStatus.COMPLETED) {
       // Complete the wallet funding
       return await this.walletPaymentService.completeFunding(
@@ -382,50 +488,71 @@ export class PaymentService {
       );
       await this.paymentRepository.update(payment.id, payment);
 
-      return await this.walletPaymentService.getFundingStatus(webhookResult.reference);
+      return await this.walletPaymentService.getFundingStatus(
+        webhookResult.reference,
+      );
     }
 
     // For other statuses, just return current status
-    return await this.walletPaymentService.getFundingStatus(webhookResult.reference);
+    return await this.walletPaymentService.getFundingStatus(
+      webhookResult.reference,
+    );
   }
 
+  private async processOrderPaymentWebhook(
+    webhookResult: any,
+  ): Promise<PaymentResponseDto> {
+    this.logger.log(
+      `Processing order payment webhook for reference: ${webhookResult.reference}`,
+    );
 
-  private async processOrderPaymentWebhook(webhookResult: any): Promise<PaymentResponseDto> {
-    this.logger.log(`Processing order payment webhook for reference: ${webhookResult.reference}`);
-
-    const payment = await this.paymentRepository.findByPaymentReference(webhookResult.reference);
+    const payment = await this.paymentRepository.findByPaymentReference(
+      webhookResult.reference,
+    );
     if (!payment) {
       throw new NotFoundException('Payment not found for webhook reference');
     }
 
     this.logger.log(`Payment found: ${JSON.stringify(payment)}`);
     // Update payment status
-    const newStatus = this.mapVerificationStatusToPaymentStatus(webhookResult.status);
-    
+    const newStatus = this.mapVerificationStatusToPaymentStatus(
+      webhookResult.status,
+    );
+
     if (newStatus === PaymentTransactionStatus.COMPLETED) {
-      payment.markAsCompleted(webhookResult.external_reference, webhookResult.gateway_response);
-      
+      payment.markAsCompleted(
+        webhookResult.external_reference,
+        webhookResult.gateway_response,
+      );
+
       // Credit vendor wallet for external payments
       await this.creditVendorForExternalPayment(payment);
     } else if (newStatus === PaymentTransactionStatus.FAILED) {
-      payment.markAsFailed(webhookResult.error || 'Payment failed', webhookResult.gateway_response);
-      // update order status and payment status after failed payment  
+      payment.markAsFailed(
+        webhookResult.error || 'Payment failed',
+        webhookResult.gateway_response,
+      );
+      // update order status and payment status after failed payment
       await this.orderRepository.update(payment.order_id, {
         payment_status: PaymentStatus.FAILED,
-        order_status: OrderStatus.CANCELLED
+        order_status: OrderStatus.CANCELLED,
       });
     }
 
     await this.paymentRepository.update(payment.id, payment);
 
-    // make all cart items in the order for this payment as inactive 
-    await this.cartService.makeCartItemsInactiveForVendor(payment.order.customer_id, payment.order.vendor_id, payment.order_id);
+    // make all cart items in the order for this payment as inactive
+    await this.cartService.makeCartItemsInactiveForVendor(
+      payment.order.customer_id,
+      payment.order.vendor_id,
+      payment.order_id,
+    );
 
     // update order status and payment status after successful payment
     if (newStatus === PaymentTransactionStatus.COMPLETED) {
       await this.orderRepository.update(payment.order_id, {
         payment_status: PaymentStatus.PAID,
-        order_status: OrderStatus.NEW
+        order_status: OrderStatus.NEW,
       });
 
       // send push notification to vendor
@@ -441,7 +568,7 @@ export class PaymentService {
           order_type: payment.order.order_type,
           total_amount: payment.order.total_amount,
           payment_status: PaymentStatus.PAID,
-        }
+        },
       );
     }
 
@@ -467,15 +594,18 @@ export class PaymentService {
    * @param paymentReference Payment reference
    * @returns Promise<PaymentResponseDto>
    */
-  async getPaymentByReference(paymentReference: string): Promise<PaymentResponseDto> {
-    const payment = await this.paymentRepository.findByPaymentReference(paymentReference);
+  async getPaymentByReference(
+    paymentReference: string,
+  ): Promise<PaymentResponseDto> {
+    const payment = await this.paymentRepository.findByPaymentReference(
+      paymentReference,
+    );
     if (!payment) {
       throw new NotFoundException('Payment not found');
     }
 
     return this.mapToPaymentResponse(payment);
   }
-
 
   async refundPayment(
     paymentId: string,
@@ -488,11 +618,17 @@ export class PaymentService {
     }
 
     if (payment.payment_method === PaymentMethod.WALLET) {
-      await this.walletPaymentService.refundWalletPayment(paymentId, amount, reason);
+      await this.walletPaymentService.refundWalletPayment(
+        paymentId,
+        amount,
+        reason,
+      );
     } else {
       const paymentProvider = this.paymentProviders.get(payment.payment_method);
       if (!paymentProvider) {
-        throw new BadRequestException(`Unsupported payment method: ${payment.payment_method}`);
+        throw new BadRequestException(
+          `Unsupported payment method: ${payment.payment_method}`,
+        );
       }
 
       const refundResult = await paymentProvider.refundPayment(
@@ -506,12 +642,14 @@ export class PaymentService {
       }
 
       // Update payment record
-      payment.processRefund(amount || payment.amount, reason || 'Refund processed');
+      payment.processRefund(
+        amount || payment.amount,
+        reason || 'Refund processed',
+      );
       await this.paymentRepository.update(payment.id, payment);
     }
   }
 
-  
   private async creditVendorForExternalPayment(payment: any): Promise<void> {
     this.logger.log(`Credit vendor for external payment: ${payment.id}`);
     if (payment.payment_method === PaymentMethod.WALLET) {
@@ -524,7 +662,6 @@ export class PaymentService {
       return;
     }
 
-    
     this.logger.log(`Order found for payment ${payment.id}: ${order.id}`);
     // Use wallet payment service to credit vendor
     await this.walletPaymentService['creditVendorWallet'](
@@ -533,11 +670,14 @@ export class PaymentService {
       order.id,
       payment.payment_reference,
     );
-    this.logger.log(`Vendor wallet credited: ${order.vendor_id}, amount: ${payment.amount}`);
+    this.logger.log(
+      `Vendor wallet credited: ${order.vendor_id}, amount: ${payment.amount}`,
+    );
   }
 
-
-  private mapVerificationStatusToPaymentStatus(status: string): PaymentTransactionStatus {
+  private mapVerificationStatusToPaymentStatus(
+    status: string,
+  ): PaymentTransactionStatus {
     switch (status) {
       case 'completed':
         return PaymentTransactionStatus.COMPLETED;
@@ -551,8 +691,9 @@ export class PaymentService {
     }
   }
 
-
-  private getProviderFromPaymentMethod(paymentMethod: PaymentMethod): PaymentProvider {
+  private getProviderFromPaymentMethod(
+    paymentMethod: PaymentMethod,
+  ): PaymentProvider {
     switch (paymentMethod) {
       case PaymentMethod.WALLET:
         return PaymentProvider.WALLET;
@@ -565,12 +706,15 @@ export class PaymentService {
       case PaymentMethod.CARD_SAVED:
         return PaymentProvider.CARD_SAVED;
       default:
-        throw new BadRequestException(`Unsupported payment method: ${paymentMethod}`);
+        throw new BadRequestException(
+          `Unsupported payment method: ${paymentMethod}`,
+        );
     }
   }
 
- 
-  private getPaymentMethodFromProvider(provider: PaymentProvider): PaymentMethod {
+  private getPaymentMethodFromProvider(
+    provider: PaymentProvider,
+  ): PaymentMethod {
     switch (provider) {
       case PaymentProvider.WALLET:
         return PaymentMethod.WALLET;
@@ -583,7 +727,9 @@ export class PaymentService {
       case PaymentProvider.CARD_SAVED:
         return PaymentMethod.CARD_SAVED;
       default:
-        throw new BadRequestException(`Unsupported payment provider: ${provider}`);
+        throw new BadRequestException(
+          `Unsupported payment provider: ${provider}`,
+        );
     }
   }
 
@@ -593,16 +739,23 @@ export class PaymentService {
    * @param fundWalletDto Funding details
    * @returns Promise<WalletFundingResponseDto>
    */
-  async fundWallet(user: User, fundWalletDto: FundWalletDto,): Promise<WalletFundingResponseDto> {
+  async fundWallet(
+    user: User,
+    fundWalletDto: FundWalletDto,
+  ): Promise<WalletFundingResponseDto> {
     const userId = user.id;
-    this.logger.log(`Funding wallet for user ${userId} with ${fundWalletDto.payment_method}`);
-  
+    this.logger.log(
+      `Funding wallet for user ${userId} with ${fundWalletDto.payment_method}`,
+    );
+
     if (fundWalletDto.payment_method === PaymentMethod.WALLET) {
-      throw new BadRequestException('Cannot fund wallet using wallet payment method');
+      throw new BadRequestException(
+        'Cannot fund wallet using wallet payment method',
+      );
     }
 
     fundWalletDto.email = user.email;
-    // get currency from user country 
+    // get currency from user country
     fundWalletDto.currency = getCurrencyForCountry(user.country);
 
     // Handle CARD_SAVED payment method
@@ -613,7 +766,11 @@ export class PaymentService {
       let savedCard: SavedCard;
       if (fundWalletDto.saved_card_id) {
         savedCard = await this.savedCardRepository.findOne({
-          where: { id: fundWalletDto.saved_card_id, user_id: userId, is_active: true }
+          where: {
+            id: fundWalletDto.saved_card_id,
+            user_id: userId,
+            is_active: true,
+          },
         });
         if (!savedCard) {
           throw new BadRequestException('Saved card not found or inactive');
@@ -621,7 +778,7 @@ export class PaymentService {
       } else {
         // Use default card
         savedCard = await this.savedCardRepository.findOne({
-          where: { user_id: userId, is_default: true, is_active: true }
+          where: { user_id: userId, is_default: true, is_active: true },
         });
         if (!savedCard) {
           throw new BadRequestException('No default saved card found');
@@ -634,7 +791,10 @@ export class PaymentService {
       }
 
       // Initiate funding through wallet payment service first
-      const fundingResponse = await this.walletPaymentService.initiateFunding(userId, fundWalletDto);
+      const fundingResponse = await this.walletPaymentService.initiateFunding(
+        userId,
+        fundWalletDto,
+      );
 
       try {
         // Charge the saved card
@@ -648,11 +808,11 @@ export class PaymentService {
             fundWalletDto.currency,
             `Wallet funding`,
             savedCard.id,
-            { 
+            {
               wallet_funding: true,
               funding_reference: fundingResponse.reference,
-              user_id: userId
-            }
+              user_id: userId,
+            },
           );
         } else {
           chargeResult = await this.paystackPaymentService.chargeSavedCard(
@@ -662,20 +822,23 @@ export class PaymentService {
             fundWalletDto.email,
             fundingResponse.reference,
             savedCard.id,
-            { 
+            {
               wallet_funding: true,
               funding_reference: fundingResponse.reference,
-              user_id: userId
-            }
+              user_id: userId,
+            },
           );
         }
 
         if (!chargeResult.success) {
-          throw new BadRequestException(chargeResult.error || 'Card charge failed');
+          throw new BadRequestException(
+            chargeResult.error || 'Card charge failed',
+          );
         }
 
         // Update funding response with external reference
-        fundingResponse.external_reference = chargeResult.payment_intent_id || chargeResult.reference;
+        fundingResponse.external_reference =
+          chargeResult.payment_intent_id || chargeResult.reference;
 
         // If immediate success, complete the funding
         if (gateway === PaymentGateway.STRIPE) {
@@ -684,11 +847,12 @@ export class PaymentService {
             await this.walletPaymentService.completeFunding(
               fundingResponse.reference,
               chargeResult.payment_intent_id,
-              chargeResult
+              chargeResult,
             );
             fundingResponse.message = 'Wallet funded successfully';
           } else {
-            fundingResponse.message = 'Wallet funding initiated - awaiting confirmation';
+            fundingResponse.message =
+              'Wallet funding initiated - awaiting confirmation';
           }
         } else {
           // Paystack
@@ -697,17 +861,20 @@ export class PaymentService {
             await this.walletPaymentService.completeFunding(
               fundingResponse.reference,
               chargeResult.reference,
-              chargeResult
+              chargeResult,
             );
             fundingResponse.message = 'Wallet funded successfully';
           } else {
-            fundingResponse.message = 'Wallet funding initiated - awaiting confirmation';
+            fundingResponse.message =
+              'Wallet funding initiated - awaiting confirmation';
           }
         }
 
         return fundingResponse;
       } catch (error) {
-        this.logger.error(`Failed to charge saved card for wallet funding: ${error.message}`);
+        this.logger.error(
+          `Failed to charge saved card for wallet funding: ${error.message}`,
+        );
         throw error;
       }
     }
@@ -715,11 +882,16 @@ export class PaymentService {
     // Get payment provider for external payment methods
     const provider = this.paymentProviders.get(fundWalletDto.payment_method);
     if (!provider) {
-      throw new BadRequestException(`Payment provider not available for ${fundWalletDto.payment_method}`);
+      throw new BadRequestException(
+        `Payment provider not available for ${fundWalletDto.payment_method}`,
+      );
     }
 
     // Initiate funding through wallet payment service
-    const fundingResponse = await this.walletPaymentService.initiateFunding(userId, fundWalletDto);
+    const fundingResponse = await this.walletPaymentService.initiateFunding(
+      userId,
+      fundWalletDto,
+    );
 
     // For external payment methods, we need to create the payment URL
     try {
@@ -734,7 +906,7 @@ export class PaymentService {
           funding_reference: fundingResponse.reference,
           return_url: fundWalletDto.return_url,
           cancel_url: fundWalletDto.cancel_url,
-        }
+        },
       );
 
       if (paymentUrl.success) {
@@ -742,20 +914,25 @@ export class PaymentService {
         fundingResponse.external_reference = paymentUrl.external_reference;
       }
     } catch (error) {
-      this.logger.error(`Failed to create payment URL for wallet funding: ${error.message}`);
+      this.logger.error(
+        `Failed to create payment URL for wallet funding: ${error.message}`,
+      );
       // Continue without payment URL - user can still complete payment manually
     }
 
     return fundingResponse;
   }
 
-
   async completeFunding(
     reference: string,
     externalReference?: string,
     gatewayResponse?: any,
   ): Promise<WalletFundingStatusDto> {
-    return await this.walletPaymentService.completeFunding(reference, externalReference, gatewayResponse);
+    return await this.walletPaymentService.completeFunding(
+      reference,
+      externalReference,
+      gatewayResponse,
+    );
   }
 
   /**
@@ -776,8 +953,10 @@ export class PaymentService {
     this.logger.log(`Verifying wallet funding: ${reference}`);
 
     // Get funding status first
-    const fundingStatus = await this.walletPaymentService.getFundingStatus(reference);
-    
+    const fundingStatus = await this.walletPaymentService.getFundingStatus(
+      reference,
+    );
+
     if (fundingStatus.status === PaymentTransactionStatus.COMPLETED) {
       return fundingStatus;
     }
@@ -792,7 +971,7 @@ export class PaymentService {
       if (provider) {
         try {
           const verificationResult = await provider.verifyPayment(reference);
-          
+
           if (verificationResult.status === 'completed') {
             // Complete the funding
             return await this.walletPaymentService.completeFunding(
@@ -802,7 +981,9 @@ export class PaymentService {
             );
           }
         } catch (error) {
-          this.logger.error(`Failed to verify funding with provider: ${error.message}`);
+          this.logger.error(
+            `Failed to verify funding with provider: ${error.message}`,
+          );
           throw new BadRequestException('Failed to verify funding status');
         }
       }
@@ -818,6 +999,18 @@ export class PaymentService {
    */
   async getWalletBalance(userId: string): Promise<WalletBalanceDto> {
     return await this.walletPaymentService.getWalletBalance(userId);
+  }
+
+  async getUsersWalletBalance(userId: string): Promise<WalletBalanceDto> {
+    return await this.walletPaymentService.getWalletBalance(userId);
+  }
+
+  async getUserWallet(userId: string): Promise<WalletBalanceDto> {
+    return this.walletPaymentService.getUserWallet(userId);
+  }
+
+  async getAllWalletDetails(): Promise<WalletBalanceDto[]> {
+    return await this.walletPaymentService.getAllWalletDetails();
   }
 
   /**

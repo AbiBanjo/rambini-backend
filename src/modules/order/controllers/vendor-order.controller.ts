@@ -27,7 +27,7 @@ import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User, UserType } from '@/entities';
 import { AccessControl } from '@/common/guards';
 
-@ApiTags('vendor-orders')
+@ApiTags('Vendor Orders')
 @Controller('vendor/orders')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

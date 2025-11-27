@@ -16,7 +16,7 @@ import { CreateVendorDto } from '../dto/create-vendor.dto';
 import { Vendor, User } from '../../../entities';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 
-@ApiTags('vendor')
+@ApiTags('Vendor')
 @Controller('vendor')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()

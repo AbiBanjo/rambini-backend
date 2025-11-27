@@ -52,14 +52,6 @@ async function bootstrap() {
     .setDescription('Backend API for Rambini Food Ordering Platform')
     .setVersion('1.0')
     .addBearerAuth()
-    .addTag('auth', 'Authentication endpoints')
-    .addTag('users', 'User management endpoints')
-    .addTag('vendors', 'Vendor management endpoints')
-    .addTag('menu', 'Menu and food item endpoints')
-    .addTag('orders', 'Order management endpoints')
-    .addTag('payments', 'Payment and wallet endpoints')
-    .addTag('notifications', 'Notification endpoints')
-    .addTag('admin', 'Admin dashboard endpoints')
     .build();
     
   const document = SwaggerModule.createDocument(app, config);
