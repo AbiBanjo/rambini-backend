@@ -1,123 +1,57 @@
-import { Injectable, Logger, ConflictException, UnauthorizedException, BadRequestException, NotFoundException, Inject, forwardRef, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User, UserType, UserStatus, Wallet, Currency, AuthProvider } from '../../../entities';
+import { User, UserStatus, UserType } from '../../../entities';
+import { JWTService } from './jwt.service';
+import { UserService } from '../../user/services/user.service';
+import { EmailAuthService } from './email-auth.service';
+import { PasswordService } from './password.service';
+import { SocialAuthService } from './social-auth.service';
+import { ProfileService } from './profile.service';
 import { OTPService } from './otp.service';
 import { SMSService } from './sms.service';
-import { JWTService, TokenPair } from './jwt.service';
-import { GoogleAuthService } from './google-auth.service';
-import { AppleAuthService } from './apple-auth.service';
-import { UserService } from '../../user/services/user.service';
-import { AddressService } from '../../user/services/address.service';
-import { EmailNotificationService } from '../../notification/services/email-notification.service';
-import { RegisterDto, VerifyOtpDto, CompleteProfileDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto, VerifyEmailDto, LoginDto, GoogleAuthDto, AppleAuthDto, ResendForgotPasswordDto } from '../dto';
-import { getCurrencyForCountry } from '../../../utils/currency-mapper';
+import { LoginDto, VerifyOtpDto, CompleteProfileDto } from '../dto';
+import { AuthResponseBuilder } from '../helpers/auth-response.builder';
+import { EmailValidator } from '../helpers/validators';
 import * as bcrypt from 'bcryptjs';
-import { ConfigService } from '@nestjs/config';
-import { RedisService } from '@/database/redis.service';
-
-export interface AuthResponse {
-  user: {
-    id: string;
-    phoneNumber?: string;
-    userType: UserType;
-    profileCompleted: boolean;
-    firstName?: string;
-    lastName?: string;
-    email: string;
-    country?: string;
-    emailVerified: boolean;
-  };
-  tokens: TokenPair;
-}
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    @InjectRepository(Wallet)
-    private readonly walletRepository: Repository<Wallet>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly userService: UserService,
-    @Inject(forwardRef(() => AddressService))
-    private readonly addressService: AddressService,
+    private readonly jwtService: JWTService,
+    private readonly emailAuthService: EmailAuthService,
+    private readonly passwordService: PasswordService,
+    private readonly socialAuthService: SocialAuthService,
+    private readonly profileService: ProfileService,
     private readonly otpService: OTPService,
     private readonly smsService: SMSService,
-    private readonly jwtService: JWTService,
-    private readonly emailNotificationService: EmailNotificationService,
-    private readonly configService: ConfigService,
-    private readonly googleAuthService: GoogleAuthService,
-    private readonly appleAuthService: AppleAuthService,
-    private readonly redisService: RedisService,
+    private readonly authResponseBuilder: AuthResponseBuilder,
   ) {}
 
-  async register(registerRequest: RegisterDto): Promise<{ otpId: string; message: string }> {
-    const { email, password } = registerRequest;
-
-    // Validate email format
-    if (!this.isValidEmail(email)) {
-      throw new BadRequestException('Invalid email format');
-    }
-
-    // Check if user already exists
-    const existingUser = await this.userService.findByEmail(email);
-    if (existingUser) {
-      throw new ConflictException('Email already registered');
-    }
-
-    // Hash password
-    const saltRounds = this.configService.get<number>('security.bcryptRounds') || 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    // Create user with unverified email
-    // const user = await this.userService.createUser({
-    //   email,
-    //   password: hashedPassword,
-    //   user_type: UserType.CUSTOMER,
-    //   status: UserStatus.PENDING_VERIFICATION,
-    //   profile_completed: false,
-    // });
-
-    // Cache registration data (REPLACING old cache if exists)
-  const cacheKey = `registration:pending:${email}`;
-
-  const registrationData = {
-    email,
-    password: hashedPassword,
-    user_type: UserType.CUSTOMER,
-    status: UserStatus.PENDING_VERIFICATION,
-    profile_completed: false,
-    createdAt: new Date().toISOString(),
-  };
-
-  await this.redisService.setex(
-    cacheKey,
-    10 * 60, // 24 hours
-    JSON.stringify(registrationData),
-  );
-
-
-    // Generate email verification OTP
-    const { otpId, otpCode } = await this.otpService.generateEmailOTP(email, 'email_verification');
-
-    // Send verification email with OTP
-    await this.sendVerificationEmail(email, otpCode);
-
-    this.logger.log(`Pending registration cached for ${email}`);
-
-    return {
-      otpId,
-      message: 'Registration successful. Please check your email for the verification OTP.',
-    };
+  // ==================== Email/Password Registration ====================
+  async register(registerDto: any) {
+    return this.emailAuthService.register(registerDto);
   }
 
-  async login(loginDto: LoginDto): Promise<AuthResponse> {
+  async verifyEmail(verifyEmailDto: any) {
+    return this.emailAuthService.verifyEmail(verifyEmailDto);
+  }
+
+  async resendVerificationEmail(email: string, otpId?: string) {
+    return this.emailAuthService.resendVerificationEmail({ email, otpId });
+  }
+
+  // ==================== Login ====================
+  async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
     // Validate email format
-    if (!this.isValidEmail(email)) {
+    if (!EmailValidator.isValid(email)) {
       throw new BadRequestException('Invalid email format');
     }
 
@@ -138,22 +72,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Check if user account was deleted and can be reactivated
+    // Handle deleted account reactivation
     if (user.status === UserStatus.DELETED) {
-      if (user.canBeReactivated()) {
-        user.reactivate();
-        await this.userRepository.save(user);
-        user = await this.userService.findByEmail(email);
-        this.logger.log(`Reactivated deleted account for user: ${user.id}`);
-      } else {
-        throw new BadRequestException('This account was permanently deleted and cannot be restored. Please contact support to create a new account.');
-      }
+      user = await this.handleDeletedAccount(user);
     }
 
-    // Check if user is active (after potential reactivation)
-    if (user.status !== UserStatus.ACTIVE && user.status !== UserStatus.PENDING_VERIFICATION) {
-      throw new UnauthorizedException('Account is not active. Please contact support.');
-    }
+    // Validate user status
+    this.validateUserStatus(user);
 
     // Update last active timestamp
     user.updateLastActive();
@@ -164,35 +89,23 @@ export class AuthService {
 
     this.logger.log(`User logged in: ${email}`);
 
-    return {
-      user: {
-        id: user.id,
-        phoneNumber: user.phone_number,
-        userType: user.user_type,
-        profileCompleted: user.profile_completed,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        country: user.country,
-        emailVerified: !!user.email_verified_at,
-      },
-      tokens,
-    };
+    return this.authResponseBuilder.build(user, tokens);
   }
 
-  async verifyOTP(verifyRequest: VerifyOtpDto): Promise<AuthResponse> {
+  // ==================== Phone OTP Flow (Legacy) ====================
+  async verifyOTP(verifyRequest: VerifyOtpDto) {
     const { otpId, otpCode } = verifyRequest;
 
     // Validate OTP
     const validation = await this.otpService.validateOTP(otpId, otpCode);
-    
+
     if (!validation.isValid) {
       throw new UnauthorizedException(validation.error || 'Invalid OTP');
     }
 
     const { phoneNumber } = validation;
 
-    // Check if user was created during registration
+    // Check if user exists
     let user = await this.userService.findByPhoneNumber(phoneNumber);
 
     if (!user) {
@@ -214,154 +127,111 @@ export class AuthService {
     // Generate JWT tokens
     const tokens = this.jwtService.generateTokenPair(user);
 
-    return {
-      user: {
-        id: user.id,
-        phoneNumber: user.phone_number,
-        userType: user.user_type,
-        profileCompleted: user.profile_completed,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        country: user.country,
-        emailVerified: !!user.email_verified_at,
-      },
-      tokens,
-    };
-  }
-
-  async completeProfile(userId: string, profileRequest: CompleteProfileDto): Promise<AuthResponse> {
-    // Validate input data
-    if (!profileRequest.firstName?.trim() || !profileRequest.lastName?.trim()) {
-      throw new BadRequestException('First name and last name are required');
-    }
-
-    // Validate phone number format
-    if (!this.isValidPhoneNumber(profileRequest.phoneNumber)) {
-      throw new BadRequestException('Invalid phone number format. Use E.164 format (e.g., +1234567890)');
-    }
-
-    // Check if phone number is already taken
-    const existingUserWithPhone = await this.userService.findByPhoneNumber(profileRequest.phoneNumber);
-    if (existingUserWithPhone && existingUserWithPhone.id !== userId) {
-      throw new ConflictException('Phone number is already taken by another user');
-    }
-
-    // Update user profile and mark as completed in a single operation
-    const updatedUser = await this.userService.updateUser(userId, {
-      first_name: profileRequest.firstName,
-      last_name: profileRequest.lastName,
-      phone_number: profileRequest.phoneNumber,
-      country: profileRequest.country,
-      profile_completed: true,
-    });
-
-    // Mark phone as verified if phone number was added
-    if (profileRequest.phoneNumber) {
-      await this.userService.markPhoneVerified(userId);
-    }
-
-    // Create or update wallet with country-based currency
-    const currency = getCurrencyForCountry(profileRequest.country);
-    let wallet = await this.walletRepository.findOne({
-      where: { user_id: userId }
-    });
-    
-    if (!wallet) {
-      // Create new wallet for user
-      wallet = this.walletRepository.create({
-        user_id: userId,
-        balance: 0,
-        currency: currency,
-      });
-      await this.walletRepository.save(wallet);
-      this.logger.log(`Created wallet with currency ${currency} for user ${userId}`);
-    } else if (wallet.currency !== currency) {
-      // Update existing wallet currency
-      wallet.currency = currency;
-      await this.walletRepository.save(wallet);
-      this.logger.log(`Updated wallet currency to ${currency} for user ${userId}`);
-    }
-
-    // Create default address if provided
-    if (profileRequest.address) {
-      try {
-        // Validate address data
-        const addressValidation = await this.addressService.validateAddress(profileRequest.address);
-        
-        if (!addressValidation.isValid) {
-          this.logger.warn(`Invalid address data for user ${userId}:`, addressValidation.errors);
-          throw new BadRequestException(`Invalid address data: ${addressValidation.errors.join(', ')}`);
-        }
-
-        // Create address using AddressService
-        const createdAddress = await this.addressService.createAddress(userId, {
-          address_line_1: profileRequest.address.address_line_1,
-          address_line_2: profileRequest.address.address_line_2,
-          city: profileRequest.address.city,
-          state: profileRequest.address.state,
-          postal_code: profileRequest.address.postal_code,
-          latitude: profileRequest.address.latitude,
-          longitude: profileRequest.address.longitude,
-          is_default: profileRequest.address.is_default || true, // Set as default if it's the first address
-          country: profileRequest.country || 'NG',
-        });
-
-        this.logger.log(`Address created for user ${userId}: ${createdAddress.id}`);
-      } catch (error) {
-        this.logger.error(`Failed to create address for user ${userId}:`, error.message);
-        // Don't fail the entire profile completion if address creation fails
-        // Just log the error and continue
-      }
-    }
-
-    // Generate new tokens
-    const tokens = this.jwtService.generateTokenPair(updatedUser);
-
-    return {
-      user: {
-        id: updatedUser.id,
-        phoneNumber: updatedUser.phone_number,
-        userType: updatedUser.user_type,
-        profileCompleted: updatedUser.profile_completed,
-        firstName: updatedUser.first_name,
-        lastName: updatedUser.last_name,
-        email: updatedUser.email,
-        country: updatedUser.country,
-        emailVerified: !!updatedUser.email_verified_at,
-      },
-      tokens,
-    };
+    return this.authResponseBuilder.build(user, tokens);
   }
 
   async resendOTP(otpId: string): Promise<{ message: string }> {
     const result = await this.otpService.resendOTP(otpId);
-    
+
     if (!result) {
       throw new BadRequestException('OTP expired or invalid');
     }
 
     const { phoneNumber, otpCode } = result;
 
-    // Get phone number from OTP data to send SMS
-    // This would require a method to get OTP data without validation
-      // Send OTP via SMS
-    const smsSent = await this.smsService.sendOTP(phoneNumber, otpCode);
-    
+    // Send OTP via SMS (only if using old OTP service, Twilio Verify handles this automatically)
+    if (otpCode) {
+      const smsSent = await this.smsService.sendOTP(phoneNumber, otpCode);
+
       if (!smsSent) {
         this.logger.warn(`Failed to send SMS to ${phoneNumber}, but OTP was generated`);
         throw new BadRequestException('Failed to send SMS');
       }
-  
+    }
 
     this.logger.log(`OTP resent for OTP ID: ${otpId}`);
 
     return { message: 'OTP resent successfully' };
   }
 
+  // ==================== Send OTP for Profile Completion ====================
+  async sendProfileOTP(phoneNumber: string): Promise<{ otpId: string; message: string }> {
+    // Validate phone number format
+    if (!phoneNumber.startsWith('+')) {
+      throw new BadRequestException('Phone number must be in E.164 format (e.g., +2348012345678)');
+    }
+
+    // Generate and send OTP using Twilio Verify
+    const result = await this.otpService.generateOTP(phoneNumber);
+
+    this.logger.log(`Profile OTP sent to ${phoneNumber}`);
+
+    return {
+      otpId: result.otpId,
+      message: 'OTP sent successfully to your phone number',
+    };
+  }
+
+  // ✅ NEW: Verify Profile OTP immediately (before profile completion)
+  async verifyProfileOTP(
+    phoneNumber: string,
+    otpCode: string
+  ): Promise<{ isValid: boolean; error?: string }> {
+    // Validate phone number format
+    if (!phoneNumber.startsWith('+')) {
+      return {
+        isValid: false,
+        error: 'Phone number must be in E.164 format (e.g., +2348012345678)'
+      };
+    }
+
+    // Delegate to OTPService which handles Twilio verification and Redis caching
+    const validation = await this.otpService.validateOTPByPhone(phoneNumber, otpCode);
+
+    if (validation.isValid) {
+      this.logger.log(`Profile OTP verified for ${phoneNumber}`);
+    } else {
+      this.logger.warn(`Profile OTP verification failed for ${phoneNumber}`);
+    }
+
+    return validation;
+  }
+
+  // ==================== Profile Completion ====================
+  async completeProfile(userId: string, profileDto: CompleteProfileDto) {
+    return this.profileService.completeProfile(userId, profileDto);
+  }
+
+  // ==================== Password Management ====================
+  async forgotPassword(forgotPasswordDto: any) {
+    return this.passwordService.forgotPassword(forgotPasswordDto);
+  }
+
+  async resendForgotPasswordOTP(resendDto: any) {
+    return this.passwordService.resendForgotPasswordOTP(resendDto);
+  }
+
+  async resetPassword(resetPasswordDto: any) {
+    return this.passwordService.resetPassword(resetPasswordDto);
+  }
+
+  async changePassword(userId: string, changePasswordDto: any) {
+    return this.passwordService.changePassword(userId, changePasswordDto);
+  }
+
+  // ==================== Social Authentication ====================
+  async googleSignIn(googleAuthDto: any) {
+    return this.socialAuthService.googleSignIn(googleAuthDto);
+  }
+
+  async appleSignIn(appleAuthDto: any) {
+    return this.socialAuthService.appleSignIn(appleAuthDto);
+  }
+
+  // ==================== Token Management ====================
   async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
     const newAccessToken = this.jwtService.refreshAccessToken(refreshToken);
-    
+
     if (!newAccessToken) {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -380,583 +250,22 @@ export class AuthService {
     }
   }
 
-  private isValidPhoneNumber(phoneNumber: string): boolean {
-    // Basic E.164 format validation
-    const phoneRegex = /^\+[1-9]\d{1,14}$/;
-    return phoneRegex.test(phoneNumber);
-  }
-
-  async verifyEmail(verifyEmailDto: VerifyEmailDto): Promise<AuthResponse> {
-    const { email, otpId, otpCode } = verifyEmailDto;
-  
-    // Validate OTP
-    const validation = await this.otpService.validateEmailOTP(
-      otpId,
-      otpCode,
-      'email_verification',
-    );
-  
-    if (!validation.isValid) {
-      throw new BadRequestException(validation.error || 'Invalid OTP');
-    }
-  
-    if (validation.email !== email) {
-      throw new BadRequestException('OTP email mismatch');
-    }
-  
-    // Fetch pending registration from Redis
-    const cacheKey = `registration:pending:${email}`;
-    const cachedDataRaw = await this.redisService.get(cacheKey);
-  
-    if (!cachedDataRaw) {
-      throw new BadRequestException(
-        'Registration has expired or was not initiated. Please register again.'
-      );
-    }
-  
-    const cachedData = JSON.parse(cachedDataRaw);
-  
-    // Prevent duplicate registration
-    const existingUser = await this.userService.findByEmail(email);
-    if (existingUser) {
-      throw new ConflictException('Email already registered');
-    }
-  
-    // Create user in DB
-    const user = await this.userService.createUser({
-      ...cachedData,
-      email_verified_at: new Date(),
-      status: UserStatus.ACTIVE,
-    });
-  
-    // Remove cache
-    await this.redisService.del(cacheKey);
-  
-    // Generate tokens
-    const tokens = this.jwtService.generateTokenPair(user);
-  
-    this.logger.log(`Email verified & user created: ${user.id}`);
-  
-    return {
-      user: {
-        id: user.id,
-        phoneNumber: user.phone_number,
-        userType: user.user_type,
-        profileCompleted: user.profile_completed,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        country: user.country,
-        emailVerified: true,
-      },
-      tokens,
-    };
-  }
-  
-
-  async resendVerificationEmail(
-    email: string,
-    otpId?: string
-  ): Promise<{ otpId: string; message: string }> {
-  
-    const cacheKey = `registration:pending:${email}`;
-    const cachedDataRaw = await this.redisService.get(cacheKey);
-  
-    // If no pending registration found in Redis → DO NOT REVEAL THIS
-    if (!cachedDataRaw) {
-      // Always return a generic success message (security best practice)
-      return {
-        otpId: '',
-        message: 'If the email exists, a verification OTP has been sent'
-      };
-    }
-  
-    // There *is* a pending registration in cache
-    let otpCode: string;
-    let finalOtpId: string;
-  
-    if (otpId) {
-      // Try resending using existing otpId
-      const resendResult = await this.otpService.resendEmailOTP(otpId, 'email_verification');
-  
-      if (resendResult) {
-        otpCode = resendResult.otpCode;
-        finalOtpId = otpId;
-      } else {
-        // OTP expired → generate new OTP
-        const newOtp = await this.otpService.generateEmailOTP(email, 'email_verification');
-        otpCode = newOtp.otpCode;
-        finalOtpId = newOtp.otpId;
-      }
+  // ==================== Private Helper Methods ====================
+  private async handleDeletedAccount(user: User): Promise<User> {
+    if (user.canBeReactivated()) {
+      user.reactivate();
+      await this.userRepository.save(user);
+      const reactivatedUser = await this.userService.findByEmail(user.email);
+      this.logger.log(`Reactivated deleted account for user: ${reactivatedUser.id}`);
+      return reactivatedUser;
     } else {
-      // No OTP ID provided → generate a new one
-      const newOtp = await this.otpService.generateEmailOTP(email, 'email_verification');
-      otpCode = newOtp.otpCode;
-      finalOtpId = newOtp.otpId;
-    }
-  
-    // Send email to user
-    await this.sendVerificationEmail(email, otpCode);
-  
-    return {
-      otpId: finalOtpId,
-      message: 'Verification email sent successfully'
-    };
-  }
-  
-
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ otpId: string; message: string }> {
-    const { email } = forgotPasswordDto;
-
-    // Find user by email
-    const user = await this.userService.findByEmail(email);
-    if (!user) {
-     //  throw error
-      throw new ForbiddenException("user with email does not exist")
-    }
-
-    
-    if (user.auth_provider !== AuthProvider.LOCAL) {
-      throw new ForbiddenException(`user is already registered with ${user.auth_provider} authentication. Please sign in using ${user.auth_provider}.`)
-    }
-   
-
-    // Generate password reset OTP
-    const { otpId, otpCode } = await this.otpService.generateEmailOTP(email, 'password_reset');
-
-    // Send password reset email with OTP
-    await this.sendPasswordResetEmail(user.email, otpCode);
-
-    this.logger.log(`Password reset OTP generated for user: ${user.id}`);
-
-    return { 
-      otpId,
-      message: 'password reset OTP has been sent' 
-    };
-  }
-
-  async resendForgotPasswordOTP(resendForgotPasswordDto: ResendForgotPasswordDto): Promise<{ otpId: string; message: string }> {
-    const { email, otpId } = resendForgotPasswordDto;
-
-    // Find user by email
-    const user = await this.userService.findByEmail(email);
-    if (!user) {
-      // Don't reveal if user exists for security reasons
-      const { otpId: newOtpId } = await this.otpService.generateEmailOTP(email, 'password_reset');
-      return { 
-        otpId: newOtpId,
-        message: 'If the email exists, a password reset OTP has been sent' 
-      };
-    }
-
-    // Check if user is using local authentication
-    if (user.auth_provider !== AuthProvider.LOCAL) {
-      throw new ForbiddenException(`User is already registered with ${user.auth_provider} authentication. Please sign in using ${user.auth_provider}.`);
-    }
-
-    // Resend OTP if otpId provided, otherwise generate new one
-    let otpCode: string;
-    let finalOtpId: string;
-
-    if (otpId) {
-      const resendResult = await this.otpService.resendEmailOTP(otpId, 'password_reset');
-      if (resendResult) {
-        otpCode = resendResult.otpCode;
-        finalOtpId = otpId;
-      } else {
-        // OTP expired, generate new one
-        const newOtp = await this.otpService.generateEmailOTP(email, 'password_reset');
-        otpCode = newOtp.otpCode;
-        finalOtpId = newOtp.otpId;
-      }
-    } else {
-      // Generate new OTP
-      const newOtp = await this.otpService.generateEmailOTP(email, 'password_reset');
-      otpCode = newOtp.otpCode;
-      finalOtpId = newOtp.otpId;
-    }
-
-    // Send password reset email
-    await this.sendPasswordResetEmail(user.email, otpCode);
-
-    this.logger.log(`Password reset OTP resent for user: ${user.id}`);
-
-    return { 
-      otpId: finalOtpId,
-      message: 'Password reset OTP has been sent' 
-    };
-  }
-
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
-    const { email, otpId, otpCode, password } = resetPasswordDto;
-
-    // Validate OTP
-    const validation = await this.otpService.validateEmailOTP(otpId, otpCode, 'password_reset');
-    
-    if (!validation.isValid) {
-      throw new BadRequestException(validation.error || 'Invalid or expired OTP');
-    }
-
-    // Verify that the email matches
-    if (validation.email !== email) {
-      throw new BadRequestException('Email does not match the OTP');
-    }
-
-    // Find user by email
-    const user = await this.userService.findByEmail(email);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Hash new password
-    const saltRounds = this.configService.get<number>('security.bcryptRounds') || 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    // Update password
-    user.password = hashedPassword;
-    await this.userRepository.save(user);
-
-    this.logger.log(`Password reset for user: ${user.id}`);
-
-    return { message: 'Password reset successfully' };
-  }
-
-  async changePassword(userId: string, changePasswordDto: ChangePasswordDto): Promise<{ message: string }> {
-    const { currentPassword, newPassword } = changePasswordDto;
-
-    // Find user
-    const user = await this.userService.findById(userId);
-
-    if (user.auth_provider !== AuthProvider.LOCAL) {
-      throw new ForbiddenException(`user is already registered with ${user.auth_provider} authentication. Please sign in using ${user.auth_provider}.`)
-    }
-
-    // Check if user has a password set
-    if (!user.password) {
-      throw new BadRequestException('Password not set. Please use password reset.');
-    }
-
-    // Verify current password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Current password is incorrect');
-    }
-
-    // Hash new password
-    const saltRounds = this.configService.get<number>('security.bcryptRounds') || 12;
-    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-
-    // Update password
-    user.password = hashedPassword;
-    await this.userRepository.save(user);
-
-    this.logger.log(`Password changed for user: ${user.id}`);
-
-    return { message: 'Password changed successfully' };
-  }
-
-  private async sendVerificationEmail(email: string, otpCode: string): Promise<void> {
-    const emailData = {
-      to: email,
-      subject: 'Verify Your Email - Rambini',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
-            <h2 style="color: #333; margin-bottom: 20px;">Verify Your Email</h2>
-            <p>Thank you for registering with Rambini!</p>
-            <p>Your email verification code is:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <div style="background-color: #007bff; color: white; padding: 20px; border-radius: 8px; font-size: 32px; font-weight: bold; letter-spacing: 8px; display: inline-block;">
-                ${otpCode}
-              </div>
-            </div>
-            <p>Enter this code in the app to verify your email address.</p>
-            <p style="margin-top: 30px; font-size: 12px; color: #666;">
-              This code will expire in 10 minutes. If you didn't create an account, please ignore this email.
-            </p>
-          </div>
-        </div>
-      `,
-      text: `Verify Your Email\n\nThank you for registering with Rambini!\n\nYour email verification code is: ${otpCode}\n\nEnter this code in the app to verify your email address.\n\nThis code will expire in 10 minutes. If you didn't create an account, please ignore this email.`,
-    };
-
-    try {
-      await this.emailNotificationService.sendEmail(emailData);
-      this.logger.log(`Verification email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send verification email to ${email}:`, error.message);
-      throw new BadRequestException('Failed to send verification email');
+      throw new BadRequestException('This account was permanently deleted and cannot be restored. Please contact support to create a new account.');
     }
   }
 
-  private async sendPasswordResetEmail(email: string, otpCode: string): Promise<void> {
-    const emailData = {
-      to: email,
-      subject: 'Reset Your Password - Rambini',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
-            <h2 style="color: #333; margin-bottom: 20px;">Reset Your Password</h2>
-            <p>You requested to reset your password for your Rambini account.</p>
-            <p>Your password reset code is:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <div style="background-color: #007bff; color: white; padding: 20px; border-radius: 8px; font-size: 32px; font-weight: bold; letter-spacing: 8px; display: inline-block;">
-                ${otpCode}
-              </div>
-            </div>
-            <p>Enter this code along with your new password to reset your account password.</p>
-            <p style="margin-top: 30px; font-size: 12px; color: #666;">
-              This code will expire in 10 minutes. If you didn't request a password reset, please ignore this email.
-            </p>
-          </div>
-        </div>
-      `,
-      text: `Reset Your Password\n\nYou requested to reset your password for your Rambini account.\n\nYour password reset code is: ${otpCode}\n\nEnter this code along with your new password to reset your account password.\n\nThis code will expire in 10 minutes. If you didn't request a password reset, please ignore this email.`,
-    };
-
-    try {
-      await this.emailNotificationService.sendEmail(emailData);
-      this.logger.log(`Password reset email sent to ${email}`);
-    } catch (error) {
-      this.logger.error(`Failed to send password reset email to ${email}:`, error.message);
-      throw new BadRequestException('Failed to send password reset email');
-    }
-  }
-
-  async googleSignIn(googleAuthDto: GoogleAuthDto): Promise<AuthResponse> {
-    const { idToken, firstName, lastName } = googleAuthDto;
-
-    // Verify Google ID token
-    const googleUserInfo = await this.googleAuthService.verifyIdToken(idToken);
-
-    // Check if user exists with this Google ID
-    let user = await this.userRepository.findOne({
-      where: {
-        provider_id: googleUserInfo.sub,
-        auth_provider: AuthProvider.GOOGLE,
-      },
-    });
-
-    if (!user) {
-      // Check if user exists with this email
-      const existingUser = await this.userService.findByEmail(googleUserInfo.email);
-
-      if (existingUser) {
-        // If user exists with LOCAL auth, link the Google account
-        if (existingUser.auth_provider === AuthProvider.LOCAL) {
-          // Link Google account to existing user
-          existingUser.auth_provider = AuthProvider.GOOGLE;
-          existingUser.provider_id = googleUserInfo.sub;
-          existingUser.provider_email = googleUserInfo.email;
-          
-          // Auto-verify email if not already verified
-          if (!existingUser.email_verified_at) {
-            existingUser.markEmailVerified();
-          }
-          
-          user = await this.userRepository.save(existingUser);
-          this.logger.log(`Linked Google account to existing user: ${user.id}`);
-        } else {
-          // User exists with different provider
-          throw new ConflictException(
-            `Email is already registered with ${existingUser.auth_provider} authentication. Please sign in using ${existingUser.auth_provider}.`
-          );
-        }
-      } else {
-        // Create new user
-        const nameParts = (googleUserInfo.name || '').split(' ');
-        const userFirstName = firstName || googleUserInfo.given_name || nameParts[0] || '';
-        const userLastName = lastName || googleUserInfo.family_name || nameParts.slice(1).join(' ') || '';
-
-        user = await this.userService.createUser({
-          email: googleUserInfo.email,
-          first_name: userFirstName || undefined,
-          last_name: userLastName || undefined,
-          auth_provider: AuthProvider.GOOGLE,
-          provider_id: googleUserInfo.sub,
-          provider_email: googleUserInfo.email,
-          user_type: UserType.CUSTOMER,
-          status: UserStatus.ACTIVE,
-          email_verified_at: googleUserInfo.email_verified ? new Date() : undefined,
-          image_url: googleUserInfo.picture,
-          profile_completed: !!(userFirstName && userLastName),
-        });
-
-        // Create wallet for new user
-        const currency = getCurrencyForCountry(user.country || 'NG');
-        const wallet = this.walletRepository.create({
-          user_id: user.id,
-          balance: 0,
-          currency: currency,
-        });
-        await this.walletRepository.save(wallet);
-
-        this.logger.log(`Created new user via Google Sign In: ${user.id}`);
-      }
-    } else {
-      // Update existing user info if needed
-      if (googleUserInfo.picture && !user.image_url) {
-        user.image_url = googleUserInfo.picture;
-      }
-      
-      // Update email verification status
-      if (googleUserInfo.email_verified && !user.email_verified_at) {
-        user.markEmailVerified();
-      }
-      
-      user.updateLastActive();
-      user = await this.userRepository.save(user);
-    }
-
-    // Check if user is active
+  private validateUserStatus(user: User): void {
     if (user.status !== UserStatus.ACTIVE && user.status !== UserStatus.PENDING_VERIFICATION) {
       throw new UnauthorizedException('Account is not active. Please contact support.');
     }
-
-    // Generate JWT tokens
-    const tokens = this.jwtService.generateTokenPair(user);
-
-    this.logger.log(`User signed in via Google: ${user.email}`);
-
-    return {
-      user: {
-        id: user.id,
-        phoneNumber: user.phone_number,
-        userType: user.user_type,
-        profileCompleted: user.profile_completed,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        country: user.country,
-        emailVerified: !!user.email_verified_at,
-      },
-      tokens,
-    };
   }
-
-  async appleSignIn(appleAuthDto: AppleAuthDto): Promise<AuthResponse> {
-    const { identityToken, firstName, lastName, email } = appleAuthDto;
-
-    // Verify Apple identity token
-    const appleUserInfo = await this.appleAuthService.verifyIdentityToken(identityToken);
-
-    // Use email from token if not provided in DTO
-    const userEmail = email || appleUserInfo.email || appleUserInfo.sub;
-
-    if (!userEmail) {
-      throw new BadRequestException('Email is required for Apple Sign In'); 
-    }
-
-    // Check if user exists with this Apple ID
-    let user = await this.userRepository.findOne({
-      where: {
-        provider_id: appleUserInfo.sub,
-        auth_provider: AuthProvider.APPLE,
-      },
-    });
-
-    if (!user) {
-      // Check if user exists with this email
-      const existingUser = await this.userService.findByEmail(userEmail);
-
-      if (existingUser) {
-        // If user exists with LOCAL auth, link the Apple account
-        if (existingUser.auth_provider === AuthProvider.LOCAL) {
-          // Link Apple account to existing user
-          existingUser.auth_provider = AuthProvider.APPLE;
-          existingUser.provider_id = appleUserInfo.sub;
-          existingUser.provider_email = userEmail;
-          
-          // Auto-verify email if not already verified
-          if (!existingUser.email_verified_at) {
-            existingUser.markEmailVerified();
-          }
-          
-          user = await this.userRepository.save(existingUser);
-          this.logger.log(`Linked Apple account to existing user: ${user.id}`);
-        } else {
-          // User exists with different provider
-          throw new ConflictException(
-            `Email is already registered with ${existingUser.auth_provider} authentication. Please sign in using ${existingUser.auth_provider}.`
-          );
-        }
-      } else {
-        // Create new user
-        const userFirstName = firstName || appleUserInfo.name?.firstName || '';
-        const userLastName = lastName || appleUserInfo.name?.lastName || '';
-
-        user = await this.userService.createUser({
-          email: userEmail,
-          first_name: userFirstName || undefined,
-          last_name: userLastName || undefined,
-          auth_provider: AuthProvider.APPLE,
-          provider_id: appleUserInfo.sub,
-          provider_email: userEmail,
-          user_type: UserType.CUSTOMER,
-          status: UserStatus.ACTIVE,
-          email_verified_at: appleUserInfo.email_verified ? new Date() : undefined,
-          profile_completed: !!(userFirstName && userLastName),
-        });
-
-        // Create wallet for new user
-        const currency = getCurrencyForCountry(user.country || 'NG');
-        const wallet = this.walletRepository.create({
-          user_id: user.id,
-          balance: 0,
-          currency: currency,
-        });
-        await this.walletRepository.save(wallet);
-
-        this.logger.log(`Created new user via Apple Sign In: ${user.id}`);
-      }
-    } else {
-      // Update existing user info if needed
-      // Apple provides name only on first sign-in, so we preserve existing name
-      if (firstName && !user.first_name) {
-        user.first_name = firstName;
-      }
-      if (lastName && !user.last_name) {
-        user.last_name = lastName;
-      }
-      
-      // Update email verification status
-      if (appleUserInfo.email_verified && !user.email_verified_at) {
-        user.markEmailVerified();
-      }
-      
-      user.updateLastActive();
-      user = await this.userRepository.save(user);
-    }
-
-    // Check if user is active
-    if (user.status !== UserStatus.ACTIVE && user.status !== UserStatus.PENDING_VERIFICATION) {
-      throw new UnauthorizedException('Account is not active. Please contact support.');
-    }
-
-    // Generate JWT tokens
-    const tokens = this.jwtService.generateTokenPair(user);
-
-    this.logger.log(`User signed in via Apple: ${user.email}`);
-
-    return {
-      user: {
-        id: user.id,
-        phoneNumber: user.phone_number,
-        userType: user.user_type,
-        profileCompleted: user.profile_completed,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        country: user.country,
-        emailVerified: !!user.email_verified_at,
-      },
-      tokens,
-    };
-  }
-
-  private isValidEmail(email: string): boolean {
-    // Basic email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-} 
+}

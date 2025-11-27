@@ -3,6 +3,7 @@ export * from './verify-otp.dto';
 export * from './complete-profile.dto';
 export * from './login.dto';
 export * from './resend-otp.dto';
+export * from './send-otp.dto';  // Add this line
 export * from './refresh-token.dto';
 export * from './forgot-password.dto';
 export * from './reset-password.dto';
@@ -11,4 +12,5 @@ export * from './verify-email.dto';
 export * from './resend-verification-email.dto';
 export * from './resend-forgot-password.dto';
 export * from './google-auth.dto';
-export * from './apple-auth.dto'; 
+export * from './apple-auth.dto';
+export * from './verify-profile-otp.dto';

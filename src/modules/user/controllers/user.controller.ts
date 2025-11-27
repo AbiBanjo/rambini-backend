@@ -8,6 +8,11 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { GetUser } from '../../../common/decorators/get-user.decorator';
 import { DeleteAccountDto } from '../dto/delete-account.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { 
+  SendPhoneChangeOTPDto, 
+  ChangePhoneNumberDto, 
+  ResendPhoneChangeOTPDto 
+} from '../dto/phone-change.dto';
 
 @ApiTags('Users MB')
 @Controller('users')
@@ -89,6 +94,93 @@ export class UserController {
     };
   }
 
+  /**
+   * ==================== Phone Number Management ====================
+   */
+
+  @Post('phone/send-otp')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ 
+    summary: 'Send OTP to new phone number for verification',
+    description: 'Initiates phone number change by sending an OTP to the new number'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'OTP sent successfully',
+    schema: {
+      example: {
+        otpId: 'a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6',
+        message: 'OTP sent successfully to your new phone number'
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Invalid phone number format or already in use' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async sendPhoneOTP(
+    @Body() sendOtpDto: SendPhoneChangeOTPDto,
+    @GetUser() user: User,
+  ): Promise<{ otpId: string; message: string }> {
+    return await this.userProfileService.sendPhoneChangeOTP(
+      user.id,
+      sendOtpDto.phoneNumber,
+    );
+  }
+
+  @Put('phone/change')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ 
+    summary: 'Change phone number with OTP verification',
+    description: 'Updates user phone number after OTP verification'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Phone number changed successfully',
+    type: User 
+  })
+  @ApiResponse({ status: 400, description: 'Invalid OTP or phone number already in use' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async changePhoneNumber(
+    @Body() changePhoneDto: ChangePhoneNumberDto,
+    @GetUser() user: User,
+  ): Promise<User> {
+    return await this.userProfileService.changePhoneNumber(user.id, {
+      newPhoneNumber: changePhoneDto.newPhoneNumber,
+      otpId: changePhoneDto.otpId,
+      otpCode: changePhoneDto.otpCode,
+    });
+  }
+
+  @Post('phone/resend-otp')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ 
+    summary: 'Resend OTP for phone number change',
+    description: 'Resends OTP to the phone number associated with the OTP ID'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'OTP resent successfully',
+    schema: {
+      example: {
+        message: 'OTP resent successfully to your phone number'
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'OTP expired or invalid' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async resendPhoneOTP(
+    @Body() resendDto: ResendPhoneChangeOTPDto,
+    @GetUser() user: User,
+  ): Promise<{ message: string }> {
+    return await this.userProfileService.resendPhoneChangeOTP(resendDto.otpId);
+  }
+
+  /**
+   * ==================== Profile Management ====================
+   */
+
   @Post('profile/picture')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
@@ -103,11 +195,15 @@ export class UserController {
         new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
         new FileTypeValidator({ fileType: /image\/.*$/ }),
       ],
-      fileIsRequired: true, // Make file optional
+      fileIsRequired: true,
     }),
   ) file: Express.Multer.File, @GetUser() user: User): Promise<User> {
     return await this.userProfileService.uploadProfilePicture(user.id, file);
   }
+
+  /**
+   * ==================== User Verification ====================
+   */
 
   @Post('verify-phone')
   @UseGuards(JwtAuthGuard)
@@ -142,6 +238,10 @@ export class UserController {
     return await this.userService.completeProfile(user.id);
   }
 
+  /**
+   * ==================== User Status Management ====================
+   */
+
   @Post('suspend')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -163,6 +263,10 @@ export class UserController {
   async activateCurrentUser(@GetUser() user: User): Promise<User> {
     return await this.userService.activateUser(user.id);
   }
+
+  /**
+   * ==================== User Queries ====================
+   */
 
   @Get()
   @UseGuards(JwtAuthGuard)
@@ -195,8 +299,12 @@ export class UserController {
     return await this.userProfileService.getUserProfile(user.id);
   }
 
+  /**
+   * ==================== OTP Management ====================
+   */
+
   @Post('generate-otp')
-  @ApiOperation({ summary: 'Generate OTP' })
+  @ApiOperation({ summary: 'Generate OTP for email' })
   @ApiResponse({ status: 200, description: 'OTP generated successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async generateOTP(@Body() generateOTPRequest: {email: string}): Promise<{ otpId: string }> {
@@ -204,16 +312,17 @@ export class UserController {
   }
 
   /**
-   * More user endpoints has been added below by Engr., Isaiah Pius
+   * ==================== Admin Operations ====================
    */
+
   @Delete('admin/delete/:userId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a user' })
+  @ApiOperation({ summary: 'Admin: Delete a user permanently' })
   @ApiResponse({ status: 200, description: 'User deleted successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async deleteUser(@Param('userId') userId: string): Promise<void> {
     return await this.userService.deleteUser(userId);
   }
-} 
+}

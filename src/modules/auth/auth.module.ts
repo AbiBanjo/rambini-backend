@@ -7,14 +7,25 @@ import { Wallet, User, Address } from '../../entities';
 
 // Services
 import { AuthService } from './services/auth.service';
+import { EmailAuthService } from './services/email-auth.service';
+import { PasswordService } from './services/password.service';
+import { SocialAuthService } from './services/social-auth.service';
+import { ProfileService } from './services/profile.service';
 import { OTPService } from './services/otp.service';
 import { SMSService } from './services/sms.service';
 import { JWTService } from './services/jwt.service';
 import { GoogleAuthService } from './services/google-auth.service';
 import { AppleAuthService } from './services/apple-auth.service';
+import { TwilioVerifyService } from './services/twillo-otp.service';
+
+// Helpers
+import { AuthResponseBuilder } from './helpers/auth-response.builder';
 
 // Controllers
 import { AuthController } from './controllers/auth.controller';
+import { EmailAuthController } from './controllers/email-auth.controller';
+import { PasswordController } from './controllers/password.controller';
+import { SocialAuthController } from './controllers/social-auth.controller';
 
 // Guards
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -50,19 +61,39 @@ import { NotificationModule } from '../notification/notification.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
+  controllers: [
+    AuthController,
+    EmailAuthController,      // ✅ ADD THIS
+    PasswordController,        // ✅ ADD THIS
+    SocialAuthController,      // ✅ ADD THIS
+  ],
   providers: [
     AuthService,
+    EmailAuthService,
+    PasswordService,
+    SocialAuthService,
+    ProfileService,
     OTPService,
     SMSService,
     JWTService,
     GoogleAuthService,
     AppleAuthService,
+    TwilioVerifyService,
     JwtAuthGuard,
     JwtStrategy,
     RedisService,
-    AddressService, // Provide AddressService directly
+    AddressService,
+    AuthResponseBuilder,
   ],
-  exports: [AuthService, JWTService, JwtAuthGuard, OTPService, SMSService],
+  exports: [
+    AuthService, 
+    JWTService, 
+    JwtAuthGuard, 
+    OTPService, 
+    SMSService, 
+    TwilioVerifyService,
+    EmailAuthService,
+    PasswordService,
+  ],
 })
-export class AuthModule {} 
+export class AuthModule {}

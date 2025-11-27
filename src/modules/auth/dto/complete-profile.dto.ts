@@ -1,81 +1,44 @@
-import { IsString, IsNotEmpty, IsOptional, IsEmail, IsBoolean, IsNumber, Min, Max, Length, Matches } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsOptional, ValidateNested, IsBoolean, Length, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class AddressDto {
-  @ApiProperty({
-    description: 'Primary address line',
-    example: '123 Main Street'
-  })
+class AddressDto {
+  @ApiProperty({ example: '123 Main Street' })
   @IsString()
   @IsNotEmpty()
   address_line_1: string;
 
-  @ApiProperty({
-    description: 'Secondary address line (optional)',
-    example: 'Apt 4B',
-    required: false
-  })
-  @IsOptional()
+  @ApiPropertyOptional({ example: 'Apt 4B' })
   @IsString()
+  @IsOptional()
   address_line_2?: string;
 
-  @ApiProperty({
-    description: 'City name',
-    example: 'New York'
-  })
+  @ApiProperty({ example: 'Lagos' })
   @IsString()
   @IsNotEmpty()
   city: string;
 
-  @ApiProperty({
-    description: 'State or province',
-    example: 'NY'
-  })
+  @ApiProperty({ example: 'Lagos State' })
   @IsString()
   @IsNotEmpty()
   state: string;
 
-  @ApiProperty({
-    description: 'Postal code',
-    example: '10001'
-  })
+  @ApiProperty({ example: '100001' })
   @IsString()
   @IsNotEmpty()
   postal_code: string;
 
-  @ApiProperty({
-    description: 'Latitude coordinate (optional)',
-    example: 40.7128,
-    required: false
-  })
+  @ApiProperty({ example: 6.5244 })
   @IsOptional()
-  @IsNumber()
-  @Min(-90)
-  @Max(90)
-  @Type(() => Number)
   latitude?: number;
 
-  @ApiProperty({
-    description: 'Longitude coordinate (optional)',
-    example: -74.0060,
-    required: false
-  })
+  @ApiProperty({ example: 3.3792 })
   @IsOptional()
-  @IsNumber()
-  @Min(-180)
-  @Max(180)
-  @Type(() => Number)
   longitude?: number;
 
-  @ApiProperty({
-    description: 'Whether this is the default address',
-    example: true,
-    required: false
-  })
-  @IsOptional()
+  @ApiPropertyOptional({ example: true })
   @IsBoolean()
-  @Type(() => Boolean)
+  @IsOptional()
   is_default?: boolean;
 }
 
@@ -96,19 +59,20 @@ export class CompleteProfileDto {
   @IsNotEmpty()
   lastName: string;
 
-  @ApiProperty({
-    description: 'Phone number in E.164 format',
-    example: '+1234567890',
+  // ✅ CHANGED: Phone number is now OPTIONAL
+  @ApiPropertyOptional({
+    description: 'Phone number in E.164 format (optional - can be added later in profile)',
+    example: '+2348012345678',
     pattern: '^\\+[1-9]\\d{1,14}$'
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Matches(/^\+[1-9]\d{1,14}$/, {
-    message: 'Invalid phone number format. Use E.164 format (e.g., +1234567890)'
+    message: 'Invalid phone number format. Use E.164 format (e.g., +2348012345678)'
   })
-  phoneNumber: string;
+  phoneNumber?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'User country code (ISO 3166-1 alpha-2)',
     example: 'NG',
     required: false
@@ -119,7 +83,27 @@ export class CompleteProfileDto {
   @Matches(/^[A-Z]{2}$/, { message: 'Country must be a 2-letter uppercase ISO code (e.g., NG, US, UK)' })
   country?: string;
 
-  @ApiProperty({
+  // ✅ CHANGED: OTP ID is optional (only needed if phone is provided)
+  @ApiPropertyOptional({ 
+    description: 'OTP ID received from sending OTP to phone number (required only if phoneNumber is provided)',
+    example: 'abc123-def456-ghi789'
+  })
+  @IsOptional()
+  @IsString()
+  otpId?: string;
+
+  // ✅ CHANGED: OTP code is optional (only needed if phone is provided)
+  @ApiPropertyOptional({ 
+    description: 'OTP code sent to phone number (required only if phoneNumber is provided)',
+    example: '123456'
+  })
+  @IsOptional()
+  @IsString()
+  @Length(6, 6, { message: 'OTP code must be exactly 6 digits' })
+  @Matches(/^\d{6}$/, { message: 'OTP code must be 6 digits' })
+  otpCode?: string;
+
+  @ApiPropertyOptional({
     description: 'User address information (optional)',
     type: AddressDto,
     required: false
@@ -127,4 +111,4 @@ export class CompleteProfileDto {
   @IsOptional()
   @Type(() => AddressDto)
   address?: AddressDto;
-} 
+}

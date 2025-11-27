@@ -29,8 +29,10 @@ export default () => ({
     accountSid: process.env.TWILIO_ACCOUNT_SID,
     authToken: process.env.TWILIO_AUTH_TOKEN,
     phoneNumber: process.env.TWILIO_PHONE_NUMBER,
+    // NEW: Twilio Verify Service SID
+    verifyServiceSid: process.env.TWILIO_VERIFY_SERVICE_SID,
   },
-  
+
   smtp: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT, 10) || 587,
@@ -83,7 +85,7 @@ export default () => ({
   shipbubble: {
     apiKey: process.env.SHIPBUBBLE_API_KEY,
     webhookSecret: process.env.SHIPBUBBLE_WEBHOOK_SECRET,
-    courierSelectionStrategy: process.env.DELIVERY_COURIER_SELECTION_STRATEGY || 'cheapest', // 'cheapest' or 'fastest'
+    courierSelectionStrategy: process.env.DELIVERY_COURIER_SELECTION_STRATEGY || 'cheapest',
   },
 
   uber: {
@@ -108,4 +110,4 @@ export default () => ({
     serviceFeePercentage: parseFloat(process.env.SERVICE_FEE_PERCENTAGE) || 15,
     commissionPercentage: parseFloat(process.env.COMMISSION_PERCENTAGE) || 20,
   },
-}); 
+});
