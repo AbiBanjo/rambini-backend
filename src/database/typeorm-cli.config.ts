@@ -20,7 +20,9 @@ import {
   DeliveryQuote,
   DeliveryTracking,
   Withdrawal,
-  Bank
+  Bank,
+  Coupon,        // ADD THIS
+  CouponUsage    // ADD THIS
 } from '../entities';
 
 // Load environment variables
@@ -33,7 +35,7 @@ export default new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'rambini_db',
-    entities: [
+  entities: [
     User,
     Address,
     Vendor,
@@ -53,10 +55,12 @@ export default new DataSource({
     DeliveryQuote,
     DeliveryTracking,
     Withdrawal,
-    Bank
+    Bank,
+    Coupon,        // ADD THIS
+    CouponUsage    // ADD THIS
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,
   logging: process.env.DB_LOGGING === 'true',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-}); 
+});

@@ -17,6 +17,7 @@ import { CartModule } from './modules/cart/cart.module';
 import { OrderModule } from './modules/order/order.module';
 import { PaymentModule } from './modules/payment/payment.module';
 import { DeliveryModule } from './modules/delivery/delivery.module';
+import { CouponModule } from './modules/coupon/coupon.module';
 // import { NotificationModule } from './modules/notification/notification.module';
 // import { AdminModule } from './modules/admin/admin.module';
 
@@ -78,6 +79,7 @@ if (nodeEnv !== 'development') {
     OrderModule,
     PaymentModule,
     DeliveryModule,
+    CouponModule,
     // NotificationModule,
     // AdminModule,
     

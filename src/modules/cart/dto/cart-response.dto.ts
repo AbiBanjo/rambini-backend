@@ -19,14 +19,12 @@ export class CartItemResponseDto {
   @ApiProperty({ description: 'Service fee for this item' })
   service_fee: number;
 
-
   @ApiProperty({ description: 'When added to cart' })
   created_at: Date;
 
   @ApiProperty({ description: 'When last updated' })
   updated_at: Date;
 
-  // Menu item details
   @ApiProperty({ description: 'Menu item name' })
   menu_item_name: string;
 
@@ -60,8 +58,8 @@ export class CartItemResponseDto {
   @ApiPropertyOptional({ description: 'Address phone if this cart item is part of an order' })
   address_phone?: string;
 
-  // is_preOrder
-  is_preOrder?:boolean
+  @ApiPropertyOptional({ description: 'Whether this is a pre-order item' })
+  is_preOrder?: boolean;
 }
 
 export class CartResponseDto {
@@ -71,20 +69,31 @@ export class CartResponseDto {
   @ApiProperty({ description: 'Array of cart items' })
   items: CartItemResponseDto[];
 
-  @ApiProperty({ description: 'Total number of items in cart' })
+  @ApiPropertyOptional({ description: 'Total number of items in cart' })
   total_items?: number;
 
-  @ApiProperty({ description: 'Subtotal amount' })
+  @ApiPropertyOptional({ description: 'Subtotal amount' })
   subtotal?: number;
 
-  @ApiProperty({ description: 'Total amount including fees' })
+  @ApiPropertyOptional({ description: 'Total amount including fees' })
   total_amount?: number;
 
-  @ApiProperty({ description: 'Whether cart is empty' })
+  @ApiPropertyOptional({ description: 'Whether cart is empty' })
   is_empty?: boolean;
 
-  @ApiProperty({ description: 'Number of unique vendors in cart' })
+  @ApiPropertyOptional({ description: 'Number of unique vendors in cart' })
   vendor_count?: number;
+}
+
+export class AppliedCouponDto {
+  @ApiProperty({ description: 'Vendor ID this coupon applies to' })
+  vendor_id: string;
+
+  @ApiProperty({ description: 'Coupon code' })
+  coupon_code: string;
+
+  @ApiProperty({ description: 'Discount amount' })
+  discount_amount: number;
 }
 
 export class VendorCartGroupDto {
@@ -102,6 +111,9 @@ export class VendorCartGroupDto {
 
   @ApiProperty({ description: 'Subtotal for this vendor' })
   vendor_subtotal: number;
+
+  @ApiPropertyOptional({ description: 'Discount amount for this vendor from applied coupon' })
+  vendor_discount?: number;
 }
 
 export class GroupedCartResponseDto {
@@ -117,7 +129,13 @@ export class GroupedCartResponseDto {
   @ApiProperty({ description: 'Subtotal amount across all vendors' })
   subtotal: number;
 
-  @ApiProperty({ description: 'Total amount including fees' })
+  @ApiProperty({ description: 'Service fee amount' })
+  service_fee: number;
+
+  @ApiProperty({ description: 'Total discount from applied coupons' })
+  discount: number;
+
+  @ApiProperty({ description: 'Total amount including fees and discounts' })
   total_amount: number;
 
   @ApiProperty({ description: 'Whether cart is empty' })
@@ -126,7 +144,16 @@ export class GroupedCartResponseDto {
   @ApiProperty({ description: 'Number of unique vendors in cart' })
   vendor_count: number;
 
-  service_fee:number;
+  @ApiProperty({ description: 'List of applied coupons', type: [AppliedCouponDto] })
+  applied_coupons: AppliedCouponDto[];
+}
+
+export class VendorCouponDto {
+  @ApiProperty({ description: 'Coupon code' })
+  code: string;
+
+  @ApiProperty({ description: 'Discount amount' })
+  discount_amount: number;
 }
 
 export class VendorCartResponseDto {
@@ -151,9 +178,15 @@ export class VendorCartResponseDto {
   @ApiProperty({ description: 'Service fee for this vendor' })
   service_fee: number;
 
-  @ApiProperty({ description: 'Total amount including fees' })
+  @ApiProperty({ description: 'Discount amount from applied coupon' })
+  discount: number;
+
+  @ApiProperty({ description: 'Total amount including fees and discount' })
   total_amount: number;
 
   @ApiProperty({ description: 'Whether vendor cart is empty' })
   is_empty: boolean;
-} 
+
+  @ApiPropertyOptional({ description: 'Applied coupon details', type: VendorCouponDto })
+  applied_coupon?: VendorCouponDto;
+}

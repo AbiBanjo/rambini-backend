@@ -6,7 +6,7 @@ import {
   Delete,
   Body,
   Param,
-  Request ,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
+  ApiQuery,
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
@@ -26,6 +27,7 @@ import {
   GroupedCartResponseDto,
   VendorCartResponseDto,
 } from '../dto';
+import { ApplyCouponDto } from 'src/modules/coupon/dto';
 import { GetUser } from '@/common/decorators/get-user.decorator';
 import { User } from '@/entities';
 
@@ -53,7 +55,7 @@ export class CartController {
   @ApiOperation({ summary: 'Get user cart' })
   @ApiResponse({ status: 200, description: 'Cart retrieved successfully', type: CartResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getCart(@GetUser() user: User,): Promise<CartResponseDto> {
+  async getCart(@GetUser() user: User): Promise<CartResponseDto> {
     return await this.cartService.getCart(user.id);
   }
 
@@ -197,4 +199,46 @@ export class CartController {
       message: 'Cart is valid for checkout',
     };
   }
-} 
+
+  // Coupon endpoints
+  @Post('apply-coupon')
+  @ApiOperation({ summary: 'Apply coupon to cart' })
+  @ApiResponse({ status: 200, description: 'Coupon applied successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid coupon or cart is empty' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async applyCoupon(
+    @GetUser() user: User,
+    @Body() applyCouponDto: ApplyCouponDto,
+  ) {
+    return await this.cartService.applyCouponToCart(
+      user.id,
+      applyCouponDto.code,
+      applyCouponDto.vendor_id,
+    );
+  }
+
+  @Delete('remove-coupon')
+  @ApiOperation({ summary: 'Remove applied coupon from cart' })
+  @ApiQuery({ name: 'vendor_id', required: false, description: 'Vendor ID to remove coupon from specific vendor' })
+  @ApiResponse({ status: 200, description: 'Coupon removed successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async removeCoupon(
+    @GetUser() user: User,
+    @Query('vendor_id') vendorId?: string,
+  ) {
+    await this.cartService.removeCouponFromCart(user.id, vendorId);
+    return { message: 'Coupon removed successfully' };
+  }
+
+  @Get('applied-coupons')
+  @ApiOperation({ summary: 'Get applied coupons for user cart' })
+  @ApiQuery({ name: 'vendor_id', required: false, description: 'Filter by vendor ID' })
+  @ApiResponse({ status: 200, description: 'Applied coupons retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getAppliedCoupons(
+    @GetUser() user: User,
+    @Query('vendor_id') vendorId?: string,
+  ) {
+    return await this.cartService.getAppliedCoupons(user.id, vendorId);
+  }
+}

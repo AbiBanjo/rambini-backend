@@ -19,4 +19,6 @@ export * from './delivery-tracking.entity';
 export * from './delivery-quote.entity';
 export * from './withdrawal.entity';
 export * from './saved-card.entity';
-export * from './bank.entity'; 
+export * from './bank.entity';
+export * from './coupon.entity';
+export * from './coupon-usage.entity'; 

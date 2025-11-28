@@ -21,7 +21,9 @@ import {
   DeliveryQuote,
   Withdrawal,
   Bank,
-  SavedCard
+  SavedCard,
+  Coupon,        // ADD THIS
+  CouponUsage    // ADD THIS
 } from 'src/entities';
 
 export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOptions => ({
@@ -52,9 +54,10 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
     DeliveryQuote,
     Withdrawal,
     Bank,
-    SavedCard
+    SavedCard,
+    Coupon,        // ADD THIS
+    CouponUsage    // ADD THIS
   ],
-  // Optional: Only load migrations if DB_USE_MIGRATIONS is true
   migrations: configService.get('DB_USE_MIGRATIONS') === 'true' 
     ? [__dirname + '/migrations/*{.ts,.js}'] 
     : [],
@@ -64,4 +67,4 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
   autoLoadEntities: false,
   migrationsRun: false,
   migrationsTableName: 'migrations',
-}); 
+});
