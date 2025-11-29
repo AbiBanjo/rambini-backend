@@ -61,85 +61,117 @@ export class WithdrawalService {
     private readonly walletPaymentService: WalletPaymentService,
   ) {}
 
-  async generateWithdrawalOTP(
-    userId: string,
-    amount: number,
-  ): Promise<{ otpId: string; message: string }> {
-    this.logger.log(
-      `Generating withdrawal OTP for user ${userId} with amount ${amount}`,
+ async generateWithdrawalOTP(
+  userId: string,
+  amount: number,
+): Promise<{ otpId: string; message: string }> {
+  this.logger.log(
+    `Generating withdrawal OTP for user ${userId} with amount ${amount}`,
+  );
+  
+  // Check if user has any active withdrawal request
+  const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(userId);
+  if (activeWithdrawal) {
+    throw new BadRequestException(
+      'You have a pending or processing withdrawal request. Please wait for it to be completed.',
     );
-    // Check if user has any active withdrawal request
-    const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(
-      userId,
-    );
-    if (activeWithdrawal) {
-      throw new BadRequestException(
-        'You have a pending or processing withdrawal request. Please wait for it to be completed.',
-      );
-    }
-
-    this.logger.log(`User ${userId} has no active withdrawal request`);
-    // Get user details
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-      relations: ['wallet'],
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    if (!user.email) {
-      throw new BadRequestException(
-        'User email is required for withdrawal OTP',
-      );
-    }
-
-    // Check if user has sufficient balance
-    if (!user.wallet || user.wallet.vendor_balance < amount) {
-      throw new BadRequestException('Insufficient wallet balance');
-    }
-
-    this.logger.log(`User ${userId} has sufficient balance`);
-    this.logger.log(`Generating OTP for user ${userId}`);
-    // Generate OTP
-    // const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpCode = '123456';
-    const otpId = `withdrawal_otp_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-
-    const now = new Date();
-    const expiresAt = new Date(
-      now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000,
-    );
-
-    const otpData: OTPData = {
-      userId,
-      otpCode,
-      createdAt: now,
-      expiresAt,
-      attempts: 0,
-    };
-
-    // Store OTP in Redis with expiration
-    const key = `withdrawal_otp:${otpId}`;
-    await this.redisService.setex(
-      key,
-      this.OTP_EXPIRY_MINUTES * 60,
-      JSON.stringify(otpData),
-    );
-
-    // Send OTP via email
-    await this.sendWithdrawalOTPEmail(user, otpCode);
-
-    this.logger.log(`Withdrawal OTP generated for user ${userId}: ${otpCode}`);
-
-    return {
-      otpId,
-      message: 'Withdrawal OTP sent to your email successfully',
-    };
   }
+
+  this.logger.log(`User ${userId} has no active withdrawal request`);
+  
+  // Get user details
+  const user = await this.userRepository.findOne({
+    where: { id: userId },
+    relations: ['wallet'],
+  });
+
+  if (!user) {
+    throw new NotFoundException('User not found');
+  }
+
+  if (!user.email) {
+    throw new BadRequestException(
+      'User email is required for withdrawal OTP',
+    );
+  }
+
+  // Check if user has sufficient balance
+  if (!user.wallet || user.wallet.vendor_balance < amount) {
+    throw new BadRequestException('Insufficient wallet balance');
+  }
+
+  this.logger.log(`User ${userId} has sufficient balance`);
+  this.logger.log(`Generating OTP for user ${userId}`);
+  
+  // Generate random 6-digit OTP
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  const otpId = `withdrawal_otp_${Date.now()}_${Math.random()
+    .toString(36)
+    .substr(2, 9)}`;
+
+  const now = new Date();
+  const expiresAt = new Date(
+    now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000,
+  );
+
+  const otpData: OTPData = {
+    userId,
+    otpCode,
+    createdAt: now,
+    expiresAt,
+    attempts: 0,
+  };
+
+  // Store OTP in Redis with expiration
+  const key = `withdrawal_otp:${otpId}`;
+  await this.redisService.setex(
+    key,
+    this.OTP_EXPIRY_MINUTES * 60,
+    JSON.stringify(otpData),
+  );
+
+  // Send OTP via email with retry logic
+  let emailSent = false;
+  let emailError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await this.sendWithdrawalOTPEmail(user, otpCode);
+      emailSent = true;
+      this.logger.log(`Withdrawal OTP email sent successfully on attempt ${attempt}`);
+      break;
+    } catch (error) {
+      emailError = error;
+      this.logger.warn(
+        `Failed to send OTP email (attempt ${attempt}/3): ${error.message}`,
+      );
+      
+      // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+      if (attempt < 3) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+      }
+    }
+  }
+
+  // Log final result but don't fail the entire operation
+  if (!emailSent) {
+    this.logger.error(
+      `Failed to send withdrawal OTP email after 3 attempts: ${emailError?.message}`,
+      emailError?.stack,
+    );
+    // Continue anyway - OTP is stored in Redis
+  }
+
+  this.logger.log(`Withdrawal OTP generated for user ${userId}: ${otpCode}`);
+
+  return {
+    otpId,
+    message: emailSent 
+      ? 'Withdrawal OTP sent to your email successfully'
+      : 'Withdrawal OTP generated. Please check your email or contact support if you did not receive it.',
+  };
+}
 
   async requestWithdrawal(
     userId: string,
@@ -528,37 +560,43 @@ export class WithdrawalService {
     return { message: 'Bank deleted successfully' };
   }
 
-  private async sendWithdrawalOTPEmail(
-    user: User,
-    otpCode: string,
-  ): Promise<void> {
-    try {
-      const notification = await this.notificationService.createNotification(
-        user.id,
-        'WITHDRAWAL_OTP' as any,
-        'Withdrawal OTP',
-        `Your withdrawal verification code is: ${otpCode}. Valid for ${this.OTP_EXPIRY_MINUTES} minutes.`,
-        {
-          data: { otpCode, expiryMinutes: this.OTP_EXPIRY_MINUTES },
-          deliveryMethod: 'EMAIL' as any,
-        },
-      );
+ private async sendWithdrawalOTPEmail(
+  user: User,
+  otpCode: string,
+): Promise<void> {
+  try {
+    const notification = await this.notificationService.createNotification(
+      user.id,
+      'WITHDRAWAL_OTP' as any,
+      'Withdrawal OTP',
+      `Your withdrawal verification code is: ${otpCode}. Valid for ${this.OTP_EXPIRY_MINUTES} minutes.`,
+      {
+        data: { otpCode, expiryMinutes: this.OTP_EXPIRY_MINUTES },
+        deliveryMethod: 'EMAIL' as any,
+      },
+    );
 
-      await this.emailNotificationService.sendEmailNotification(
-        notification,
-        user,
-        {
-          otpCode,
-          expiryMinutes: this.OTP_EXPIRY_MINUTES,
-        },
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send withdrawal OTP email: ${error.message}`,
-        error.stack,
-      );
-    }
+    // FIX: Add userName to customData
+    await this.emailNotificationService.sendEmailNotification(
+      notification,
+      user,
+      {
+        userName: user.first_name || user.full_name || user.email || 'User',
+        otpCode,
+        expiryMinutes: this.OTP_EXPIRY_MINUTES,
+      },
+    );
+    
+    this.logger.log(`Withdrawal OTP email sent to ${user.email}`);
+  } catch (error) {
+    this.logger.error(
+      `Failed to send withdrawal OTP email: ${error.message}`,
+      error.stack,
+    );
+    // Re-throw to let caller handle
+    throw error;
   }
+}
 
   private async sendWithdrawalRequestEmailToAdmin(
     withdrawal: Withdrawal,

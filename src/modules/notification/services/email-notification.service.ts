@@ -558,25 +558,59 @@ export class EmailNotificationService {
   }
 
 
-  async sendEmailNotification(
-    notification: Notification,
-    user: User,
-    customData?: Record<string, any>
-  ): Promise<boolean> {
-    try {
-      const template = this.getTemplate(notification.notification_type);
-      const emailData = this.prepareEmailData(notification, user, template, customData);
-      
-      // Here you would integrate with your email service (SendGrid, AWS SES, etc.)
-      await this.deliverEmail(emailData);
-      
-      this.logger.log(`Email notification sent to ${user.email} for notification ${notification.id}`);
-      return true;
-    } catch (error) {
-      this.logger.error(`Failed to send email notification: ${error.message}`, error.stack);
-      return false;
+ async sendEmailNotification(
+  notification: Notification,
+  user: User,
+  customData?: Record<string, any>
+): Promise<boolean> {
+  try {
+    const template = this.getTemplate(notification.notification_type);
+    
+    // Ensure userName is always set
+    const enhancedCustomData = {
+      userName: user.first_name || user.full_name || user.email || 'User',
+      ...customData,
+    };
+    
+    const emailData = this.prepareEmailData(notification, user, template, enhancedCustomData);
+    
+    // Log the actual email content for debugging
+    this.logger.debug(`Preparing to send email:`, {
+      to: emailData.to,
+      subject: emailData.subject,
+      from: emailData.from,
+      dataKeys: Object.keys(enhancedCustomData),
+    });
+    
+    await this.deliverEmail(emailData);
+    
+    this.logger.log(`Email notification sent to ${user.email} for notification ${notification.id}`);
+    return true;
+  } catch (error) {
+    this.logger.error(`Failed to send email notification: ${error.message}`, error.stack);
+    
+    // Log SendGrid specific errors
+    if (error.response?.body) {
+      this.logger.error(`SendGrid error details:`, JSON.stringify(error.response.body));
     }
+    
+    return false;
   }
+}
+
+
+async verifyEmailDelivery(messageId: string): Promise<any> {
+  // This would require SendGrid Events API integration
+  // For now, just log that we should check SendGrid dashboard
+  this.logger.log(
+    `To verify email delivery, check SendGrid Activity Feed for message ID: ${messageId}`
+  );
+  return {
+    message: 'Check SendGrid dashboard for delivery status',
+    dashboardUrl: 'https://app.sendgrid.com/email_activity',
+  };
+}
+
 
   private getTemplate(notificationType: string): EmailTemplate {
     return this.templates.get(notificationType) || this.templates.get('SYSTEM');

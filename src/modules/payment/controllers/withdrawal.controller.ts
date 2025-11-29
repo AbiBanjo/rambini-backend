@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -24,13 +25,21 @@ import {
 } from '../dto';
 import { User } from '@/entities';
 import { GetUser } from '@/common/decorators/get-user.decorator';
+import { EmailNotificationService } from '../../notification/services/email-notification.service';
+import { NotificationService } from '../../notification/notification.service';
 
 @ApiTags('Withdrawal')
 @Controller('withdrawal')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class WithdrawalController {
-  constructor(private readonly withdrawalService: WithdrawalService) {}
+  private readonly logger = new Logger(WithdrawalController.name);
+
+  constructor(
+    private readonly withdrawalService: WithdrawalService,
+    private readonly emailNotificationService: EmailNotificationService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   @Get('banks')
   @ApiOperation({ summary: 'Get user bank accounts' })
@@ -42,7 +51,6 @@ export class WithdrawalController {
   async getUserBanks(@GetUser() user: User): Promise<BankResponseDto[]> {
     return await this.withdrawalService.getUserBanks(user.id);
   }
-
 
   @Post('otp')
   @HttpCode(HttpStatus.OK)
@@ -129,7 +137,6 @@ export class WithdrawalController {
     return await this.withdrawalService.createBank(user.id, bankData);
   }
 
-
   @Get('banks/:id')
   @ApiOperation({ summary: 'Get bank account by ID' })
   @ApiParam({ name: 'id', description: 'Bank account ID' })
@@ -186,7 +193,135 @@ export class WithdrawalController {
   ): Promise<{ message: string }> {
     return await this.withdrawalService.deleteBank(user.id, id);
   }
+
+  // ============================================
+  // TEST ENDPOINTS - Only enable in development
+  // ============================================
+
+  @Get('test-email')
+  @ApiOperation({ 
+    summary: 'Test email delivery (for debugging)',
+    description: 'Development only - Test basic email functionality' 
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Test email sent',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        emailAddress: { type: 'string' },
+        timestamp: { type: 'string' },
+        note: { type: 'string' }
+      }
+    }
+  })
+  async testEmail(@GetUser() user: User) {
+    // OPTIONAL: Add environment check to disable in production
+    // if (process.env.NODE_ENV === 'production') {
+    //   throw new ForbiddenException('Test endpoints are disabled in production');
+    // }
+
+    this.logger.log(`Testing email delivery for user ${user.id} (${user.email})`);
+    
+    try {
+      const testResult = await this.emailNotificationService.sendTestEmail(
+        user.email,
+        'Test Email from Rambini - Withdrawal Service'
+      );
+
+      return {
+        success: testResult,
+        message: testResult 
+          ? `Test email sent to ${user.email}. Please check your inbox and spam folder.`
+          : 'Failed to send test email. Check logs for details.',
+        emailAddress: user.email,
+        timestamp: new Date().toISOString(),
+        note: testResult 
+          ? 'If email is not received within 5 minutes, check: 1) SendGrid Activity Feed, 2) Suppressions list, 3) Spam folder, 4) Sender verification status'
+          : 'Check server logs for detailed error information. Ensure SENDGRID_API_KEY is set correctly.',
+      };
+    } catch (error) {
+      this.logger.error(`Test email failed: ${error.message}`, error.stack);
+      return {
+        success: false,
+        message: `Failed to send test email: ${error.message}`,
+        emailAddress: user.email,
+        timestamp: new Date().toISOString(),
+        note: 'Check server logs for full error details.',
+      };
+    }
+  }
+
+  @Post('test-otp-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Test OTP email delivery (for debugging)',
+    description: 'Development only - Test withdrawal OTP email template'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Test OTP email sent'
+  })
+  async testOtpEmail(@GetUser() user: User) {
+    // OPTIONAL: Add environment check to disable in production
+    // if (process.env.NODE_ENV === 'production') {
+    //   throw new ForbiddenException('Test endpoints are disabled in production');
+    // }
+
+    this.logger.log(`Testing OTP email delivery for user ${user.id} (${user.email})`);
+    
+    try {
+      // Generate a test OTP
+      const testOtpCode = '123456'; // Use fixed OTP for testing
+      
+      const notification = await this.notificationService.createNotification(
+        user.id,
+        'WITHDRAWAL_OTP' as any,
+        'Test Withdrawal OTP',
+        `This is a TEST withdrawal verification code: ${testOtpCode}. Valid for 10 minutes.`,
+        {
+          data: { otpCode: testOtpCode, expiryMinutes: 10 },
+          deliveryMethod: 'EMAIL' as any,
+        },
+      );
+
+      const emailSent = await this.emailNotificationService.sendEmailNotification(
+        notification,
+        user,
+        {
+          userName: user.first_name || user.full_name || user.email || 'User',
+          otpCode: testOtpCode,
+          expiryMinutes: 10,
+        },
+      );
+
+      return {
+        success: emailSent,
+        message: emailSent 
+          ? `Test OTP email sent to ${user.email}. OTP: ${testOtpCode}`
+          : 'Failed to send test OTP email',
+        emailAddress: user.email,
+        testOtp: testOtpCode,
+        timestamp: new Date().toISOString(),
+        note: 'This is a test OTP email. Check your inbox and spam folder.',
+      };
+    } catch (error) {
+      this.logger.error(`Test OTP email failed: ${error.message}`, error.stack);
+      return {
+        success: false,
+        message: `Failed to send test OTP email: ${error.message}`,
+        emailAddress: user.email,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
 }
+
+// ============================================
+// ADMIN CONTROLLER - NO CHANGES NEEDED
+// ============================================
 
 @ApiTags('Admin - Withdrawal')
 @Controller('admin/withdrawal')
