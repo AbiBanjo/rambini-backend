@@ -41,6 +41,122 @@ export class WithdrawalController {
     private readonly notificationService: NotificationService,
   ) {}
 
+  // ============================================
+  // IMPORTANT: Specific routes MUST come BEFORE parametric routes (:id)
+  // ============================================
+
+  // Test endpoints - MUST be before @Get(':id')
+  @Get('test-email')
+  @ApiOperation({ 
+    summary: 'Test email delivery (for debugging)',
+    description: 'Development only - Test basic email functionality' 
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Test email sent',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        emailAddress: { type: 'string' },
+        timestamp: { type: 'string' },
+        note: { type: 'string' }
+      }
+    }
+  })
+  async testEmail(@GetUser() user: User) {
+    this.logger.log(`Testing email delivery for user ${user.id} (${user.email})`);
+    
+    try {
+      const testResult = await this.emailNotificationService.sendTestEmail(
+        user.email,
+        'Test Email from Rambini - Withdrawal Service'
+      );
+
+      return {
+        success: testResult,
+        message: testResult 
+          ? `Test email sent to ${user.email}. Please check your inbox and spam folder.`
+          : 'Failed to send test email. Check logs for details.',
+        emailAddress: user.email,
+        timestamp: new Date().toISOString(),
+        note: testResult 
+          ? 'If email is not received within 5 minutes, check: 1) SendGrid Activity Feed, 2) Suppressions list, 3) Spam folder, 4) Sender verification status'
+          : 'Check server logs for detailed error information. Ensure SENDGRID_API_KEY is set correctly.',
+      };
+    } catch (error) {
+      this.logger.error(`Test email failed: ${error.message}`, error.stack);
+      return {
+        success: false,
+        message: `Failed to send test email: ${error.message}`,
+        emailAddress: user.email,
+        timestamp: new Date().toISOString(),
+        note: 'Check server logs for full error details.',
+      };
+    }
+  }
+
+  @Post('test-otp-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Test OTP email delivery (for debugging)',
+    description: 'Development only - Test withdrawal OTP email template'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Test OTP email sent'
+  })
+  async testOtpEmail(@GetUser() user: User) {
+    this.logger.log(`Testing OTP email delivery for user ${user.id} (${user.email})`);
+    
+    try {
+      // Generate a test OTP
+      const testOtpCode = '123456'; // Use fixed OTP for testing
+      
+      const notification = await this.notificationService.createNotification(
+        user.id,
+        'WITHDRAWAL_OTP' as any,
+        'Test Withdrawal OTP',
+        `This is a TEST withdrawal verification code: ${testOtpCode}. Valid for 10 minutes.`,
+        {
+          data: { otpCode: testOtpCode, expiryMinutes: 10 },
+          deliveryMethod: 'EMAIL' as any,
+        },
+      );
+
+      const emailSent = await this.emailNotificationService.sendEmailNotification(
+        notification,
+        user,
+        {
+          userName: user.first_name || user.full_name || user.email || 'User',
+          otpCode: testOtpCode,
+          expiryMinutes: 10,
+        },
+      );
+
+      return {
+        success: emailSent,
+        message: emailSent 
+          ? `Test OTP email sent to ${user.email}. OTP: ${testOtpCode}`
+          : 'Failed to send test OTP email',
+        emailAddress: user.email,
+        testOtp: testOtpCode,
+        timestamp: new Date().toISOString(),
+        note: 'This is a test OTP email. Check your inbox and spam folder.',
+      };
+    } catch (error) {
+      this.logger.error(`Test OTP email failed: ${error.message}`, error.stack);
+      return {
+        success: false,
+        message: `Failed to send test OTP email: ${error.message}`,
+        emailAddress: user.email,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
+
+  // Other specific routes
   @Get('banks')
   @ApiOperation({ summary: 'Get user bank accounts' })
   @ApiResponse({ 
@@ -52,6 +168,37 @@ export class WithdrawalController {
     return await this.withdrawalService.getUserBanks(user.id);
   }
 
+  @Get('history')
+  @ApiOperation({ summary: 'Get user withdrawal history' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Withdrawal history retrieved successfully',
+    type: [WithdrawalResponseDto]
+  })
+  async getWithdrawalHistory(@Request() req: any): Promise<WithdrawalResponseDto[]> {
+    return await this.withdrawalService.getWithdrawalsByUser(req.user.id);
+  }
+
+  // ============================================
+  // Parametric route - MUST come AFTER specific routes
+  // ============================================
+  @Get(':id')
+  @ApiOperation({ summary: 'Get withdrawal by ID' })
+  @ApiParam({ name: 'id', description: 'Withdrawal ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Withdrawal retrieved successfully',
+    type: WithdrawalResponseDto
+  })
+  @ApiResponse({ status: 404, description: 'Withdrawal not found' })
+  async getWithdrawalById(
+    @Request() req: any,
+    @Param('id') id: string
+  ): Promise<WithdrawalResponseDto> {
+    return await this.withdrawalService.getWithdrawalById(id);
+  }
+
+  // POST routes
   @Post('otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate withdrawal OTP' })
@@ -91,33 +238,6 @@ export class WithdrawalController {
     @Body() withdrawalRequest: WithdrawalRequestDto
   ): Promise<WithdrawalResponseDto> {
     return await this.withdrawalService.requestWithdrawal(req.user.id, withdrawalRequest);
-  }
-
-  @Get('history')
-  @ApiOperation({ summary: 'Get user withdrawal history' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Withdrawal history retrieved successfully',
-    type: [WithdrawalResponseDto]
-  })
-  async getWithdrawalHistory(@Request() req: any): Promise<WithdrawalResponseDto[]> {
-    return await this.withdrawalService.getWithdrawalsByUser(req.user.id);
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get withdrawal by ID' })
-  @ApiParam({ name: 'id', description: 'Withdrawal ID' })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Withdrawal retrieved successfully',
-    type: WithdrawalResponseDto
-  })
-  @ApiResponse({ status: 404, description: 'Withdrawal not found' })
-  async getWithdrawalById(
-    @Request() req: any,
-    @Param('id') id: string
-  ): Promise<WithdrawalResponseDto> {
-    return await this.withdrawalService.getWithdrawalById(id);
   }
 
   // Bank management endpoints
@@ -193,135 +313,7 @@ export class WithdrawalController {
   ): Promise<{ message: string }> {
     return await this.withdrawalService.deleteBank(user.id, id);
   }
-
-  // ============================================
-  // TEST ENDPOINTS - Only enable in development
-  // ============================================
-
-  @Get('test-email')
-  @ApiOperation({ 
-    summary: 'Test email delivery (for debugging)',
-    description: 'Development only - Test basic email functionality' 
-  })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Test email sent',
-    schema: {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        message: { type: 'string' },
-        emailAddress: { type: 'string' },
-        timestamp: { type: 'string' },
-        note: { type: 'string' }
-      }
-    }
-  })
-  async testEmail(@GetUser() user: User) {
-    // OPTIONAL: Add environment check to disable in production
-    // if (process.env.NODE_ENV === 'production') {
-    //   throw new ForbiddenException('Test endpoints are disabled in production');
-    // }
-
-    this.logger.log(`Testing email delivery for user ${user.id} (${user.email})`);
-    
-    try {
-      const testResult = await this.emailNotificationService.sendTestEmail(
-        user.email,
-        'Test Email from Rambini - Withdrawal Service'
-      );
-
-      return {
-        success: testResult,
-        message: testResult 
-          ? `Test email sent to ${user.email}. Please check your inbox and spam folder.`
-          : 'Failed to send test email. Check logs for details.',
-        emailAddress: user.email,
-        timestamp: new Date().toISOString(),
-        note: testResult 
-          ? 'If email is not received within 5 minutes, check: 1) SendGrid Activity Feed, 2) Suppressions list, 3) Spam folder, 4) Sender verification status'
-          : 'Check server logs for detailed error information. Ensure SENDGRID_API_KEY is set correctly.',
-      };
-    } catch (error) {
-      this.logger.error(`Test email failed: ${error.message}`, error.stack);
-      return {
-        success: false,
-        message: `Failed to send test email: ${error.message}`,
-        emailAddress: user.email,
-        timestamp: new Date().toISOString(),
-        note: 'Check server logs for full error details.',
-      };
-    }
-  }
-
-  @Post('test-otp-email')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: 'Test OTP email delivery (for debugging)',
-    description: 'Development only - Test withdrawal OTP email template'
-  })
-  @ApiResponse({ 
-    status: 200, 
-    description: 'Test OTP email sent'
-  })
-  async testOtpEmail(@GetUser() user: User) {
-    // OPTIONAL: Add environment check to disable in production
-    // if (process.env.NODE_ENV === 'production') {
-    //   throw new ForbiddenException('Test endpoints are disabled in production');
-    // }
-
-    this.logger.log(`Testing OTP email delivery for user ${user.id} (${user.email})`);
-    
-    try {
-      // Generate a test OTP
-      const testOtpCode = '123456'; // Use fixed OTP for testing
-      
-      const notification = await this.notificationService.createNotification(
-        user.id,
-        'WITHDRAWAL_OTP' as any,
-        'Test Withdrawal OTP',
-        `This is a TEST withdrawal verification code: ${testOtpCode}. Valid for 10 minutes.`,
-        {
-          data: { otpCode: testOtpCode, expiryMinutes: 10 },
-          deliveryMethod: 'EMAIL' as any,
-        },
-      );
-
-      const emailSent = await this.emailNotificationService.sendEmailNotification(
-        notification,
-        user,
-        {
-          userName: user.first_name || user.full_name || user.email || 'User',
-          otpCode: testOtpCode,
-          expiryMinutes: 10,
-        },
-      );
-
-      return {
-        success: emailSent,
-        message: emailSent 
-          ? `Test OTP email sent to ${user.email}. OTP: ${testOtpCode}`
-          : 'Failed to send test OTP email',
-        emailAddress: user.email,
-        testOtp: testOtpCode,
-        timestamp: new Date().toISOString(),
-        note: 'This is a test OTP email. Check your inbox and spam folder.',
-      };
-    } catch (error) {
-      this.logger.error(`Test OTP email failed: ${error.message}`, error.stack);
-      return {
-        success: false,
-        message: `Failed to send test OTP email: ${error.message}`,
-        emailAddress: user.email,
-        timestamp: new Date().toISOString(),
-      };
-    }
-  }
 }
-
-// ============================================
-// ADMIN CONTROLLER - NO CHANGES NEEDED
-// ============================================
 
 @ApiTags('Admin - Withdrawal')
 @Controller('admin/withdrawal')
