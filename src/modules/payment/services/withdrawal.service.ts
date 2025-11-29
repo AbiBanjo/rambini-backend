@@ -1,14 +1,36 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Withdrawal, WithdrawalStatus, User, Currency, Country, Bank } from '../../../entities';
+import {
+  Withdrawal,
+  WithdrawalStatus,
+  User,
+  Currency,
+  Country,
+  Bank,
+} from '../../../entities';
 import { WithdrawalRepository } from '../repositories/withdrawal.repository';
 import { BankRepository } from '../repositories/bank.repository';
 import { RedisService } from '../../../database/redis.service';
 import { EmailNotificationService } from '../../notification/services/email-notification.service';
 import { NotificationService } from '../../notification/notification.service';
 import { WalletPaymentService } from './wallet-payment.service';
-import { WithdrawalOtpRequestDto, WithdrawalRequestDto, WithdrawalResponseDto, AdminWithdrawalActionDto, BankCreateDto, BankUpdateDto, BankResponseDto } from '../dto';
+import {
+  WithdrawalOtpRequestDto,
+  WithdrawalRequestDto,
+  WithdrawalResponseDto,
+  AdminWithdrawalActionDto,
+  BankCreateDto,
+  BankUpdateDto,
+  BankResponseDto,
+} from '../dto';
 
 export interface OTPData {
   userId: string;
@@ -39,14 +61,22 @@ export class WithdrawalService {
     private readonly walletPaymentService: WalletPaymentService,
   ) {}
 
-  async generateWithdrawalOTP(userId: string, amount: number): Promise<{ otpId: string; message: string }> {
-    this.logger.log(`Generating withdrawal OTP for user ${userId} with amount ${amount}`);
+  async generateWithdrawalOTP(
+    userId: string,
+    amount: number,
+  ): Promise<{ otpId: string; message: string }> {
+    this.logger.log(
+      `Generating withdrawal OTP for user ${userId} with amount ${amount}`,
+    );
     // Check if user has any active withdrawal request
-    const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(userId);
+    const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(
+      userId,
+    );
     if (activeWithdrawal) {
-      throw new BadRequestException('You have a pending or processing withdrawal request. Please wait for it to be completed.');
+      throw new BadRequestException(
+        'You have a pending or processing withdrawal request. Please wait for it to be completed.',
+      );
     }
-
 
     this.logger.log(`User ${userId} has no active withdrawal request`);
     // Get user details
@@ -60,11 +90,13 @@ export class WithdrawalService {
     }
 
     if (!user.email) {
-      throw new BadRequestException('User email is required for withdrawal OTP');
+      throw new BadRequestException(
+        'User email is required for withdrawal OTP',
+      );
     }
 
     // Check if user has sufficient balance
-    if (!user.wallet || user.wallet.balance <= amount) {
+    if (!user.wallet || user.wallet.vendor_balance < amount) {
       throw new BadRequestException('Insufficient wallet balance');
     }
 
@@ -72,11 +104,15 @@ export class WithdrawalService {
     this.logger.log(`Generating OTP for user ${userId}`);
     // Generate OTP
     // const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpCode = "123456";
-    const otpId = `withdrawal_otp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const otpCode = '123456';
+    const otpId = `withdrawal_otp_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
 
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
+    const expiresAt = new Date(
+      now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
 
     const otpData: OTPData = {
       userId,
@@ -88,7 +124,11 @@ export class WithdrawalService {
 
     // Store OTP in Redis with expiration
     const key = `withdrawal_otp:${otpId}`;
-    await this.redisService.setex(key, this.OTP_EXPIRY_MINUTES * 60, JSON.stringify(otpData));
+    await this.redisService.setex(
+      key,
+      this.OTP_EXPIRY_MINUTES * 60,
+      JSON.stringify(otpData),
+    );
 
     // Send OTP via email
     await this.sendWithdrawalOTPEmail(user, otpCode);
@@ -101,17 +141,27 @@ export class WithdrawalService {
     };
   }
 
-  async requestWithdrawal(userId: string, withdrawalData: WithdrawalRequestDto): Promise<WithdrawalResponseDto> {
+  async requestWithdrawal(
+    userId: string,
+    withdrawalData: WithdrawalRequestDto,
+  ): Promise<WithdrawalResponseDto> {
     // Validate OTP
-    const otpValidation = await this.validateWithdrawalOTP(withdrawalData.otp_id, withdrawalData.otp_code);
+    const otpValidation = await this.validateWithdrawalOTP(
+      withdrawalData.otp_id,
+      withdrawalData.otp_code,
+    );
     if (!otpValidation.isValid) {
       throw new ForbiddenException(otpValidation.error || 'Invalid OTP');
     }
 
     // Check if user has any active withdrawal request
-    const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(userId);
+    const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(
+      userId,
+    );
     if (activeWithdrawal) {
-      throw new BadRequestException('You have a pending or processing withdrawal request. Please wait for it to be completed.');
+      throw new BadRequestException(
+        'You have a pending or processing withdrawal request. Please wait for it to be completed.',
+      );
     }
 
     // Get user details
@@ -131,16 +181,20 @@ export class WithdrawalService {
     // Validate country and currency match
     const expectedCurrency = this.getCurrencyForCountry(withdrawalData.country);
     if (withdrawalData.currency !== expectedCurrency) {
-      throw new BadRequestException(`Currency ${withdrawalData.currency} is not supported for country ${withdrawalData.country}`);
+      throw new BadRequestException(
+        `Currency ${withdrawalData.currency} is not supported for country ${withdrawalData.country}`,
+      );
     }
 
     // Calculate fee
     // const fee = this.calculateWithdrawalFee(withdrawalData.amount, withdrawalData.currency);
-    const totalAmount = withdrawalData.amount 
+    const totalAmount = withdrawalData.amount;
 
     // Check if user has sufficient balance
     if (user.wallet.vendor_balance < totalAmount) {
-      throw new BadRequestException(`Insufficient balance. Required: ${totalAmount} ${withdrawalData.currency}, Available: ${user.wallet.balance} ${user.wallet.currency}`);
+      throw new BadRequestException(
+        `Insufficient balance. Required: ${totalAmount} ${withdrawalData.currency}, Available: ${user.wallet.balance} ${user.wallet.currency}`,
+      );
     }
 
     // Create withdrawal request
@@ -153,7 +207,8 @@ export class WithdrawalService {
       bank_name: withdrawalData.bank_name,
       account_number: withdrawalData.account_number,
       account_name: withdrawalData.account_name,
-      recipient_type: withdrawalData.recipient_type || withdrawalData.recipient_type_uk,
+      recipient_type:
+        withdrawalData.recipient_type || withdrawalData.recipient_type_uk,
       routing_number: withdrawalData.routing_number,
       account_type: withdrawalData.account_type,
       recipient_address: withdrawalData.recipient_address,
@@ -167,12 +222,17 @@ export class WithdrawalService {
     // Send notification to admin
     await this.sendWithdrawalRequestEmailToAdmin(withdrawal);
 
-    this.logger.log(`Withdrawal request created: ${withdrawal.id} for user ${userId}`);
+    this.logger.log(
+      `Withdrawal request created: ${withdrawal.id} for user ${userId}`,
+    );
 
     return this.mapToResponseDto(withdrawal);
   }
 
-  async validateWithdrawalOTP(otpId: string, otpCode: string): Promise<{ isValid: boolean; error?: string }> {
+  async validateWithdrawalOTP(
+    otpId: string,
+    otpCode: string,
+  ): Promise<{ isValid: boolean; error?: string }> {
     const key = `withdrawal_otp:${otpId}`;
     const otpDataString = await this.redisService.get(key);
 
@@ -197,7 +257,11 @@ export class WithdrawalService {
     // Verify OTP code
     if (otpCode !== otpData.otpCode) {
       otpData.attempts += 1;
-      await this.redisService.setex(key, this.OTP_EXPIRY_MINUTES * 60, JSON.stringify(otpData));
+      await this.redisService.setex(
+        key,
+        this.OTP_EXPIRY_MINUTES * 60,
+        JSON.stringify(otpData),
+      );
       return { isValid: false, error: 'Invalid OTP code' };
     }
 
@@ -231,9 +295,9 @@ export class WithdrawalService {
   }
 
   async markWithdrawalAsDone(
-    withdrawalId: string, 
-    adminId: string, 
-    actionData: AdminWithdrawalActionDto
+    withdrawalId: string,
+    adminId: string,
+    actionData: AdminWithdrawalActionDto,
   ): Promise<WithdrawalResponseDto> {
     const withdrawal = await this.withdrawalRepo.findById(withdrawalId);
     if (!withdrawal) {
@@ -250,28 +314,32 @@ export class WithdrawalService {
       WithdrawalStatus.COMPLETED,
       adminId,
       actionData.notes,
-      actionData.transaction_reference
+      actionData.transaction_reference,
     );
 
     // Deduct amount from user's wallet
     await this.walletPaymentService.debitWalletForWithdrawal(
       withdrawal.user_id,
       withdrawal.amount + withdrawal.fee,
-      `Withdrawal ${withdrawal.id}`
+      `Withdrawal ${withdrawal.id}`,
     );
 
     // Send notification to user
     await this.sendWithdrawalCompletedEmail(withdrawal);
 
-    this.logger.log(`Withdrawal ${withdrawalId} marked as completed by admin ${adminId}`);
+    this.logger.log(
+      `Withdrawal ${withdrawalId} marked as completed by admin ${adminId}`,
+    );
 
-    return this.mapToResponseDto(await this.withdrawalRepo.findById(withdrawalId));
+    return this.mapToResponseDto(
+      await this.withdrawalRepo.findById(withdrawalId),
+    );
   }
 
   async markWithdrawalAsFailed(
-    withdrawalId: string, 
-    adminId: string, 
-    actionData: AdminWithdrawalActionDto
+    withdrawalId: string,
+    adminId: string,
+    actionData: AdminWithdrawalActionDto,
   ): Promise<WithdrawalResponseDto> {
     const withdrawal = await this.withdrawalRepo.findById(withdrawalId);
     if (!withdrawal) {
@@ -287,21 +355,25 @@ export class WithdrawalService {
       withdrawalId,
       WithdrawalStatus.FAILED,
       adminId,
-      actionData.notes
+      actionData.notes,
     );
 
     // Send notification to user
     await this.sendWithdrawalFailedEmail(withdrawal);
 
-    this.logger.log(`Withdrawal ${withdrawalId} marked as failed by admin ${adminId}`);
+    this.logger.log(
+      `Withdrawal ${withdrawalId} marked as failed by admin ${adminId}`,
+    );
 
-    return this.mapToResponseDto(await this.withdrawalRepo.findById(withdrawalId));
+    return this.mapToResponseDto(
+      await this.withdrawalRepo.findById(withdrawalId),
+    );
   }
 
   async markWithdrawalAsRejected(
-    withdrawalId: string, 
-    adminId: string, 
-    actionData: AdminWithdrawalActionDto
+    withdrawalId: string,
+    adminId: string,
+    actionData: AdminWithdrawalActionDto,
   ): Promise<WithdrawalResponseDto> {
     const withdrawal = await this.withdrawalRepo.findById(withdrawalId);
     if (!withdrawal) {
@@ -317,35 +389,50 @@ export class WithdrawalService {
       withdrawalId,
       WithdrawalStatus.REJECTED,
       adminId,
-      actionData.notes
+      actionData.notes,
     );
 
     // Send notification to user
     await this.sendWithdrawalRejectedEmail(withdrawal);
 
-    this.logger.log(`Withdrawal ${withdrawalId} marked as rejected by admin ${adminId}`);
+    this.logger.log(
+      `Withdrawal ${withdrawalId} marked as rejected by admin ${adminId}`,
+    );
 
-    return this.mapToResponseDto(await this.withdrawalRepo.findById(withdrawalId));
+    return this.mapToResponseDto(
+      await this.withdrawalRepo.findById(withdrawalId),
+    );
   }
 
   // Bank management methods
-  async createBank(userId: string, bankData: BankCreateDto): Promise<BankResponseDto> {
+  async createBank(
+    userId: string,
+    bankData: BankCreateDto,
+  ): Promise<BankResponseDto> {
     this.logger.log(`Creating bank for user ${userId}`);
 
     // Check if bank with same account number already exists for this user
-    const existingBank = await this.bankRepo.findByAccountNumber(userId, bankData.account_number);
+    const existingBank = await this.bankRepo.findByAccountNumber(
+      userId,
+      bankData.account_number,
+    );
     if (existingBank) {
-      throw new BadRequestException('Bank account with this account number already exists');
+      throw new BadRequestException(
+        'Bank account with this account number already exists',
+      );
     }
 
     // Check if bank with same name and bank name already exists
-    const existingBankByName = await this.bankRepo.findByBankNameAndAccountNumber(
-      userId, 
-      bankData.bank_name, 
-      bankData.account_number
-    );
+    const existingBankByName =
+      await this.bankRepo.findByBankNameAndAccountNumber(
+        userId,
+        bankData.bank_name,
+        bankData.account_number,
+      );
     if (existingBankByName) {
-      throw new BadRequestException('Bank account with this name and bank already exists');
+      throw new BadRequestException(
+        'Bank account with this name and bank already exists',
+      );
     }
 
     const bank = await this.bankRepo.create({
@@ -374,7 +461,11 @@ export class WithdrawalService {
     return this.mapBankToResponseDto(bank);
   }
 
-  async updateBank(userId: string, bankId: string, bankData: BankUpdateDto): Promise<BankResponseDto> {
+  async updateBank(
+    userId: string,
+    bankId: string,
+    bankData: BankUpdateDto,
+  ): Promise<BankResponseDto> {
     this.logger.log(`Updating bank ${bankId} for user ${userId}`);
 
     const existingBank = await this.bankRepo.findByUserIdAndId(userId, bankId);
@@ -383,22 +474,32 @@ export class WithdrawalService {
     }
 
     // Check if updating account number would create a duplicate
-    if (bankData.account_number && bankData.account_number !== existingBank.account_number) {
-      const duplicateBank = await this.bankRepo.findByAccountNumber(userId, bankData.account_number);
+    if (
+      bankData.account_number &&
+      bankData.account_number !== existingBank.account_number
+    ) {
+      const duplicateBank = await this.bankRepo.findByAccountNumber(
+        userId,
+        bankData.account_number,
+      );
       if (duplicateBank && duplicateBank.id !== bankId) {
-        throw new BadRequestException('Bank account with this account number already exists');
+        throw new BadRequestException(
+          'Bank account with this account number already exists',
+        );
       }
     }
 
     // Check if updating bank name and account number would create a duplicate
     if (bankData.bank_name && bankData.account_number) {
       const duplicateBank = await this.bankRepo.findByBankNameAndAccountNumber(
-        userId, 
-        bankData.bank_name, 
-        bankData.account_number
+        userId,
+        bankData.bank_name,
+        bankData.account_number,
       );
       if (duplicateBank && duplicateBank.id !== bankId) {
-        throw new BadRequestException('Bank account with this name and bank already exists');
+        throw new BadRequestException(
+          'Bank account with this name and bank already exists',
+        );
       }
     }
 
@@ -407,7 +508,10 @@ export class WithdrawalService {
     return this.mapBankToResponseDto(updatedBank);
   }
 
-  async deleteBank(userId: string, bankId: string): Promise<{ message: string }> {
+  async deleteBank(
+    userId: string,
+    bankId: string,
+  ): Promise<{ message: string }> {
     this.logger.log(`Deleting bank ${bankId} for user ${userId}`);
 
     const existingBank = await this.bankRepo.findByUserIdAndId(userId, bankId);
@@ -424,7 +528,10 @@ export class WithdrawalService {
     return { message: 'Bank deleted successfully' };
   }
 
-  private async sendWithdrawalOTPEmail(user: User, otpCode: string): Promise<void> {
+  private async sendWithdrawalOTPEmail(
+    user: User,
+    otpCode: string,
+  ): Promise<void> {
     try {
       const notification = await this.notificationService.createNotification(
         user.id,
@@ -434,46 +541,56 @@ export class WithdrawalService {
         {
           data: { otpCode, expiryMinutes: this.OTP_EXPIRY_MINUTES },
           deliveryMethod: 'EMAIL' as any,
-        }
+        },
       );
 
-      await this.emailNotificationService.sendEmailNotification(notification, user, {
-        otpCode,
-        expiryMinutes: this.OTP_EXPIRY_MINUTES,
-      });
+      await this.emailNotificationService.sendEmailNotification(
+        notification,
+        user,
+        {
+          otpCode,
+          expiryMinutes: this.OTP_EXPIRY_MINUTES,
+        },
+      );
     } catch (error) {
-      this.logger.error(`Failed to send withdrawal OTP email: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to send withdrawal OTP email: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
-  private async sendWithdrawalRequestEmailToAdmin(withdrawal: Withdrawal): Promise<void> {
+  private async sendWithdrawalRequestEmailToAdmin(
+    withdrawal: Withdrawal,
+  ): Promise<void> {
     try {
       // Create a notification for admin
-      const adminNotification = await this.notificationService.createNotification(
-        'admin', // This would be the admin user ID
-        'ADMIN_WITHDRAWAL_REQUEST' as any,
-        'New Withdrawal Request',
-        `New withdrawal request from ${withdrawal.user.full_name} for ${withdrawal.formatted_amount}`,
-        {
-          data: {
-            withdrawalId: withdrawal.id,
-            userName: withdrawal.user.full_name,
-            userEmail: withdrawal.user.email,
-            amount: withdrawal.amount,
-            currency: withdrawal.currency,
-            country: withdrawal.country,
-            bankName: withdrawal.bank_name,
-            accountNumber: withdrawal.account_number,
-            accountName: withdrawal.account_name,
-            routingNumber: withdrawal.routing_number,
-            sortCode: withdrawal.sort_code,
-            accountType: withdrawal.account_type,
-            date: withdrawal.created_at.toISOString(),
-            baseUrl: process.env.APP_URL || 'http://localhost:3000',
+      const adminNotification =
+        await this.notificationService.createNotification(
+          'admin', // This would be the admin user ID
+          'ADMIN_WITHDRAWAL_REQUEST' as any,
+          'New Withdrawal Request',
+          `New withdrawal request from ${withdrawal.user.full_name} for ${withdrawal.formatted_amount}`,
+          {
+            data: {
+              withdrawalId: withdrawal.id,
+              userName: withdrawal.user.full_name,
+              userEmail: withdrawal.user.email,
+              amount: withdrawal.amount,
+              currency: withdrawal.currency,
+              country: withdrawal.country,
+              bankName: withdrawal.bank_name,
+              accountNumber: withdrawal.account_number,
+              accountName: withdrawal.account_name,
+              routingNumber: withdrawal.routing_number,
+              sortCode: withdrawal.sort_code,
+              accountType: withdrawal.account_type,
+              date: withdrawal.created_at.toISOString(),
+              baseUrl: process.env.APP_URL || 'http://localhost:3000',
+            },
+            deliveryMethod: 'EMAIL' as any,
           },
-          deliveryMethod: 'EMAIL' as any,
-        }
-      );
+        );
 
       // Create a mock admin user for email sending
       const adminUser = {
@@ -484,30 +601,41 @@ export class WithdrawalService {
         full_name: 'Admin User',
       } as User;
 
-      await this.emailNotificationService.sendEmailNotification(adminNotification, adminUser, {
-        withdrawalId: withdrawal.id,
-        userName: withdrawal.user.full_name,
-        userEmail: withdrawal.user.email,
-        amount: withdrawal.amount,
-        currency: withdrawal.currency,
-        country: withdrawal.country,
-        bankName: withdrawal.bank_name,
-        accountNumber: withdrawal.account_number,
-        accountName: withdrawal.account_name,
-        routingNumber: withdrawal.routing_number,
-        sortCode: withdrawal.sort_code,
-        accountType: withdrawal.account_type,
-        date: withdrawal.created_at.toISOString(),
-        baseUrl: process.env.APP_URL || 'http://localhost:3000',
-      });
+      await this.emailNotificationService.sendEmailNotification(
+        adminNotification,
+        adminUser,
+        {
+          withdrawalId: withdrawal.id,
+          userName: withdrawal.user.full_name,
+          userEmail: withdrawal.user.email,
+          amount: withdrawal.amount,
+          currency: withdrawal.currency,
+          country: withdrawal.country,
+          bankName: withdrawal.bank_name,
+          accountNumber: withdrawal.account_number,
+          accountName: withdrawal.account_name,
+          routingNumber: withdrawal.routing_number,
+          sortCode: withdrawal.sort_code,
+          accountType: withdrawal.account_type,
+          date: withdrawal.created_at.toISOString(),
+          baseUrl: process.env.APP_URL || 'http://localhost:3000',
+        },
+      );
 
-      this.logger.log(`Withdrawal request notification sent to admin for withdrawal: ${withdrawal.id}`);
+      this.logger.log(
+        `Withdrawal request notification sent to admin for withdrawal: ${withdrawal.id}`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to send withdrawal request email to admin: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to send withdrawal request email to admin: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
-  private async sendWithdrawalCompletedEmail(withdrawal: Withdrawal): Promise<void> {
+  private async sendWithdrawalCompletedEmail(
+    withdrawal: Withdrawal,
+  ): Promise<void> {
     try {
       const notification = await this.notificationService.createNotification(
         withdrawal.user_id,
@@ -515,64 +643,90 @@ export class WithdrawalService {
         'Withdrawal Completed',
         `Your withdrawal of ${withdrawal.formatted_amount} has been completed successfully.`,
         {
-          data: { 
+          data: {
             amount: withdrawal.amount,
             currency: withdrawal.currency,
             transactionRef: withdrawal.transaction_reference,
           },
           deliveryMethod: 'EMAIL' as any,
-        }
+        },
       );
 
-      await this.emailNotificationService.sendEmailNotification(notification, withdrawal.user);
+      await this.emailNotificationService.sendEmailNotification(
+        notification,
+        withdrawal.user,
+      );
     } catch (error) {
-      this.logger.error(`Failed to send withdrawal completed email: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to send withdrawal completed email: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
-  private async sendWithdrawalFailedEmail(withdrawal: Withdrawal): Promise<void> {
+  private async sendWithdrawalFailedEmail(
+    withdrawal: Withdrawal,
+  ): Promise<void> {
     try {
       const notification = await this.notificationService.createNotification(
         withdrawal.user_id,
         'WITHDRAWAL_FAILED' as any,
         'Withdrawal Failed',
-        `Your withdrawal of ${withdrawal.formatted_amount} has failed. ${withdrawal.admin_notes || ''}`,
+        `Your withdrawal of ${withdrawal.formatted_amount} has failed. ${
+          withdrawal.admin_notes || ''
+        }`,
         {
-          data: { 
+          data: {
             amount: withdrawal.amount,
             currency: withdrawal.currency,
             reason: withdrawal.admin_notes,
           },
           deliveryMethod: 'EMAIL' as any,
-        }
+        },
       );
 
-      await this.emailNotificationService.sendEmailNotification(notification, withdrawal.user);
+      await this.emailNotificationService.sendEmailNotification(
+        notification,
+        withdrawal.user,
+      );
     } catch (error) {
-      this.logger.error(`Failed to send withdrawal failed email: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to send withdrawal failed email: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
-  private async sendWithdrawalRejectedEmail(withdrawal: Withdrawal): Promise<void> {
+  private async sendWithdrawalRejectedEmail(
+    withdrawal: Withdrawal,
+  ): Promise<void> {
     try {
       const notification = await this.notificationService.createNotification(
         withdrawal.user_id,
         'WITHDRAWAL_REJECTED' as any,
         'Withdrawal Rejected',
-        `Your withdrawal of ${withdrawal.formatted_amount} has been rejected. ${withdrawal.admin_notes || ''}`,
+        `Your withdrawal of ${withdrawal.formatted_amount} has been rejected. ${
+          withdrawal.admin_notes || ''
+        }`,
         {
-          data: { 
+          data: {
             amount: withdrawal.amount,
             currency: withdrawal.currency,
             reason: withdrawal.admin_notes,
           },
           deliveryMethod: 'EMAIL' as any,
-        }
+        },
       );
 
-      await this.emailNotificationService.sendEmailNotification(notification, withdrawal.user);
+      await this.emailNotificationService.sendEmailNotification(
+        notification,
+        withdrawal.user,
+      );
     } catch (error) {
-      this.logger.error(`Failed to send withdrawal rejected email: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to send withdrawal rejected email: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
