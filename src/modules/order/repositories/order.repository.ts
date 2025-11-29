@@ -28,33 +28,39 @@ export class OrderRepository {
   }
 
   async findById(id: string): Promise<Order | null> {
-    return await this.orderRepository.findOne({
-      where: { id },
-      relations: [
-        'customer',
-        'vendor',
-        'vendor.user',
-        'vendor.address',
-        'order_items',
-        'order_items.menu_item',
-        'order_items.menu_item.vendor',
-        'order_items.menu_item.category',
-        'delivery_quote',
-      ],
-    });
+    // Use QueryBuilder to ensure customer email is loaded
+    return await this.orderRepository
+      .createQueryBuilder('order')
+      // Load customer with all necessary fields including email
+      .leftJoinAndSelect('order.customer', 'customer')
+      // Load vendor relations
+      .leftJoinAndSelect('order.vendor', 'vendor')
+      .leftJoinAndSelect('vendor.user', 'vendor_user')
+      .leftJoinAndSelect('vendor.address', 'vendor_address')
+      // Load delivery address
+      .leftJoinAndSelect('order.delivery_address', 'delivery_address')
+      // Load order items
+      .leftJoinAndSelect('order.order_items', 'order_items')
+      .leftJoinAndSelect('order_items.menu_item', 'menu_item')
+      .leftJoinAndSelect('menu_item.vendor', 'menu_item_vendor')
+      .leftJoinAndSelect('menu_item.category', 'category')
+      // Load delivery quote
+      .leftJoinAndSelect('order.delivery_quote', 'delivery_quote')
+      .where('order.id = :id', { id })
+      .getOne();
   }
 
   async findByOrderNumber(orderNumber: string): Promise<Order | null> {
-    return await this.orderRepository.findOne({
-      where: { order_number: orderNumber },
-      relations: [
-        'customer',
-        'vendor',
-        'delivery_address',
-        'order_items',
-        'order_items.menu_item',
-      ],
-    });
+    return await this.orderRepository
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.customer', 'customer')
+      .leftJoinAndSelect('order.vendor', 'vendor')
+      .leftJoinAndSelect('vendor.user', 'vendor_user')
+      .leftJoinAndSelect('order.delivery_address', 'delivery_address')
+      .leftJoinAndSelect('order.order_items', 'order_items')
+      .leftJoinAndSelect('order_items.menu_item', 'menu_item')
+      .where('order.order_number = :orderNumber', { orderNumber })
+      .getOne();
   }
 
   async findByCustomerId(customerId: string, filterDto?: OrderFilterDto): Promise<{ orders: Order[] }> {
@@ -62,7 +68,7 @@ export class OrderRepository {
     queryBuilder.andWhere('order.customer_id = :customerId', { customerId });
     const orders = await queryBuilder.getMany();
 
-    return { orders};
+    return { orders };
   }
 
   async findByVendorId(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: Order[] }> {
@@ -285,4 +291,4 @@ export class OrderRepository {
 
     return queryBuilder;
   }
-} 
+}

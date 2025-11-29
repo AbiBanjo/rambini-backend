@@ -407,121 +407,138 @@ export class OrderService {
 
     // Handle specific status updates
     switch (updateDto.order_status) {
-      case OrderStatus.CONFIRMED:
-        if (updateDto.estimated_prep_time_minutes) {
-          updateData.estimated_prep_time_minutes =
-            updateDto.estimated_prep_time_minutes;
-        }
+    // In your OrderService.updateOrderStatus method, replace the email notification sections with this:
 
-        // Send email to customer about order confirmation
-        try {
-          const estimatedTime = updateDto.estimated_prep_time_minutes
-            ? `${updateDto.estimated_prep_time_minutes} minutes`
-            : undefined;
+// For CONFIRMED status:
+case OrderStatus.CONFIRMED:
+  if (updateDto.estimated_prep_time_minutes) {
+    updateData.estimated_prep_time_minutes = updateDto.estimated_prep_time_minutes;
+  }
 
-          await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
-            order,
-            order.customer,
-            OrderStatus.CONFIRMED,
-            {
-              estimatedTime,
-              vendorNotes: updateDto.vendor_notes,
-            },
-          );
-          this.logger.log(
-            `Order confirmation email sent to customer for order ${orderId}`,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to send order confirmation email: ${error.message}`,
-          );
-        }
+  // Send email to customer about order confirmation
+  try {
+    const estimatedTime = updateDto.estimated_prep_time_minutes
+      ? `${updateDto.estimated_prep_time_minutes} minutes`
+      : undefined;
 
-        // Send push notification to customer about order being confirmed
-        try {
-          const prepTimeMsg = updateDto.estimated_prep_time_minutes
-            ? ` Estimated preparation time: ${updateDto.estimated_prep_time_minutes} minutes.`
-            : '';
-          await this.notificationService.sendPushNotification(
-            order.customer_id,
-            NotificationType.ORDER_UPDATE,
-            `Order #${order.order_number} Confirmed!`,
-            `Your order has been confirmed by the vendor.${prepTimeMsg}`,
-            {
-              order_id: orderId,
-              order_number: order.order_number,
-              status: updateDto.order_status,
-              estimated_prep_time_minutes:
-                updateDto.estimated_prep_time_minutes,
-              order_type: order.order_type,
-            },
-          );
-          this.logger.log(
-            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to send push notification for order ${orderId}: ${error.message}`,
-          );
-        }
-        break;
+    // Make sure we have the customer with email loaded
+    if (order.customer && order.customer.email) {
+      await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+        order,
+        order.customer,
+        OrderStatus.CONFIRMED,
+        {
+          estimatedTime,
+          vendorNotes: updateDto.vendor_notes,
+        },
+      );
+      this.logger.log(
+        `Order confirmation email sent to customer for order ${orderId}`,
+      );
+    } else {
+      this.logger.warn(
+        `Cannot send confirmation email - customer not loaded or missing email for order ${orderId}`,
+      );
+    }
+  } catch (error) {
+    this.logger.error(
+      `Failed to send order confirmation email: ${error.message}`,
+    );
+  }
 
-      case OrderStatus.PREPARING:
-        if (updateDto.estimated_prep_time_minutes) {
-          updateData.estimated_prep_time_minutes =
-            updateDto.estimated_prep_time_minutes;
-        }
+  // Send push notification to customer about order being confirmed
+  try {
+    const prepTimeMsg = updateDto.estimated_prep_time_minutes
+      ? ` Estimated preparation time: ${updateDto.estimated_prep_time_minutes} minutes.`
+      : '';
+    await this.notificationService.sendPushNotification(
+      order.customer_id,
+      NotificationType.ORDER_UPDATE,
+      `Order #${order.order_number} Confirmed!`,
+      `Your order has been confirmed by the vendor.${prepTimeMsg}`,
+      {
+        order_id: orderId,
+        order_number: order.order_number,
+        status: updateDto.order_status,
+        estimated_prep_time_minutes: updateDto.estimated_prep_time_minutes,
+        order_type: order.order_type,
+      },
+    );
+    this.logger.log(
+      `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+    );
+  } catch (error) {
+    this.logger.error(
+      `Failed to send push notification for order ${orderId}: ${error.message}`,
+    );
+  }
+  break;
 
-        // Send email to customer about order being prepared
-        try {
-          const estimatedTime = updateDto.estimated_prep_time_minutes
-            ? `${updateDto.estimated_prep_time_minutes} minutes`
-            : undefined;
+// For PREPARING status:
+case OrderStatus.PREPARING:
+  if (updateDto.estimated_prep_time_minutes) {
+    updateData.estimated_prep_time_minutes = updateDto.estimated_prep_time_minutes;
+  }
 
-          await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
-            order,
-            order.customer,
-            OrderStatus.PREPARING,
-            {
-              estimatedTime,
-              vendorNotes: updateDto.vendor_notes,
-            },
-          );
-          this.logger.log(
-            `Preparing status email sent to customer for order ${orderId}`,
-          );
-        } catch (error) {
-          this.logger.error(`Failed to send preparing email: ${error.message}`);
-        }
+  // Send email to customer about order being prepared
+  try {
+    const estimatedTime = updateDto.estimated_prep_time_minutes
+      ? `${updateDto.estimated_prep_time_minutes} minutes`
+      : undefined;
 
-        // Send push notification to customer about order being prepared
-        try {
-          const prepTimeMsg = updateDto.estimated_prep_time_minutes
-            ? ` Estimated time: ${updateDto.estimated_prep_time_minutes} minutes.`
-            : '';
-          await this.notificationService.sendPushNotification(
-            order.customer_id,
-            NotificationType.ORDER_UPDATE,
-            `Order #${order.order_number} Being Prepared`,
-            `Your order is now being prepared!`,
-            {
-              order_id: orderId,
-              order_number: order.order_number,
-              status: updateDto.order_status,
-              estimated_prep_time_minutes:
-                updateDto.estimated_prep_time_minutes,
-              order_type: order.order_type,
-            },
-          );
-          this.logger.log(
-            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
-          );
-        } catch (error) {
-          this.logger.error(
-            `Failed to send push notification for order ${orderId}: ${error.message}`,
-          );
-        }
-        break;
+    // Make sure we have the customer with email loaded
+    if (order.customer && order.customer.email) {
+      await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+        order,
+        order.customer,
+        OrderStatus.PREPARING,
+        {
+          estimatedTime,
+          vendorNotes: updateDto.vendor_notes,
+        },
+      );
+      this.logger.log(
+        `Preparing status email sent to customer for order ${orderId}`,
+      );
+    } else {
+      this.logger.warn(
+        `Cannot send preparing email - customer not loaded or missing email for order ${orderId}`,
+      );
+    }
+  } catch (error) {
+    this.logger.error(`Failed to send preparing email: ${error.message}`);
+  }
+
+  // Send push notification to customer about order being prepared
+  try {
+    const prepTimeMsg = updateDto.estimated_prep_time_minutes
+      ? ` Estimated time: ${updateDto.estimated_prep_time_minutes} minutes.`
+      : '';
+    await this.notificationService.sendPushNotification(
+      order.customer_id,
+      NotificationType.ORDER_UPDATE,
+      `Order #${order.order_number} Being Prepared`,
+      `Your order is now being prepared!`,
+      {
+        order_id: orderId,
+        order_number: order.order_number,
+        status: updateDto.order_status,
+        estimated_prep_time_minutes: updateDto.estimated_prep_time_minutes,
+        order_type: order.order_type,
+      },
+    );
+    this.logger.log(
+      `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+    );
+  } catch (error) {
+    this.logger.error(
+      `Failed to send push notification for order ${orderId}: ${error.message}`,
+    );
+  }
+  break;
+
+// Apply the same pattern for other statuses (READY, OUT_FOR_DELIVERY, DELIVERED, CANCELLED)
+// Always check if order.customer && order.customer.email exists before sending emails
 
       case OrderStatus.READY:
         updateData.order_ready_at = new Date();
