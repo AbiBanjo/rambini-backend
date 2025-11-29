@@ -1,3 +1,4 @@
+// src/modules/notification/notification.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -13,6 +14,8 @@ import { NotificationDeliveryService } from './services/notification-delivery.se
 import { NotificationQueueService } from './services/notification-queue.service';
 import { NotificationSSEService } from './services/notification-sse.service';
 import { NotificationSSEController } from './controllers/notification-sse.controller';
+import { OrderEmailTemplatesService } from './services/order-email-templates.service';
+import { OrderEmailNotificationService } from './services/order-email-notification.service';
 import {
   Notification,
   DeviceToken,
@@ -42,6 +45,8 @@ import {
     NotificationDeliveryService,
     NotificationQueueService,
     NotificationSSEService,
+    OrderEmailTemplatesService,
+    OrderEmailNotificationService,
   ],
   exports: [
     NotificationService,
@@ -52,6 +57,8 @@ import {
     NotificationDeliveryService,
     NotificationQueueService,
     NotificationSSEService,
+    OrderEmailTemplatesService,
+    OrderEmailNotificationService,
   ],
 })
-export class NotificationModule {} 
+export class NotificationModule {}
