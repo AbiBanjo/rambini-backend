@@ -18,6 +18,7 @@ import { AuthModule } from 'src/modules/auth/auth.module';
 import { PaymentController } from './controllers/payment.controller';
 import { PaymentWebhookController } from './controllers/payment-webhook.controller';
 import { WithdrawalController, AdminWithdrawalController } from './controllers/withdrawal.controller';
+import { FixDuplicatesController } from './controllers/fix-duplicates.controller'; // ✅ Added
 
 // Services
 import { PaymentService } from './services/payment.service';
@@ -26,6 +27,7 @@ import { StripePaymentService } from './services/stripe-payment.service';
 import { PaystackPaymentService } from './services/paystack-payment.service';
 import { MercuryPaymentService } from './services/mercury-payment.service';
 import { WithdrawalService } from './services/withdrawal.service';
+import { FixDuplicateCreditsService } from './services/fix-duplicate-credits.service'; // ✅ Added
 
 // Repositories
 import { PaymentRepository } from './repositories/payment.repository';
@@ -65,6 +67,7 @@ import { RedisService } from '../../database/redis.service';
     PaymentWebhookController,
     WithdrawalController,
     AdminWithdrawalController,
+    FixDuplicatesController, // ✅ Added
   ],
   providers: [
     // Payment Services
@@ -91,6 +94,9 @@ import { RedisService } from '../../database/redis.service';
     // Withdrawal Services
     WithdrawalService,
     
+    // Fix Services
+    FixDuplicateCreditsService, // ✅ Added
+    
     // Database Services
     RedisService,
     
@@ -106,6 +112,9 @@ import { RedisService } from '../../database/redis.service';
     
     // Withdrawal Services
     WithdrawalService,
+    
+    // Fix Services
+    FixDuplicateCreditsService, // ✅ Added (optional, only if you need it in other modules)
     
     // Repositories
     PaymentRepository,

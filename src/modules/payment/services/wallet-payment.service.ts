@@ -158,11 +158,24 @@ export class WalletPaymentService {
     orderId: string,
     paymentReference: string,
   ): Promise<void> {
-    // Get vendor wallet
     this.logger.log(`Getting vendor wallet for: ${vendorId}`);
-    this.logger.log(`Original amount: ${amount}`);
-    this.logger.log(`Order ID: ${orderId}`);
     this.logger.log(`Payment reference: ${paymentReference}`);
+
+    // ✅ CRITICAL FIX: Check if this payment was already credited
+    const existingCredit = await this.transactionRepository.findOne({
+      where: {
+        reference_id: paymentReference,
+        transaction_type: TransactionType.CREDIT,
+        status: TransactionStatus.COMPLETED,
+      },
+    });
+
+    if (existingCredit) {
+      this.logger.warn(
+        `⚠️ Payment ${paymentReference} already credited to vendor. Skipping duplicate credit to prevent double payment.`,
+      );
+      return; // Exit early - already processed
+    }
 
     // Get service fee and commission percentages from config
     const serviceFeePercentage = this.configService.get<number>(
@@ -175,14 +188,11 @@ export class WalletPaymentService {
     );
 
     // Calculate deductions
-    // const serviceFee = (amount * serviceFeePercentage) / 100;
     const commission = (amount * commissionPercentage) / 100;
-    // const totalDeductions = commission;
     const amountToCreditVendor = amount - commission;
 
-    // this.logger.log(`Service fee (${serviceFeePercentage}%): ${serviceFee}`);
+    this.logger.log(`Original amount: ${amount}`);
     this.logger.log(`Commission (${commissionPercentage}%): ${commission}`);
-    // this.logger.log(`Total deductions: ${totalDeductions}`);
     this.logger.log(`Amount to credit vendor: ${amountToCreditVendor}`);
 
     // get vendor with vendor id
@@ -192,12 +202,8 @@ export class WalletPaymentService {
       where: { user_id: vendor.user_id },
     });
 
-    this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
-
     if (!vendorWallet) {
-      // Create vendor wallet if it doesn't exist\
       this.logger.log(`Creating vendor wallet for: ${vendorId}`);
-
       vendorWallet = this.walletRepository.create({
         user_id: vendor.user_id,
         balance: 0,
@@ -206,22 +212,15 @@ export class WalletPaymentService {
       await this.walletRepository.save(vendorWallet);
     }
 
-    this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
-
     // Store balance before credit for transaction record
     const balanceBefore = vendorWallet.balance;
 
     // Credit vendor wallet with amount after deductions
-    this.logger.log(`vendor wallet balance: ${balanceBefore}`);
     vendorWallet.creditVendor(amountToCreditVendor);
-
     await this.walletRepository.save(vendorWallet);
 
     this.logger.log(`Vendor wallet credited: ${vendorWallet?.id}`);
 
-    this.logger.log(
-      `Creating credit transaction record for: ${vendorWallet?.id}`,
-    );
     // Create credit transaction record
     const creditTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
@@ -235,11 +234,9 @@ export class WalletPaymentService {
       processed_at: new Date(),
       metadata: {
         original_amount: Number(amount),
-        // service_fee: Number(serviceFee),
         service_fee_percentage: serviceFeePercentage,
         commission: Number(commission),
         commission_percentage: commissionPercentage,
-        // total_deductions: Number(totalDeductions),
         net_amount: Number(amountToCreditVendor),
       },
     });
@@ -247,9 +244,8 @@ export class WalletPaymentService {
     await this.transactionRepository.save(creditTransaction);
 
     this.logger.log(
-      `Vendor wallet credited: ${vendorId}, net amount: ${amountToCreditVendor} (after ${serviceFeePercentage}% service fee and ${commissionPercentage}% commission)`,
+      `Vendor wallet credited successfully: ${vendorId}, net amount: ${amountToCreditVendor}`,
     );
-    return;
   }
 
   /**
