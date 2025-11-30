@@ -15,61 +15,123 @@ export class WithdrawalEmailTemplatesService {
   /**
    * Get email template for withdrawal OTP (sent to user)
    */
+  // Add to withdrawal-email-templates.service.ts
+
   getWithdrawalOTPTemplate(data: {
     userName: string;
     otpCode: string;
     expiryMinutes: number;
   }): WithdrawalEmailTemplate {
-    return {
-      subject: `Withdrawal Verification Code - ${data.otpCode}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
-            <h1 style="margin: 0; font-size: 28px;">🔐 Withdrawal Verification</h1>
-          </div>
-          
-          <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 8px 8px;">
-            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${data.userName}</strong>,</p>
-            <p>You have requested to withdraw funds from your wallet. Please use the verification code below to complete your withdrawal request.</p>
-            
-            <div style="background: white; padding: 30px; border-radius: 8px; margin: 30px 0; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-              <p style="margin: 0 0 15px 0; font-size: 14px; color: #666;">Your Verification Code</p>
-              <h1 style="color: #667eea; font-size: 48px; margin: 0; letter-spacing: 8px; font-weight: bold;">${data.otpCode}</h1>
-              <p style="color: #dc3545; margin: 15px 0 0 0; font-size: 14px; font-weight: bold;">Valid for ${data.expiryMinutes} minutes</p>
-            </div>
+    this.logger.log(`[TEMPLATE] ========================================`);
+    this.logger.log(`[TEMPLATE] Generating withdrawal OTP template`);
+    this.logger.log(`[TEMPLATE] Input data:`, {
+      userName: data.userName,
+      otpCode: data.otpCode,
+      otpLength: data.otpCode?.length,
+      otpType: typeof data.otpCode,
+      expiryMinutes: data.expiryMinutes,
+    });
 
-            <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #ffc107;">
-              <p style="margin: 0; font-size: 14px;"><strong>⚠️ Security Notice:</strong></p>
-              <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px;">
-                <li>Do not share this code with anyone</li>
-                <li>This code will expire in ${data.expiryMinutes} minutes</li>
-                <li>If you didn't request this withdrawal, please contact support immediately</li>
-              </ul>
-            </div>
+    // Validate input data
+    if (!data.otpCode) {
+      this.logger.error(`[TEMPLATE] ❌ No OTP code provided!`);
+    } else if (data.otpCode.length !== 6) {
+      this.logger.error(
+        `[TEMPLATE] ❌ OTP is not 6 digits! Length: ${data.otpCode.length}, Value: "${data.otpCode}"`,
+      );
+    } else if (!/^\d{6}$/.test(data.otpCode)) {
+      this.logger.error(
+        `[TEMPLATE] ❌ OTP is not all digits! Value: "${data.otpCode}"`,
+      );
+    } else {
+      this.logger.log(`[TEMPLATE] ✓ OTP validation passed: "${data.otpCode}"`);
+    }
 
-            <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
-              Need help? Contact our support team at <a href="mailto:support@rambini.com" style="color: #667eea;">support@rambini.com</a>
-            </p>
-          </div>
+    const subject = `Withdrawal Verification Code - ${data.otpCode}`;
+    this.logger.log(`[TEMPLATE] Generated subject: ${subject}`);
+
+    // Build HTML template with the OTP
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
+        <h1 style="margin: 0; font-size: 28px;">🔐 Withdrawal Verification</h1>
+      </div>
+      
+      <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 8px 8px;">
+        <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${data.userName}</strong>,</p>
+        <p>You have requested to withdraw funds from your wallet. Please use the verification code below to complete your withdrawal request.</p>
+        
+        <div style="background: white; padding: 30px; border-radius: 8px; margin: 30px 0; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <p style="margin: 0 0 15px 0; font-size: 14px; color: #666;">Your Verification Code</p>
+          <h1 style="color: #667eea; font-size: 48px; margin: 0; letter-spacing: 8px; font-weight: bold;">${data.otpCode}</h1>
+          <p style="color: #dc3545; margin: 15px 0 0 0; font-size: 14px; font-weight: bold;">Valid for ${data.expiryMinutes} minutes</p>
         </div>
-      `,
-      text: `
-        Withdrawal Verification Code - ${data.otpCode}
-        
-        Hello ${data.userName},
-        
-        You have requested to withdraw funds from your wallet. Please use the verification code below to complete your withdrawal request.
-        
-        Verification Code: ${data.otpCode}
-        Valid for: ${data.expiryMinutes} minutes
-        
-        Security Notice:
-        - Do not share this code with anyone
-        - This code will expire in ${data.expiryMinutes} minutes
-        - If you didn't request this withdrawal, please contact support immediately
-        
-        Need help? Contact our support team at support@rambini.com
-      `
+
+        <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #ffc107;">
+          <p style="margin: 0; font-size: 14px;"><strong>⚠️ Security Notice:</strong></p>
+          <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 14px;">
+            <li>Do not share this code with anyone</li>
+            <li>This code will expire in ${data.expiryMinutes} minutes</li>
+            <li>If you didn't request this withdrawal, please contact support immediately</li>
+          </ul>
+        </div>
+
+        <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
+          Need help? Contact our support team at <a href="mailto:support@rambini.com" style="color: #667eea;">support@rambini.com</a>
+        </p>
+      </div>
+    </div>
+  `;
+
+    const text = `
+    Withdrawal Verification Code - ${data.otpCode}
+    
+    Hello ${data.userName},
+    
+    You have requested to withdraw funds from your wallet. Please use the verification code below to complete your withdrawal request.
+    
+    Verification Code: ${data.otpCode}
+    Valid for: ${data.expiryMinutes} minutes
+    
+    Security Notice:
+    - Do not share this code with anyone
+    - This code will expire in ${data.expiryMinutes} minutes
+    - If you didn't request this withdrawal, please contact support immediately
+    
+    Need help? Contact our support team at support@rambini.com
+  `;
+
+    // Verify OTP is in the generated templates
+    const subjectHasOTP = subject.includes(data.otpCode);
+    const htmlHasOTP = html.includes(data.otpCode);
+    const textHasOTP = text.includes(data.otpCode);
+
+    this.logger.log(`[TEMPLATE] Subject contains OTP: ${subjectHasOTP}`);
+    this.logger.log(`[TEMPLATE] HTML contains OTP: ${htmlHasOTP}`);
+    this.logger.log(`[TEMPLATE] Text contains OTP: ${textHasOTP}`);
+
+    if (!htmlHasOTP) {
+      this.logger.error(
+        `[TEMPLATE] ❌ CRITICAL: Generated HTML does not contain OTP "${data.otpCode}"!`,
+      );
+      this.logger.error(`[TEMPLATE] This is a template generation bug!`);
+    }
+
+    // Count OTP occurrences
+    const htmlOtpCount = (html.match(new RegExp(data.otpCode, 'g')) || [])
+      .length;
+    const textOtpCount = (text.match(new RegExp(data.otpCode, 'g')) || [])
+      .length;
+
+    this.logger.log(`[TEMPLATE] OTP appears ${htmlOtpCount} times in HTML`);
+    this.logger.log(`[TEMPLATE] OTP appears ${textOtpCount} times in text`);
+    this.logger.log(`[TEMPLATE] Template generation complete`);
+    this.logger.log(`[TEMPLATE] ========================================`);
+
+    return {
+      subject,
+      html,
+      text,
     };
   }
 
@@ -109,12 +171,16 @@ export class WithdrawalEmailTemplatesService {
               <p><strong>Name:</strong> ${data.userName}</p>
               <p><strong>Email:</strong> ${data.userEmail}</p>
               <p><strong>Request ID:</strong> ${data.withdrawalId}</p>
-              <p><strong>Date:</strong> ${new Date(data.date).toLocaleString()}</p>
+              <p><strong>Date:</strong> ${new Date(
+                data.date,
+              ).toLocaleString()}</p>
             </div>
 
             <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
               <h3 style="margin: 0 0 15px 0; color: #333;">💰 Withdrawal Details</h3>
-              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #dc3545;">${data.currency} ${data.amount.toFixed(2)}</span></p>
+              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #dc3545;">${
+                data.currency
+              } ${data.amount.toFixed(2)}</span></p>
               <p><strong>Country:</strong> ${data.country}</p>
             </div>
 
@@ -122,19 +188,41 @@ export class WithdrawalEmailTemplatesService {
               <h3 style="margin: 0 0 15px 0; color: #333;">🏦 Bank Details</h3>
               <p><strong>Bank Name:</strong> ${data.bankName}</p>
               <p><strong>Account Number:</strong> ${data.accountNumber}</p>
-              ${data.accountName ? `<p><strong>Account Name:</strong> ${data.accountName}</p>` : ''}
-              ${data.routingNumber ? `<p><strong>Routing Number:</strong> ${data.routingNumber}</p>` : ''}
-              ${data.sortCode ? `<p><strong>Sort Code:</strong> ${data.sortCode}</p>` : ''}
-              ${data.accountType ? `<p><strong>Account Type:</strong> ${data.accountType}</p>` : ''}
+              ${
+                data.accountName
+                  ? `<p><strong>Account Name:</strong> ${data.accountName}</p>`
+                  : ''
+              }
+              ${
+                data.routingNumber
+                  ? `<p><strong>Routing Number:</strong> ${data.routingNumber}</p>`
+                  : ''
+              }
+              ${
+                data.sortCode
+                  ? `<p><strong>Sort Code:</strong> ${data.sortCode}</p>`
+                  : ''
+              }
+              ${
+                data.accountType
+                  ? `<p><strong>Account Type:</strong> ${data.accountType}</p>`
+                  : ''
+              }
             </div>
 
             <div style="background: #e9ecef; padding: 20px; border-radius: 4px; margin: 30px 0;">
               <h4 style="margin: 0 0 15px 0; color: #333;">⚡ Admin Actions</h4>
               <p style="margin-bottom: 15px;">Use the following links to process this withdrawal request:</p>
               <div style="text-align: center;">
-                <a href="${data.baseUrl}/admin/withdrawal/${data.withdrawalId}/done" style="background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block;">✅ Mark as Done</a>
-                <a href="${data.baseUrl}/admin/withdrawal/${data.withdrawalId}/failed" style="background: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block;">❌ Mark as Failed</a>
-                <a href="${data.baseUrl}/admin/withdrawal/${data.withdrawalId}/rejected" style="background: #ffc107; color: black; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block;">🚫 Mark as Rejected</a>
+                <a href="${data.baseUrl}/admin/withdrawal/${
+        data.withdrawalId
+      }/done" style="background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block;">✅ Mark as Done</a>
+                <a href="${data.baseUrl}/admin/withdrawal/${
+        data.withdrawalId
+      }/failed" style="background: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block;">❌ Mark as Failed</a>
+                <a href="${data.baseUrl}/admin/withdrawal/${
+        data.withdrawalId
+      }/rejected" style="background: #ffc107; color: black; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block;">🚫 Mark as Rejected</a>
               </div>
             </div>
 
@@ -171,11 +259,15 @@ export class WithdrawalEmailTemplatesService {
         
         Admin Actions:
         Mark as Done: ${data.baseUrl}/admin/withdrawal/${data.withdrawalId}/done
-        Mark as Failed: ${data.baseUrl}/admin/withdrawal/${data.withdrawalId}/failed
-        Mark as Rejected: ${data.baseUrl}/admin/withdrawal/${data.withdrawalId}/rejected
+        Mark as Failed: ${data.baseUrl}/admin/withdrawal/${
+        data.withdrawalId
+      }/failed
+        Mark as Rejected: ${data.baseUrl}/admin/withdrawal/${
+        data.withdrawalId
+      }/rejected
         
         Please review and process this request promptly.
-      `
+      `,
     };
   }
 
@@ -190,7 +282,9 @@ export class WithdrawalEmailTemplatesService {
     date: string;
   }): WithdrawalEmailTemplate {
     return {
-      subject: `✅ Withdrawal Completed - ${data.currency} ${data.amount.toFixed(2)}`,
+      subject: `✅ Withdrawal Completed - ${
+        data.currency
+      } ${data.amount.toFixed(2)}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #28a745; color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
@@ -198,15 +292,25 @@ export class WithdrawalEmailTemplatesService {
           </div>
           
           <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 8px 8px;">
-            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${data.userName}</strong>,</p>
+            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${
+              data.userName
+            }</strong>,</p>
             <p>Great news! Your withdrawal request has been completed successfully!</p>
             
             <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
               <h3 style="margin: 0 0 15px 0; color: #333;">💰 Transaction Details</h3>
-              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #28a745;">${data.currency} ${data.amount.toFixed(2)}</span></p>
+              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #28a745;">${
+                data.currency
+              } ${data.amount.toFixed(2)}</span></p>
               <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">✅ Completed</span></p>
-              ${data.transactionRef ? `<p><strong>Transaction Reference:</strong> ${data.transactionRef}</p>` : ''}
-              <p><strong>Date:</strong> ${new Date(data.date).toLocaleString()}</p>
+              ${
+                data.transactionRef
+                  ? `<p><strong>Transaction Reference:</strong> ${data.transactionRef}</p>`
+                  : ''
+              }
+              <p><strong>Date:</strong> ${new Date(
+                data.date,
+              ).toLocaleString()}</p>
             </div>
 
             <div style="background: #d4edda; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #28a745;">
@@ -230,14 +334,18 @@ export class WithdrawalEmailTemplatesService {
         Transaction Details:
         - Amount: ${data.currency} ${data.amount.toFixed(2)}
         - Status: Completed
-        ${data.transactionRef ? `- Transaction Reference: ${data.transactionRef}` : ''}
+        ${
+          data.transactionRef
+            ? `- Transaction Reference: ${data.transactionRef}`
+            : ''
+        }
         - Date: ${new Date(data.date).toLocaleString()}
         
         What's Next?
         The funds should be available in your bank account within 1-3 business days, depending on your bank's processing time.
         
         Thank you for using Rambini!
-      `
+      `,
     };
   }
 
@@ -252,7 +360,9 @@ export class WithdrawalEmailTemplatesService {
     date: string;
   }): WithdrawalEmailTemplate {
     return {
-      subject: `❌ Withdrawal Failed - ${data.currency} ${data.amount.toFixed(2)}`,
+      subject: `❌ Withdrawal Failed - ${data.currency} ${data.amount.toFixed(
+        2,
+      )}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #dc3545; color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
@@ -260,15 +370,25 @@ export class WithdrawalEmailTemplatesService {
           </div>
           
           <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 8px 8px;">
-            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${data.userName}</strong>,</p>
+            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${
+              data.userName
+            }</strong>,</p>
             <p>Unfortunately, your withdrawal request could not be processed at this time.</p>
             
             <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
               <h3 style="margin: 0 0 15px 0; color: #333;">💰 Transaction Details</h3>
-              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #dc3545;">${data.currency} ${data.amount.toFixed(2)}</span></p>
+              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #dc3545;">${
+                data.currency
+              } ${data.amount.toFixed(2)}</span></p>
               <p><strong>Status:</strong> <span style="color: #dc3545; font-weight: bold;">❌ Failed</span></p>
-              ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ''}
-              <p><strong>Date:</strong> ${new Date(data.date).toLocaleString()}</p>
+              ${
+                data.reason
+                  ? `<p><strong>Reason:</strong> ${data.reason}</p>`
+                  : ''
+              }
+              <p><strong>Date:</strong> ${new Date(
+                data.date,
+              ).toLocaleString()}</p>
             </div>
 
             <div style="background: #f8d7da; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #dc3545;">
@@ -277,7 +397,9 @@ export class WithdrawalEmailTemplatesService {
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.APP_URL || 'https://rambini.com'}/wallet" style="background: #667eea; color: white; padding: 15px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">View Wallet</a>
+              <a href="${
+                process.env.APP_URL || 'https://rambini.com'
+              }/wallet" style="background: #667eea; color: white; padding: 15px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">View Wallet</a>
             </div>
 
             <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
@@ -305,7 +427,7 @@ export class WithdrawalEmailTemplatesService {
         View your wallet: ${process.env.APP_URL || 'https://rambini.com'}/wallet
         
         Need help? Contact our support team at support@rambini.com
-      `
+      `,
     };
   }
 
@@ -320,7 +442,9 @@ export class WithdrawalEmailTemplatesService {
     date: string;
   }): WithdrawalEmailTemplate {
     return {
-      subject: `🚫 Withdrawal Rejected - ${data.currency} ${data.amount.toFixed(2)}`,
+      subject: `🚫 Withdrawal Rejected - ${data.currency} ${data.amount.toFixed(
+        2,
+      )}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: #ffc107; color: #000; padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
@@ -328,15 +452,25 @@ export class WithdrawalEmailTemplatesService {
           </div>
           
           <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 8px 8px;">
-            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${data.userName}</strong>,</p>
+            <p style="font-size: 18px; margin: 0 0 20px 0;">Hello <strong>${
+              data.userName
+            }</strong>,</p>
             <p>Your withdrawal request has been reviewed and rejected by our team.</p>
             
             <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
               <h3 style="margin: 0 0 15px 0; color: #333;">💰 Transaction Details</h3>
-              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #ffc107;">${data.currency} ${data.amount.toFixed(2)}</span></p>
+              <p style="font-size: 24px; margin: 15px 0;"><strong>Amount:</strong> <span style="color: #ffc107;">${
+                data.currency
+              } ${data.amount.toFixed(2)}</span></p>
               <p><strong>Status:</strong> <span style="color: #ffc107; font-weight: bold;">🚫 Rejected</span></p>
-              ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ''}
-              <p><strong>Date:</strong> ${new Date(data.date).toLocaleString()}</p>
+              ${
+                data.reason
+                  ? `<p><strong>Reason:</strong> ${data.reason}</p>`
+                  : ''
+              }
+              <p><strong>Date:</strong> ${new Date(
+                data.date,
+              ).toLocaleString()}</p>
             </div>
 
             <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #ffc107;">
@@ -345,7 +479,9 @@ export class WithdrawalEmailTemplatesService {
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.APP_URL || 'https://rambini.com'}/wallet" style="background: #667eea; color: white; padding: 15px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">View Wallet</a>
+              <a href="${
+                process.env.APP_URL || 'https://rambini.com'
+              }/wallet" style="background: #667eea; color: white; padding: 15px 40px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">View Wallet</a>
             </div>
 
             <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 14px;">
@@ -373,7 +509,7 @@ export class WithdrawalEmailTemplatesService {
         View your wallet: ${process.env.APP_URL || 'https://rambini.com'}/wallet
         
         Need help? Contact our support team at support@rambini.com
-      `
+      `,
     };
   }
 }
