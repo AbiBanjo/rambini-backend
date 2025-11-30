@@ -31,10 +31,14 @@ import { WithdrawalService } from './services/withdrawal.service';
 import { PaymentRepository } from './repositories/payment.repository';
 import { WithdrawalRepository } from './repositories/withdrawal.repository';
 import { BankRepository } from './repositories/bank.repository';
+
+// Modules
 import { CartModule } from '../cart/cart.module';
 import { OrderModule } from '../order/order.module';
 import { VendorModule } from '../vendor/vendor.module';
 import { NotificationModule } from '../notification/notification.module';
+
+// Database
 import { RedisService } from '../../database/redis.service';
 
 @Module({
@@ -54,7 +58,7 @@ import { RedisService } from '../../database/redis.service';
     forwardRef(() => CartModule),
     forwardRef(() => OrderModule),
     forwardRef(() => VendorModule),
-    forwardRef(() => NotificationModule),
+    forwardRef(() => NotificationModule), // This provides access to withdrawal email services
   ],
   controllers: [
     PaymentController,
@@ -63,7 +67,7 @@ import { RedisService } from '../../database/redis.service';
     AdminWithdrawalController,
   ],
   providers: [
-    // Services
+    // Payment Services
     PaymentService,
     WalletPaymentService,
     {
@@ -83,7 +87,11 @@ import { RedisService } from '../../database/redis.service';
       inject: [getRepositoryToken(SavedCard)],
     },
     MercuryPaymentService,
+    
+    // Withdrawal Services
     WithdrawalService,
+    
+    // Database Services
     RedisService,
     
     // Repositories
@@ -92,10 +100,15 @@ import { RedisService } from '../../database/redis.service';
     BankRepository,
   ],
   exports: [
+    // Payment Services
     PaymentService,
     WalletPaymentService,
-    PaymentRepository,
+    
+    // Withdrawal Services
     WithdrawalService,
+    
+    // Repositories
+    PaymentRepository,
     WithdrawalRepository,
     BankRepository,
   ],

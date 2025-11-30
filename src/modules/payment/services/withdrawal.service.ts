@@ -19,8 +19,7 @@ import {
 import { WithdrawalRepository } from '../repositories/withdrawal.repository';
 import { BankRepository } from '../repositories/bank.repository';
 import { RedisService } from '../../../database/redis.service';
-import { EmailNotificationService } from '../../notification/services/email-notification.service';
-import { NotificationService } from '../../notification/notification.service';
+import { WithdrawalEmailNotificationService } from '../../notification/services/withdrawal-email-notification.service';
 import { WalletPaymentService } from './wallet-payment.service';
 import {
   WithdrawalOtpRequestDto,
@@ -56,122 +55,124 @@ export class WithdrawalService {
     private readonly withdrawalRepo: WithdrawalRepository,
     private readonly bankRepo: BankRepository,
     private readonly redisService: RedisService,
-    private readonly emailNotificationService: EmailNotificationService,
-    private readonly notificationService: NotificationService,
+    private readonly withdrawalEmailService: WithdrawalEmailNotificationService,
     private readonly walletPaymentService: WalletPaymentService,
   ) {}
 
- async generateWithdrawalOTP(
-  userId: string,
-  amount: number,
-): Promise<{ otpId: string; message: string }> {
-  this.logger.log(
-    `Generating withdrawal OTP for user ${userId} with amount ${amount}`,
-  );
-  
-  // Check if user has any active withdrawal request
-  const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(userId);
-  if (activeWithdrawal) {
-    throw new BadRequestException(
-      'You have a pending or processing withdrawal request. Please wait for it to be completed.',
+  async generateWithdrawalOTP(
+    userId: string,
+    amount: number,
+  ): Promise<{ otpId: string; message: string }> {
+    this.logger.log(
+      `Generating withdrawal OTP for user ${userId} with amount ${amount}`,
     );
-  }
-
-  this.logger.log(`User ${userId} has no active withdrawal request`);
-  
-  // Get user details
-  const user = await this.userRepository.findOne({
-    where: { id: userId },
-    relations: ['wallet'],
-  });
-
-  if (!user) {
-    throw new NotFoundException('User not found');
-  }
-
-  if (!user.email) {
-    throw new BadRequestException(
-      'User email is required for withdrawal OTP',
-    );
-  }
-
-  // Check if user has sufficient balance
-  if (!user.wallet || user.wallet.vendor_balance < amount) {
-    throw new BadRequestException('Insufficient wallet balance');
-  }
-
-  this.logger.log(`User ${userId} has sufficient balance`);
-  this.logger.log(`Generating OTP for user ${userId}`);
-  
-  // Generate random 6-digit OTP
-  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-  
-  const otpId = `withdrawal_otp_${Date.now()}_${Math.random()
-    .toString(36)
-    .substr(2, 9)}`;
-
-  const now = new Date();
-  const expiresAt = new Date(
-    now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000,
-  );
-
-  const otpData: OTPData = {
-    userId,
-    otpCode,
-    createdAt: now,
-    expiresAt,
-    attempts: 0,
-  };
-
-  // Store OTP in Redis with expiration
-  const key = `withdrawal_otp:${otpId}`;
-  await this.redisService.setex(
-    key,
-    this.OTP_EXPIRY_MINUTES * 60,
-    JSON.stringify(otpData),
-  );
-
-  // Send OTP via email with retry logic
-  let emailSent = false;
-  let emailError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await this.sendWithdrawalOTPEmail(user, otpCode);
-      emailSent = true;
-      this.logger.log(`Withdrawal OTP email sent successfully on attempt ${attempt}`);
-      break;
-    } catch (error) {
-      emailError = error;
-      this.logger.warn(
-        `Failed to send OTP email (attempt ${attempt}/3): ${error.message}`,
+    
+    // Check if user has any active withdrawal request
+    const activeWithdrawal = await this.withdrawalRepo.findActiveByUserId(userId);
+    if (activeWithdrawal) {
+      throw new BadRequestException(
+        'You have a pending or processing withdrawal request. Please wait for it to be completed.',
       );
-      
-      // Wait before retrying (exponential backoff: 1s, 2s, 4s)
-      if (attempt < 3) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+    }
+
+    this.logger.log(`User ${userId} has no active withdrawal request`);
+    
+    // Get user details
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['wallet'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.email) {
+      throw new BadRequestException(
+        'User email is required for withdrawal OTP',
+      );
+    }
+
+    // Check if user has sufficient balance
+    if (!user.wallet || user.wallet.vendor_balance < amount) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
+
+    this.logger.log(`User ${userId} has sufficient balance`);
+    this.logger.log(`Generating OTP for user ${userId}`);
+    
+    // Generate random 6-digit OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    const otpId = `withdrawal_otp_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + this.OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    const otpData: OTPData = {
+      userId,
+      otpCode,
+      createdAt: now,
+      expiresAt,
+      attempts: 0,
+    };
+
+    // Store OTP in Redis with expiration
+    const key = `withdrawal_otp:${otpId}`;
+    await this.redisService.setex(
+      key,
+      this.OTP_EXPIRY_MINUTES * 60,
+      JSON.stringify(otpData),
+    );
+
+    // Send OTP via email with retry logic
+    let emailSent = false;
+    let emailError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await this.withdrawalEmailService.sendWithdrawalOTPEmail(
+          user,
+          otpCode,
+          this.OTP_EXPIRY_MINUTES,
+        );
+        emailSent = true;
+        this.logger.log(`Withdrawal OTP email sent successfully on attempt ${attempt}`);
+        break;
+      } catch (error) {
+        emailError = error;
+        this.logger.warn(
+          `Failed to send OTP email (attempt ${attempt}/3): ${error.message}`,
+        );
+        
+        // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+        }
       }
     }
+
+    // Log final result but don't fail the entire operation
+    if (!emailSent) {
+      this.logger.error(
+        `Failed to send withdrawal OTP email after 3 attempts: ${emailError?.message}`,
+        emailError?.stack,
+      );
+    }
+
+    this.logger.log(`Withdrawal OTP generated for user ${userId}: ${otpCode}`);
+
+    return {
+      otpId,
+      message: emailSent 
+        ? 'Withdrawal OTP sent to your email successfully'
+        : 'Withdrawal OTP generated. Please check your email or contact support if you did not receive it.',
+    };
   }
-
-  // Log final result but don't fail the entire operation
-  if (!emailSent) {
-    this.logger.error(
-      `Failed to send withdrawal OTP email after 3 attempts: ${emailError?.message}`,
-      emailError?.stack,
-    );
-    // Continue anyway - OTP is stored in Redis
-  }
-
-  this.logger.log(`Withdrawal OTP generated for user ${userId}: ${otpCode}`);
-
-  return {
-    otpId,
-    message: emailSent 
-      ? 'Withdrawal OTP sent to your email successfully'
-      : 'Withdrawal OTP generated. Please check your email or contact support if you did not receive it.',
-  };
-}
 
   async requestWithdrawal(
     userId: string,
@@ -218,8 +219,6 @@ export class WithdrawalService {
       );
     }
 
-    // Calculate fee
-    // const fee = this.calculateWithdrawalFee(withdrawalData.amount, withdrawalData.currency);
     const totalAmount = withdrawalData.amount;
 
     // Check if user has sufficient balance
@@ -252,7 +251,7 @@ export class WithdrawalService {
     });
 
     // Send notification to admin
-    await this.sendWithdrawalRequestEmailToAdmin(withdrawal);
+    await this.withdrawalEmailService.sendWithdrawalRequestToAdmin(withdrawal);
 
     this.logger.log(
       `Withdrawal request created: ${withdrawal.id} for user ${userId}`,
@@ -356,16 +355,20 @@ export class WithdrawalService {
       `Withdrawal ${withdrawal.id}`,
     );
 
+    // Get updated withdrawal and user
+    const updatedWithdrawal = await this.withdrawalRepo.findById(withdrawalId);
+    
     // Send notification to user
-    await this.sendWithdrawalCompletedEmail(withdrawal);
+    await this.withdrawalEmailService.sendWithdrawalCompletedEmail(
+      updatedWithdrawal,
+      updatedWithdrawal.user,
+    );
 
     this.logger.log(
       `Withdrawal ${withdrawalId} marked as completed by admin ${adminId}`,
     );
 
-    return this.mapToResponseDto(
-      await this.withdrawalRepo.findById(withdrawalId),
-    );
+    return this.mapToResponseDto(updatedWithdrawal);
   }
 
   async markWithdrawalAsFailed(
@@ -390,16 +393,20 @@ export class WithdrawalService {
       actionData.notes,
     );
 
+    // Get updated withdrawal
+    const updatedWithdrawal = await this.withdrawalRepo.findById(withdrawalId);
+
     // Send notification to user
-    await this.sendWithdrawalFailedEmail(withdrawal);
+    await this.withdrawalEmailService.sendWithdrawalFailedEmail(
+      updatedWithdrawal,
+      updatedWithdrawal.user,
+    );
 
     this.logger.log(
       `Withdrawal ${withdrawalId} marked as failed by admin ${adminId}`,
     );
 
-    return this.mapToResponseDto(
-      await this.withdrawalRepo.findById(withdrawalId),
-    );
+    return this.mapToResponseDto(updatedWithdrawal);
   }
 
   async markWithdrawalAsRejected(
@@ -424,16 +431,20 @@ export class WithdrawalService {
       actionData.notes,
     );
 
+    // Get updated withdrawal
+    const updatedWithdrawal = await this.withdrawalRepo.findById(withdrawalId);
+
     // Send notification to user
-    await this.sendWithdrawalRejectedEmail(withdrawal);
+    await this.withdrawalEmailService.sendWithdrawalRejectedEmail(
+      updatedWithdrawal,
+      updatedWithdrawal.user,
+    );
 
     this.logger.log(
       `Withdrawal ${withdrawalId} marked as rejected by admin ${adminId}`,
     );
 
-    return this.mapToResponseDto(
-      await this.withdrawalRepo.findById(withdrawalId),
-    );
+    return this.mapToResponseDto(updatedWithdrawal);
   }
 
   // Bank management methods
@@ -443,7 +454,6 @@ export class WithdrawalService {
   ): Promise<BankResponseDto> {
     this.logger.log(`Creating bank for user ${userId}`);
 
-    // Check if bank with same account number already exists for this user
     const existingBank = await this.bankRepo.findByAccountNumber(
       userId,
       bankData.account_number,
@@ -454,7 +464,6 @@ export class WithdrawalService {
       );
     }
 
-    // Check if bank with same name and bank name already exists
     const existingBankByName =
       await this.bankRepo.findByBankNameAndAccountNumber(
         userId,
@@ -505,7 +514,6 @@ export class WithdrawalService {
       throw new NotFoundException('Bank not found');
     }
 
-    // Check if updating account number would create a duplicate
     if (
       bankData.account_number &&
       bankData.account_number !== existingBank.account_number
@@ -521,7 +529,6 @@ export class WithdrawalService {
       }
     }
 
-    // Check if updating bank name and account number would create a duplicate
     if (bankData.bank_name && bankData.account_number) {
       const duplicateBank = await this.bankRepo.findByBankNameAndAccountNumber(
         userId,
@@ -560,214 +567,6 @@ export class WithdrawalService {
     return { message: 'Bank deleted successfully' };
   }
 
- private async sendWithdrawalOTPEmail(
-  user: User,
-  otpCode: string,
-): Promise<void> {
-  try {
-    const notification = await this.notificationService.createNotification(
-      user.id,
-      'WITHDRAWAL_OTP' as any,
-      'Withdrawal OTP',
-      `Your withdrawal verification code is: ${otpCode}. Valid for ${this.OTP_EXPIRY_MINUTES} minutes.`,
-      {
-        data: { otpCode, expiryMinutes: this.OTP_EXPIRY_MINUTES },
-        deliveryMethod: 'EMAIL' as any,
-      },
-    );
-
-    // FIX: Add userName to customData
-    await this.emailNotificationService.sendEmailNotification(
-      notification,
-      user,
-      {
-        userName: user.first_name || user.full_name || user.email || 'User',
-        otpCode,
-        expiryMinutes: this.OTP_EXPIRY_MINUTES,
-      },
-    );
-    
-    this.logger.log(`Withdrawal OTP email sent to ${user.email}`);
-  } catch (error) {
-    this.logger.error(
-      `Failed to send withdrawal OTP email: ${error.message}`,
-      error.stack,
-    );
-    // Re-throw to let caller handle
-    throw error;
-  }
-}
-
-  private async sendWithdrawalRequestEmailToAdmin(
-    withdrawal: Withdrawal,
-  ): Promise<void> {
-    try {
-      // Create a notification for admin
-      const adminNotification =
-        await this.notificationService.createNotification(
-          'admin', // This would be the admin user ID
-          'ADMIN_WITHDRAWAL_REQUEST' as any,
-          'New Withdrawal Request',
-          `New withdrawal request from ${withdrawal.user.full_name} for ${withdrawal.formatted_amount}`,
-          {
-            data: {
-              withdrawalId: withdrawal.id,
-              userName: withdrawal.user.full_name,
-              userEmail: withdrawal.user.email,
-              amount: withdrawal.amount,
-              currency: withdrawal.currency,
-              country: withdrawal.country,
-              bankName: withdrawal.bank_name,
-              accountNumber: withdrawal.account_number,
-              accountName: withdrawal.account_name,
-              routingNumber: withdrawal.routing_number,
-              sortCode: withdrawal.sort_code,
-              accountType: withdrawal.account_type,
-              date: withdrawal.created_at.toISOString(),
-              baseUrl: process.env.APP_URL || 'http://localhost:3000',
-            },
-            deliveryMethod: 'EMAIL' as any,
-          },
-        );
-
-      // Create a mock admin user for email sending
-      const adminUser = {
-        id: 'admin',
-        email: process.env.ADMIN_EMAIL || 'info@bankfields.com',
-        first_name: 'Admin',
-        last_name: 'User',
-        full_name: 'Admin User',
-      } as User;
-
-      await this.emailNotificationService.sendEmailNotification(
-        adminNotification,
-        adminUser,
-        {
-          withdrawalId: withdrawal.id,
-          userName: withdrawal.user.full_name,
-          userEmail: withdrawal.user.email,
-          amount: withdrawal.amount,
-          currency: withdrawal.currency,
-          country: withdrawal.country,
-          bankName: withdrawal.bank_name,
-          accountNumber: withdrawal.account_number,
-          accountName: withdrawal.account_name,
-          routingNumber: withdrawal.routing_number,
-          sortCode: withdrawal.sort_code,
-          accountType: withdrawal.account_type,
-          date: withdrawal.created_at.toISOString(),
-          baseUrl: process.env.APP_URL || 'http://localhost:3000',
-        },
-      );
-
-      this.logger.log(
-        `Withdrawal request notification sent to admin for withdrawal: ${withdrawal.id}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send withdrawal request email to admin: ${error.message}`,
-        error.stack,
-      );
-    }
-  }
-
-  private async sendWithdrawalCompletedEmail(
-    withdrawal: Withdrawal,
-  ): Promise<void> {
-    try {
-      const notification = await this.notificationService.createNotification(
-        withdrawal.user_id,
-        'WITHDRAWAL_COMPLETED' as any,
-        'Withdrawal Completed',
-        `Your withdrawal of ${withdrawal.formatted_amount} has been completed successfully.`,
-        {
-          data: {
-            amount: withdrawal.amount,
-            currency: withdrawal.currency,
-            transactionRef: withdrawal.transaction_reference,
-          },
-          deliveryMethod: 'EMAIL' as any,
-        },
-      );
-
-      await this.emailNotificationService.sendEmailNotification(
-        notification,
-        withdrawal.user,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send withdrawal completed email: ${error.message}`,
-        error.stack,
-      );
-    }
-  }
-
-  private async sendWithdrawalFailedEmail(
-    withdrawal: Withdrawal,
-  ): Promise<void> {
-    try {
-      const notification = await this.notificationService.createNotification(
-        withdrawal.user_id,
-        'WITHDRAWAL_FAILED' as any,
-        'Withdrawal Failed',
-        `Your withdrawal of ${withdrawal.formatted_amount} has failed. ${
-          withdrawal.admin_notes || ''
-        }`,
-        {
-          data: {
-            amount: withdrawal.amount,
-            currency: withdrawal.currency,
-            reason: withdrawal.admin_notes,
-          },
-          deliveryMethod: 'EMAIL' as any,
-        },
-      );
-
-      await this.emailNotificationService.sendEmailNotification(
-        notification,
-        withdrawal.user,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send withdrawal failed email: ${error.message}`,
-        error.stack,
-      );
-    }
-  }
-
-  private async sendWithdrawalRejectedEmail(
-    withdrawal: Withdrawal,
-  ): Promise<void> {
-    try {
-      const notification = await this.notificationService.createNotification(
-        withdrawal.user_id,
-        'WITHDRAWAL_REJECTED' as any,
-        'Withdrawal Rejected',
-        `Your withdrawal of ${withdrawal.formatted_amount} has been rejected. ${
-          withdrawal.admin_notes || ''
-        }`,
-        {
-          data: {
-            amount: withdrawal.amount,
-            currency: withdrawal.currency,
-            reason: withdrawal.admin_notes,
-          },
-          deliveryMethod: 'EMAIL' as any,
-        },
-      );
-
-      await this.emailNotificationService.sendEmailNotification(
-        notification,
-        withdrawal.user,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to send withdrawal rejected email: ${error.message}`,
-        error.stack,
-      );
-    }
-  }
-
   private getCurrencyForCountry(country: Country): Currency {
     switch (country) {
       case Country.NIGERIA:
@@ -778,20 +577,6 @@ export class WithdrawalService {
         return Currency.GBP;
       default:
         throw new BadRequestException(`Unsupported country: ${country}`);
-    }
-  }
-
-  private calculateWithdrawalFee(amount: number, currency: Currency): number {
-    // Simple fee calculation - in real implementation, this would be more complex
-    switch (currency) {
-      case Currency.NGN:
-        return Math.min(amount * 0.01, 100); // 1% or max 100 NGN
-      case Currency.USD:
-        return Math.min(amount * 0.01, 5); // 1% or max $5
-      case Currency.GBP:
-        return Math.min(amount * 0.01, 3); // 1% or max £3
-      default:
-        return amount * 0.01; // 1% default
     }
   }
 
