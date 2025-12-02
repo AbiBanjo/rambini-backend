@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { OrderModule } from '../order/order.module';
@@ -6,6 +6,7 @@ import { Vendor } from '@/entities';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 
+@Global()
 @Module({
   imports: [TypeOrmModule.forFeature([Vendor]), OrderModule],
   controllers: [AdminController],
