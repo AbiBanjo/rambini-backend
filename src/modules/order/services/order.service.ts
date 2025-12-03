@@ -109,6 +109,7 @@ export class OrderService {
       deliveryFee = deliveryQuote.fee;
     }
 
+    
     // get all cart items for this vendor
     const { items } = await this.cartService.getCartByVendor(
       customerId,
