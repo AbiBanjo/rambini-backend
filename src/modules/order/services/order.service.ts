@@ -109,7 +109,6 @@ export class OrderService {
       deliveryFee = deliveryQuote.fee;
     }
 
-    
     // get all cart items for this vendor
     const { items } = await this.cartService.getCartByVendor(
       customerId,
@@ -336,9 +335,9 @@ export class OrderService {
   async getAllOrders(
     filterDto?: OrderFilterDto,
   ): Promise<{ orders: OrderResponseDto[] }> {
-    const result = await this.orderRepository.findAll(filterDto);
+    const result = await this.orderRepository.findAll(filterDto, {isForAdmin: true});
 
-    const orders = result.orders.map(order => this.mapToOrderResponse(order));
+    const orders = result.orders.map(order => this.mapToOrderResponse(order, {isForAdmin: true}));
 
     return {
       orders,
@@ -1104,7 +1103,7 @@ case OrderStatus.PREPARING:
     }
   }
 
-  private mapToOrderResponse(order: Order): OrderResponseDto {
+  private mapToOrderResponse(order: Order, options?: {isForAdmin?: boolean}): OrderResponseDto {
     // add service fee to response
     const service_fee = this.calculateServiceFee(order.subtotal);
     return {
@@ -1115,6 +1114,7 @@ case OrderStatus.PREPARING:
         order.customer?.first_name + ' ' + order.customer?.last_name ||
         'Unknown',
       customer_phone: order.customer?.phone_number || '',
+      vendor: order.vendor,
       vendor_id: order.vendor_id,
       vendor_name: order.vendor?.business_name || 'Unknown',
       vendor_phone: order.vendor?.user?.phone_number || '',

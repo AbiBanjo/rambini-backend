@@ -80,8 +80,17 @@ export class OrderRepository {
     return { orders };
   }
 
-  async findAll(filterDto?: OrderFilterDto): Promise<{ orders: Order[]; total: number }> {
+  async findAll(filterDto?: OrderFilterDto, options?: {isForAdmin?: boolean}): Promise<{ orders: Order[]; total: number }> {
     const queryBuilder = this.createOrderQueryBuilder(filterDto);
+
+    if(options?.isForAdmin){
+      queryBuilder
+      .leftJoinAndSelect('order.customer', 'customer')
+      .leftJoinAndSelect('order.vendor', 'vendor')
+      .leftJoinAndSelect('order.delivery_address', 'delivery_address')
+      .leftJoinAndSelect('order.order_items', 'order_items')
+      .leftJoinAndSelect('order_items.menu_item', 'menu_item');
+    }
 
     const total = await queryBuilder.getCount();
     const page = filterDto?.page || 1;
