@@ -15,7 +15,7 @@ export class OrderRepository {
     private readonly orderItemRepository: Repository<OrderItem>,
     @InjectRepository(MenuItem)
     private readonly menuItemRepository: Repository<MenuItem>,
-  ) {}
+  ) { }
 
   async create(order: Partial<Order>): Promise<Order> {
     const newOrder = this.orderRepository.create(order);
@@ -80,15 +80,15 @@ export class OrderRepository {
     return { orders };
   }
 
-  async findAll(filterDto?: OrderFilterDto, options?: {isForAdmin?: boolean}): Promise<{ orders: Order[]; total: number }> {
+  async findAll(filterDto?: OrderFilterDto, options?: { isForAdmin?: boolean }): Promise<{ orders: Order[]; total: number }> {
     const queryBuilder = this.createOrderQueryBuilder(filterDto);
 
-    if(options?.isForAdmin){
-      queryBuilder
-      .leftJoinAndSelect('order.vendor', 'vendor')
-      .leftJoinAndSelect('order.delivery_address', 'delivery_address')
-      .leftJoinAndSelect('order.order_items', 'order_items')
-      .leftJoinAndSelect('order_items.menu_item', 'menu_item');
+    if (options?.isForAdmin) {
+      const joins = queryBuilder.expressionMap.joinAttributes;
+
+      if (!joins.some(j => j.alias?.name === 'vendor')) {
+        queryBuilder.leftJoinAndSelect('order.vendor', 'vendor');
+      }
     }
 
     const total = await queryBuilder.getCount();
