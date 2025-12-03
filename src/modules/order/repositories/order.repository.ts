@@ -85,7 +85,6 @@ export class OrderRepository {
 
     if(options?.isForAdmin){
       queryBuilder
-      .leftJoinAndSelect('order.customer', 'customer')
       .leftJoinAndSelect('order.vendor', 'vendor')
       .leftJoinAndSelect('order.delivery_address', 'delivery_address')
       .leftJoinAndSelect('order.order_items', 'order_items')
