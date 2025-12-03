@@ -6,14 +6,20 @@ import { MenuModule } from '../menu/menu.module'; // Add this import
 import { FileStorageModule } from '../file-storage/file-storage.module'; // Add this import
 import { Vendor } from '@/entities';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthModule } from '../auth/auth.module';
+import { NotificationModule } from '../notification/notification.module';
+import { PaymentModule } from '../payment/payment.module';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([Vendor]),
     OrderModule,
-    MenuModule,           // Add this - exports CategoryService
-    FileStorageModule,    // Add this - exports FileStorageService
+    MenuModule,
+    FileStorageModule,
+    AuthModule,
+    NotificationModule,
+    PaymentModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

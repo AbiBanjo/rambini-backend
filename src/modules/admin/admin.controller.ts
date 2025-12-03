@@ -4,6 +4,8 @@ import {
   Delete,
   FileTypeValidator,
   Get,
+  HttpCode,
+  HttpStatus,
   MaxFileSizeValidator,
   Param,
   ParseFilePipe,
@@ -24,18 +26,33 @@ import {
   ApiParam,
   ApiQuery,
   ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
 import { OrderFilterDto, OrderResponseDto } from '../order/dto';
-import { Category, Vendor } from '@/entities';
+import {
+  Category,
+  Notification,
+  NotificationType,
+  NotificationDelivery,
+  DeviceToken,
+  UserNotificationPreference,
+  NotificationPriority,
+  Vendor,
+} from '../../entities';
 import { CategoryService } from '../menu/services/category.service';
 import { AdminAuthGuard } from '../auth/guards/admin-auth-guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { FileStorageService } from '../file-storage/services/file-storage.service';
 import { AdminService } from './admin.service';
+import { NotificationService } from '../notification/notification.service';
+import { WithdrawalResponseDto } from '../payment/dto/withdrawal-response.dto';
+import { AdminWithdrawalActionDto } from './dto/admin-withdrawal.dto';
+import { WithdrawalService } from '../payment/services/withdrawal.service';
 
+@ApiTags('Admin')
 @Controller('admin')
-//@UseGuards()
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AdminController {
   constructor(
@@ -43,6 +60,8 @@ export class AdminController {
     private readonly orderService: OrderService,
     private readonly categoryService: CategoryService,
     private readonly fileStorageService: FileStorageService,
+    private readonly notificationService: NotificationService,
+    private readonly withdrawalService: WithdrawalService,
   ) {}
 
   @Get('get-orders')
@@ -137,7 +156,7 @@ export class AdminController {
     return await this.categoryService.createCategory(categoryData);
   }
 
-  @Put(':id')
+  @Put('category/:id')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Update a category' })
   @ApiParam({ name: 'id', description: 'Category ID' })
@@ -161,7 +180,7 @@ export class AdminController {
     return await this.categoryService.updateCategory(id, updateData);
   }
 
-  @Delete(':id')
+  @Delete('category/:id')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Delete a category' })
   @ApiParam({ name: 'id', description: 'Category ID' })
@@ -181,7 +200,7 @@ export class AdminController {
     await this.categoryService.deleteCategory(id);
   }
 
-  @Put(':id/activate')
+  @Put('category/:id/activate')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Activate a category' })
   @ApiParam({ name: 'id', description: 'Category ID' })
@@ -207,7 +226,7 @@ export class AdminController {
     return await this.categoryService.activateCategory(id);
   }
 
-  @Put(':id/deactivate')
+  @Put('category/:id/deactivate')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Deactivate a category' })
   @ApiParam({ name: 'id', description: 'Category ID' })
@@ -229,7 +248,7 @@ export class AdminController {
     return await this.categoryService.deactivateCategory(id);
   }
 
-  @Put(':id/parent')
+  @Put('category/:id/parent')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Set parent category' })
   @ApiParam({ name: 'id', description: 'Category ID' })
@@ -256,7 +275,7 @@ export class AdminController {
     return await this.categoryService.setParentCategory(id, body.parent_id);
   }
 
-  @Put(':id/sort-order')
+  @Put('category/:id/sort-order')
   @ApiOperation({ summary: 'Update category sort order' })
   @ApiParam({ name: 'id', description: 'Category ID' })
   @ApiResponse({
@@ -287,7 +306,8 @@ export class AdminController {
     );
   }
 
-  @Post(':id/image')
+  @Post('category/:id/image')
+  @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Upload image for category' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -315,11 +335,6 @@ export class AdminController {
     )
     file: Express.Multer.File,
   ) {
-    // Verify user is an admin
-    if (req.user.user_type !== 'ADMIN') {
-      throw new Error('Only admins can upload category images');
-    }
-
     // Upload image to cloud storage
     const uploadedFile = await this.fileStorageService.uploadImage(file, {
       quality: 85,
@@ -336,7 +351,8 @@ export class AdminController {
     return updatedCategory;
   }
 
-  @Post(':id/icon')
+  @Post('category/:id/icon')
+  @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Upload icon for category' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -364,11 +380,6 @@ export class AdminController {
     )
     file: Express.Multer.File,
   ) {
-    // Verify user is an admin
-    if (req.user.user_type !== 'ADMIN') {
-      throw new Error('Only admins can upload category icons');
-    }
-
     // Upload icon to cloud storage
     const uploadedFile = await this.fileStorageService.uploadImage(file, {
       quality: 90,
@@ -386,7 +397,7 @@ export class AdminController {
     return updatedCategory;
   }
 
-  @Get('admin/stats')
+  @Get('vendor/stats')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Get vendor statistics (Admin only)' })
   @ApiResponse({
@@ -397,7 +408,7 @@ export class AdminController {
     return await this.adminService.getVerificationStats();
   }
 
-  @Get('admin/all')
+  @Get('vendor/all')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({ summary: 'Get all vendors (Admin only)' })
   @ApiResponse({
@@ -407,5 +418,134 @@ export class AdminController {
   })
   async getAllVendors(): Promise<Vendor[]> {
     return await this.adminService.getAllVendors();
+  }
+
+  @Post('/withdrawals/:id/done')
+  @UseGuards(AdminAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark withdrawal as completed' })
+  @ApiParam({ name: 'id', description: 'Withdrawal ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Withdrawal marked as completed successfully',
+    type: WithdrawalResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - withdrawal already in final status',
+  })
+  @ApiResponse({ status: 404, description: 'Withdrawal not found' })
+  async markWithdrawalAsDone(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() actionData: AdminWithdrawalActionDto,
+  ): Promise<WithdrawalResponseDto> {
+    return await this.withdrawalService.markWithdrawalAsDone(
+      id,
+      req.user.id,
+      actionData,
+    );
+  }
+
+  @Get('withdrawals/pending')
+  @ApiOperation({ summary: 'Get all pending withdrawals' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pending withdrawals retrieved successfully',
+    type: [WithdrawalResponseDto],
+  })
+  async getPendingWithdrawals(): Promise<WithdrawalResponseDto[]> {
+    return await this.withdrawalService.getAllPendingWithdrawals();
+  }
+
+  @Get('processing')
+  @ApiOperation({ summary: 'Get all processing withdrawals' })
+  @ApiResponse({
+    status: 200,
+    description: 'Processing withdrawals retrieved successfully',
+    type: [WithdrawalResponseDto],
+  })
+  async getProcessingWithdrawals(): Promise<WithdrawalResponseDto[]> {
+    return await this.withdrawalService.getAllProcessingWithdrawals();
+  }
+
+  @Post('withdrawals/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark withdrawal as rejected' })
+  @ApiParam({ name: 'id', description: 'Withdrawal ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Withdrawal marked as rejected successfully',
+    type: WithdrawalResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - withdrawal already in final status',
+  })
+  @ApiResponse({ status: 404, description: 'Withdrawal not found' })
+  async markWithdrawalAsRejected(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() actionData: AdminWithdrawalActionDto,
+  ): Promise<WithdrawalResponseDto> {
+    return await this.withdrawalService.markWithdrawalAsRejected(
+      id,
+      req.user.id,
+      actionData,
+    );
+  }
+
+  @Post('withdrawals/:id/failed')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark withdrawal as failed' })
+  @ApiParam({ name: 'id', description: 'Withdrawal ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Withdrawal marked as failed successfully',
+    type: WithdrawalResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - withdrawal already in final status',
+  })
+  @ApiResponse({ status: 404, description: 'Withdrawal not found' })
+  async markWithdrawalAsFailed(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() actionData: AdminWithdrawalActionDto,
+  ): Promise<WithdrawalResponseDto> {
+    return await this.withdrawalService.markWithdrawalAsFailed(
+      id,
+      req.user.id,
+      actionData,
+    );
+  }
+
+  @Post('system/notification')
+  @UseGuards(AdminAuthGuard)
+  @ApiOperation({ summary: 'Create a system notification (Admin only)' })
+  @ApiResponse({
+    status: 201,
+    description: 'Notification created successfully',
+  })
+  async createSystemNotification(
+    @Body()
+    body: {
+      userId: string;
+      title: string;
+      message: string;
+      priority?: string;
+    },
+  ): Promise<Notification> {
+    return this.notificationService.createNotification(
+      body.userId,
+      NotificationType.SYSTEM,
+      body.title,
+      body.message,
+      {
+        priority: body.priority as any,
+        deliveryMethod: NotificationDelivery.IN_APP,
+      },
+    );
   }
 }
