@@ -25,6 +25,7 @@ import { CouponModule } from './modules/coupon/coupon.module';
 import { DatabaseModule } from 'src/database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CommonModule } from './common/common.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 // Load environment file based on NODE_ENV
 const nodeEnv = process.env.NODE_ENV || 'development';
@@ -47,13 +48,13 @@ if (nodeEnv !== 'development') {
       envFilePath: [envPath, '.env'],
       ignoreEnvFile: false,
     }),
-    
+
     // Common modules (global)
     CommonModule,
-    
+
     // Database
     DatabaseModule,
-    
+
     // Queue system
     BullModule.forRoot({
       redis: {
@@ -63,13 +64,15 @@ if (nodeEnv !== 'development') {
         db: parseInt(process.env.REDIS_DB) || 0,
       },
     }),
-    
+
     // Rate limiting
-    ThrottlerModule.forRoot([{
-      ttl: parseInt(process.env.RATE_LIMIT_TTL) || 60000,
-      limit: parseInt(process.env.RATE_LIMIT_LIMIT) || 100,
-    }]),
-    
+    ThrottlerModule.forRoot([
+      {
+        ttl: parseInt(process.env.RATE_LIMIT_TTL) || 60000,
+        limit: parseInt(process.env.RATE_LIMIT_LIMIT) || 100,
+      },
+    ]),
+
     // Feature modules
     UserModule,
     VendorModule,
@@ -82,11 +85,12 @@ if (nodeEnv !== 'development') {
     CouponModule,
     // NotificationModule,
     // AdminModule,
-    
+
     // Common modules
     AuthModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {} 
+export class AppModule {}
