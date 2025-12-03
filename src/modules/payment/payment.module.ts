@@ -1,23 +1,26 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { 
-  Payment, 
-  Wallet, 
-  Transaction, 
-  Order, 
-  User, 
+import {
+  Payment,
+  Wallet,
+  Transaction,
+  Order,
+  User,
   Vendor,
   Withdrawal,
   Bank,
-  SavedCard
+  SavedCard,
 } from 'src/entities';
 import { AuthModule } from 'src/modules/auth/auth.module';
 
 // Controllers
 import { PaymentController } from './controllers/payment.controller';
 import { PaymentWebhookController } from './controllers/payment-webhook.controller';
-import { WithdrawalController, AdminWithdrawalController } from './controllers/withdrawal.controller';
+import {
+  WithdrawalController,
+  AdminWithdrawalController,
+} from './controllers/withdrawal.controller';
 
 // Services
 import { PaymentService } from './services/payment.service';
@@ -36,6 +39,7 @@ import { OrderModule } from '../order/order.module';
 import { VendorModule } from '../vendor/vendor.module';
 import { NotificationModule } from '../notification/notification.module';
 import { RedisService } from '../../database/redis.service';
+import { RequestRefund } from '@/entities/request-refund.entity';
 
 @Module({
   imports: [
@@ -49,6 +53,7 @@ import { RedisService } from '../../database/redis.service';
       Withdrawal,
       Bank,
       SavedCard,
+      RequestRefund,
     ]),
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
     forwardRef(() => CartModule),
@@ -68,7 +73,7 @@ import { RedisService } from '../../database/redis.service';
     WalletPaymentService,
     {
       provide: StripePaymentService,
-      useFactory: (savedCardRepository) => {
+      useFactory: savedCardRepository => {
         const service = new StripePaymentService(savedCardRepository);
         return service;
       },
@@ -76,7 +81,7 @@ import { RedisService } from '../../database/redis.service';
     },
     {
       provide: PaystackPaymentService,
-      useFactory: (savedCardRepository) => {
+      useFactory: savedCardRepository => {
         const service = new PaystackPaymentService(savedCardRepository);
         return service;
       },
@@ -85,7 +90,7 @@ import { RedisService } from '../../database/redis.service';
     MercuryPaymentService,
     WithdrawalService,
     RedisService,
-    
+
     // Repositories
     PaymentRepository,
     WithdrawalRepository,

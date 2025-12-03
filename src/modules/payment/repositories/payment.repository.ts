@@ -24,7 +24,9 @@ export class PaymentRepository {
     });
   }
 
-  async findByPaymentReference(paymentReference: string): Promise<Payment | null> {
+  async findByPaymentReference(
+    paymentReference: string,
+  ): Promise<Payment | null> {
     return await this.paymentRepository.findOne({
       where: { payment_reference: paymentReference },
       relations: ['order', 'order.customer', 'order.vendor'],
@@ -42,31 +44,47 @@ export class PaymentRepository {
     });
   }
 
-  async findByExternalReference(externalReference: string): Promise<Payment | null> {
+  async findByExternalReference(
+    externalReference: string,
+  ): Promise<Payment | null> {
     return await this.paymentRepository.findOne({
       where: { external_reference: externalReference },
       relations: ['order', 'order.customer', 'order.vendor'],
     });
   }
 
-  async findByGatewayTransactionId(gatewayTransactionId: string): Promise<Payment | null> {
+  async findByGatewayTransactionId(
+    gatewayTransactionId: string,
+  ): Promise<Payment | null> {
     return await this.paymentRepository.findOne({
       where: { gateway_transaction_id: gatewayTransactionId },
       relations: ['order', 'order.customer', 'order.vendor'],
     });
   }
 
-  async update(id: string, updateData: Partial<Payment>): Promise<Payment | null> {
+  async update(
+    id: string,
+    updateData: Partial<Payment>,
+  ): Promise<Payment | null> {
     await this.paymentRepository.update(id, updateData);
     return await this.findById(id);
   }
 
-  async updateByPaymentReference(paymentReference: string, updateData: Partial<Payment>): Promise<Payment | null> {
-    await this.paymentRepository.update({ payment_reference: paymentReference }, updateData);
+  async updateByPaymentReference(
+    paymentReference: string,
+    updateData: Partial<Payment>,
+  ): Promise<Payment | null> {
+    await this.paymentRepository.update(
+      { payment_reference: paymentReference },
+      updateData,
+    );
     return await this.findByPaymentReference(paymentReference);
   }
 
-  async findByStatus(status: PaymentTransactionStatus, limit?: number): Promise<Payment[]> {
+  async findByStatus(
+    status: PaymentTransactionStatus,
+    limit?: number,
+  ): Promise<Payment[]> {
     const queryBuilder = this.paymentRepository
       .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.order', 'order')
@@ -80,7 +98,10 @@ export class PaymentRepository {
     return await queryBuilder.getMany();
   }
 
-  async findByPaymentMethod(paymentMethod: PaymentMethod, limit?: number): Promise<Payment[]> {
+  async findByPaymentMethod(
+    paymentMethod: PaymentMethod,
+    limit?: number,
+  ): Promise<Payment[]> {
     const queryBuilder = this.paymentRepository
       .createQueryBuilder('payment')
       .leftJoinAndSelect('payment.order', 'order')
@@ -94,7 +115,10 @@ export class PaymentRepository {
     return await queryBuilder.getMany();
   }
 
-  async getPaymentStats(vendorId?: string, customerId?: string): Promise<{
+  async getPaymentStats(
+    vendorId?: string,
+    customerId?: string,
+  ): Promise<{
     total_payments: number;
     total_amount: number;
     successful_payments: number;
@@ -148,7 +172,8 @@ export class PaymentRepository {
     return {
       total_payments: totalPayments,
       total_amount: parseFloat(totalAmount?.total || '0'),
-      successful_payments: statusCounts[PaymentTransactionStatus.COMPLETED] || 0,
+      successful_payments:
+        statusCounts[PaymentTransactionStatus.COMPLETED] || 0,
       failed_payments: statusCounts[PaymentTransactionStatus.FAILED] || 0,
       pending_payments: statusCounts[PaymentTransactionStatus.PENDING] || 0,
       payments_by_method: methodCounts,
@@ -160,7 +185,9 @@ export class PaymentRepository {
     // Generate UUID-based payment reference - simple and no race conditions!
     const { v4: uuidv4 } = await import('uuid');
     const paymentReference = `PAY-${uuidv4()}`;
-    this.logger.log(`Generated UUID-based payment reference: ${paymentReference}`);
+    this.logger.log(
+      `Generated UUID-based payment reference: ${paymentReference}`,
+    );
     return paymentReference;
   }
 
