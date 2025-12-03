@@ -50,7 +50,7 @@ import { WithdrawalResponseDto } from '../payment/dto/withdrawal-response.dto';
 import { AdminWithdrawalActionDto } from './dto/admin-withdrawal.dto';
 import { WithdrawalService } from '../payment/services/withdrawal.service';
 
-@ApiTags('Admin')
+@ApiTags('Admin T')
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
