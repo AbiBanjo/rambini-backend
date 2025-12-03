@@ -64,7 +64,7 @@ export class AdminController {
     private readonly withdrawalService: WithdrawalService,
   ) {}
 
-  @Get('get-orders')
+  @Get('orders')
   @UseGuards(AdminAuthGuard)
   @ApiOperation({
     summary: '[ADMIN ONLY]: Get all orders with filtering and pagination',
