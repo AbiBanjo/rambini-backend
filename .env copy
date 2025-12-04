@@ -1,0 +1,148 @@
+# PORT=3500
+
+
+DB_SYNCHRONIZE=true
+DB_LOGGING=false
+
+
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+PORT=3500
+# DB_DATABASE=rambini
+# DB_HOST=dpg-d2j61095pdvs73erkq8g-a.oregon-postgres.render.com
+# DB_PASSWORD=CTMeiwF5AKulVmNNtykazijcO1GTZk6w
+DB_PORT=5432
+# DB_USERNAME=rambini_user
+# DB_SYNCHRONIZE=true
+# DB_LOGGING=false
+
+# REDIS_HOST=red-ct63asqlqhvc73adohpg:6379
+# REDIS_PORT=6379
+# prod
+DB_DATABASE=rambini
+DB_HOST=rambini-1.c7cgasyw8uxg.us-east-1.rds.amazonaws.com
+DB_PASSWORD=fRYLJOtHXBV7YbdEZxnY
+DB_USERNAME=rambini
+# dev
+# DB_PASSWORD=fjukGKOZ9qlCrinlOrAB
+# DB_USERNAME=rambinidev
+# DB_HOST=rambinidev.c7cgasyw8uxg.us-east-1.rds.amazonaws.com
+# DB_DATABASE=rambinidev
+
+# DB_PASSWORD=AVNS_A179dRJAm7gueb-jbn5
+# DB_USERNAME=avnadmin
+# DB_HOST=pg-2b1d635f-adexsquare4192-d2a8.f.aivencloud.com
+# DB_DATABASE=defaultdb
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-here-change-in-production
+JWT_EXPIRES_IN=24h
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Twilio SMS Configuration (Optional - for SMS functionality)
+TWILIO_ACCOUNT_SID=AC896a1000afb2fc7028ae206955b712e8
+TWILIO_AUTH_TOKEN=29ee5d1c620a2d305a2a47ee79f6983d
+TWILIO_VERIFY_SERVICE_SID=VAf6d7dc89a652d906abdcbd8e756def8e
+TWILIO_PHONE_NUMBER=+18325831880
+
+# TWILIO_ACCOUNT_SID=AC9e72fc8e36e86ee958a52da58f4af342
+# TWILIO_AUTH_TOKEN=7c1594c59d9ba4ccd31791d0f260e065
+# TWILIO_PHONE_NUMBER=+15415694833
+
+
+
+
+
+# AWS S3 Configuration (Required for file uploads)
+AWS_ACCESS_KEY_ID=AKIA2S2Y37VYHVXWDLMR
+AWS_SECRET_ACCESS_KEY=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
+AWS_REGION=us-east-2
+AWS_S3_BUCKET_NAME=tra-vu-dev
+
+
+FRONTEND_URL=https://www.rambinifoods.com/wallet/funding/success
+
+
+
+# Rate Limiting
+RATE_LIMIT_TTL=60000
+RATE_LIMIT_LIMIT=100
+
+# Environment
+NODE_ENV=production
+
+# Paystack Configuration (Required for payments)
+# PAYSTACK_SECRET_KEY=sk_test_be0292b050f1b0dc49cc58df0451490616b907de
+PAYSTACK_SECRET_KEY=sk_live_553ef3912e08b25438677b1cc7b0d356dce2c7a8
+PAYSTACK_PUBLIC_KEY=pk_live_6cb04240c25ecaf50c6a361bce4bd5d8a2ce27f4
+PAYSTACK_WEBHOOK_SECRET=your_paystack_webhook_secret
+PAYSTACK_CALLBACK_URL=https://www.rambinifoods.com/wallet/funding/success
+
+# Stripe Configuration (Required for international payments)
+STRIPE_SECRET_KEY=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
+STRIPE_PUBLIC_KEY=pk_live_51S7jVqPARL0oC6NalhBJpgKE3SUXft8orWDlsoq4RLrlTLbubnbbBFxazyFGpFFykdC8MpZIfGaC1owcbt4Gt31K00fTvzR8JI
+STRIPE_WEBHOOK_SECRET=whsec_C3xgng2iwg345buzUpK0nwI1gpaWoqTJ
+
+# Shipbubble Configuration (Required for delivery services in Nigeria)
+# SHIPBUBBLE_API_KEY=sb_sandbox_51fdabe6db332ce700b4450d38917900718b900ef9f721415f952be63116e430
+SHIPBUBBLE_API_KEY=sb_prod_09a8ac8b9dbcafeab813491b8906ea1ad4c941179a16fd63943a975ebfcba684
+SHIPBUBBLE_WEBHOOK_SECRET=your_shipbubble_webhook_secret
+
+# Uber Deliveries Configuration (Required for delivery services outside Nigeria)
+UBER_CLIENT_ID=raVOI1SZ5W8OngK6jjj9IPIbgHrRx07k
+UBER_CLIENT_SECRET=Qu1zjQnnhriZEiZeIdOJwiPgd0gpmWyn9ZXZflEx
+UBER_CUSTOMER_ID=59f861ac-5be5-452a-9da3-53581e9219b8
+UBER_WEBHOOK_SECRET=your_uber_webhook_secret
+
+# fir webhooks
+UBER_WEBHOOK_SIGNING_KEY=04eb9268-8b01-4b78-91d5-2e54da8914ec
+
+
+
+
+ADMIN_EMAIL=info@bankfields.com
+
+# ec2-54-159-246-233.compute-1.amazonaws.com ec2-54-159-246-233.compute-1.amazonaws.com
+
+PUSH_NOTIFICATIONS_ENABLED=true
+SMS_NOTIFICATIONS_ENABLED=true
+EMAIL_NOTIFICATIONS_ENABLED=true 
+
+FCM_SERVER_KEY=your_fcm_server_key
+FCM_PROJECT_ID=rambini-d491d
+FIREBASE_CREDENTIAL_JSON=./src/modules/notification/firebase.json
+
+
+# service and commission 
+COMMISSION_PERCENTAGE=20
+SERVICE_FEE_PERCENTAGE=15
+
+
+SENDGRID_API_KEY=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
+EMAIL_FROM=support@rambinifoods.com 
+EMAIL_REPLY_TO=support@rambinifoods.com 
+
+APP_URL=https://api-prod.rambinifoods.com
+
+DELIVERY_COURIER_SELECTION_STRATEGY=fastest
+
+# Google OAuth Configuration
+GOOGLE_CLIENT_ID=148251543221-bemqeon71l87to8ib1qrah78mcj4rhp0.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=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
+
+# Apple Sign In Configuration
+APPLE_CLIENT_ID=com.rambini.rambini
+APPLE_TEAM_ID=626D2UL5L3
+APPLE_KEY_ID=U38BGS5J34
+# APPLE_PRIVATE_KEY_PATH=./apple-auth-key.p8
+# OR use APPLE_PRIVATE_KEY for base64 encoded key (preferred for production)
+APPLE_PRIVATE_KEY=MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgVFp3mkVug9PsRUYg
+rR2VUK31fEGNzPrNJ+dPFUcwStKgCgYIKoZIzj0DAQehRANCAASFImVOSN+VWohf
+RY3Y1SUB4o4f+rPu0Y7UMTfuKf2YURl3RjQv+KjLKdZ0j33NObDDUlz5GloeZcsF
+KifJpFqw 
+
+
+# {web:{client_id:148251543221-bemqeon71l87to8ib1qrah78mcj4rhp0.apps.googleusercontent.com,project_id:rambini-d491d,auth_uri:https://accounts.google.com/o/oauth2/auth,token_uri:https://oauth2.googleapis.com/token,auth_provider_x509_cert_url:https://www.googleapis.com/oauth2/v1/certs,client_secret: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,redirect_uris:[https://api-prod.rambinifoods.com/auth/google/callback,https://api-dev.rambinifoods.com/auth/google/callback],javascript_origins:[https://api-prod.rambinifoods.com,https://api-dev.rambinifoods.com]}}

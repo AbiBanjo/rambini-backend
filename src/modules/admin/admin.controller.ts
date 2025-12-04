@@ -38,6 +38,7 @@ import {
   UserNotificationPreference,
   NotificationPriority,
   Vendor,
+  User,
 } from '../../entities';
 import { CategoryService } from '../menu/services/category.service';
 import { AdminAuthGuard } from '../auth/guards/admin-auth-guard';
@@ -49,6 +50,8 @@ import { NotificationService } from '../notification/notification.service';
 import { WithdrawalResponseDto } from '../payment/dto/withdrawal-response.dto';
 import { AdminWithdrawalActionDto } from './dto/admin-withdrawal.dto';
 import { WithdrawalService } from '../payment/services/withdrawal.service';
+import { UserService } from '../user/services/user.service';
+import { VendorService } from '../vendor/services/vendor.service';
 
 @ApiTags('Admin')
 @Controller('admin')
@@ -62,6 +65,8 @@ export class AdminController {
     private readonly fileStorageService: FileStorageService,
     private readonly notificationService: NotificationService,
     private readonly withdrawalService: WithdrawalService,
+    private readonly userService: UserService,
+    private readonly vendorService: VendorService,
   ) {}
 
   @Get('get-orders')
@@ -219,10 +224,6 @@ export class AdminController {
     @Param('id') id: string,
     @Request() req,
   ): Promise<Category> {
-    // // Verify user is an admin
-    // if (req.user.user_type !== 'ADMIN') {
-    //   throw new Error('Only admins can activate categories');
-    // }
     return await this.categoryService.activateCategory(id);
   }
 
@@ -547,5 +548,163 @@ export class AdminController {
         deliveryMethod: NotificationDelivery.IN_APP,
       },
     );
+  }
+
+  /**
+   * ==================== User Management ====================
+   */
+
+  @Get('users')
+  @UseGuards(AdminAuthGuard)
+  @ApiOperation({ summary: 'Get all users (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'All users retrieved successfully',
+    type: [User],
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getAllUsers(): Promise<User[]> {
+    return await this.userService.findActiveUsers();
+  }
+
+  @Get('users/:userId')
+  @UseGuards(AdminAuthGuard)
+  @ApiOperation({ summary: 'Get user by ID (Admin only)' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'User retrieved successfully',
+    type: User,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getUserById(@Param('userId') userId: string): Promise<User> {
+    return await this.userService.findById(userId);
+  }
+
+  @Post('users/:userId/suspend')
+  @UseGuards(AdminAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Suspend a user (Admin only)' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'User suspended successfully',
+    type: User,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async suspendUser(@Param('userId') userId: string): Promise<User> {
+    return await this.userService.suspendUser(userId);
+  }
+
+  @Post('users/:userId/activate')
+  @UseGuards(AdminAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activate a user (Admin only)' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'User activated successfully',
+    type: User,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async activateUser(@Param('userId') userId: string): Promise<User> {
+    return await this.userService.activateUser(userId);
+  }
+
+  @Delete('users/:userId')
+  @UseGuards(AdminAuthGuard)
+  @ApiOperation({ summary: 'Delete a user permanently (Admin only)' })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({ status: 200, description: 'User deleted successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async deleteUserByAdmin(@Param('userId') userId: string): Promise<{ message: string }> {
+    await this.userService.deleteUser(userId);
+    return { message: 'User deleted successfully' };
+  }
+
+  /**
+   * ==================== Vendor Management ====================
+   */
+
+  @Get('vendors/:vendorId')
+  @UseGuards(AdminAuthGuard)
+  @ApiOperation({ summary: 'Get vendor by ID (Admin only)' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor retrieved successfully',
+    type: Vendor,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Vendor not found' })
+  async getVendorById(@Param('vendorId') vendorId: string): Promise<Vendor> {
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new Error('Vendor not found');
+    }
+    return vendor;
+  }
+
+  @Post('vendors/:vendorId/activate')
+  @UseGuards(AdminAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activate a vendor (Admin only)' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor activated successfully',
+    type: Vendor,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Vendor not found' })
+  async activateVendorByAdmin(@Param('vendorId') vendorId: string): Promise<Vendor> {
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new Error('Vendor not found');
+    }
+    return await this.vendorService.activateVendor(vendor.user_id);
+  }
+
+  @Post('vendors/:vendorId/deactivate')
+  @UseGuards(AdminAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Deactivate a vendor (Admin only)' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor deactivated successfully',
+    type: Vendor,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Vendor not found' })
+  async deactivateVendorByAdmin(@Param('vendorId') vendorId: string): Promise<Vendor> {
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new Error('Vendor not found');
+    }
+    return await this.vendorService.deactivateVendor(vendor.user_id);
+  }
+
+  @Delete('vendors/:vendorId')
+  @UseGuards(AdminAuthGuard)
+  @ApiOperation({ summary: 'Delete vendor and associated user (Admin only)' })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({ status: 200, description: 'Vendor and user deleted successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Vendor not found' })
+  async deleteVendorByAdmin(@Param('vendorId') vendorId: string): Promise<{ message: string }> {
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new Error('Vendor not found');
+    }
+    
+    // Delete the user account (which should cascade to vendor if properly configured)
+    await this.userService.deleteUser(vendor.user_id);
+    
+    return { message: 'Vendor and associated user deleted successfully' };
   }
 }
