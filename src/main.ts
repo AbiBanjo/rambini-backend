@@ -23,6 +23,7 @@ async function bootstrap() {
   // Get configuration service
   const configService = app.get(ConfigService);
   
+  
   // Global prefix
   app.setGlobalPrefix(configService.get('API_PREFIX') || 'api/v1');
   
