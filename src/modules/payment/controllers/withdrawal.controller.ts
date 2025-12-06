@@ -20,7 +20,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { WithdrawalService } from '../services/withdrawal.service';
+import { WithdrawalService } from '../services/withdrawal';
 import {
   WithdrawalOtpRequestDto,
   WithdrawalRequestDto,
