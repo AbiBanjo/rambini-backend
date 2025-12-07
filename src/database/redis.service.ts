@@ -152,6 +152,100 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Get all keys matching a pattern
+   * @param pattern - Redis pattern (e.g., 'user:*', 'session:*')
+   * @returns Array of matching keys
+   */
+  async keys(pattern: string): Promise<string[]> {
+    if (!(await this.ensureConnection())) {
+      return [];
+    }
+
+    try {
+      return await this.redisClient!.keys(pattern);
+    } catch (error) {
+      this.logger.error(`Error getting keys with pattern ${pattern}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Scan keys matching a pattern (more efficient than keys() for large datasets)
+   * @param pattern - Redis pattern
+   * @param count - Number of keys to return per iteration (default: 100)
+   * @returns Array of matching keys
+   */
+  async scan(pattern: string, count: number = 100): Promise<string[]> {
+    if (!(await this.ensureConnection())) {
+      return [];
+    }
+
+    try {
+      const keys: string[] = [];
+      let cursor = 0;
+
+      do {
+        const result = await this.redisClient!.scan(cursor, {
+          MATCH: pattern,
+          COUNT: count,
+        });
+
+        cursor = result.cursor;
+        keys.push(...result.keys);
+      } while (cursor !== 0);
+
+      return keys;
+    } catch (error) {
+      this.logger.error(`Error scanning keys with pattern ${pattern}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get multiple keys at once
+   * @param keys - Array of keys to retrieve
+   * @returns Array of values (null for non-existent keys)
+   */
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    if (!(await this.ensureConnection())) {
+      return keys.map(() => null);
+    }
+
+    if (keys.length === 0) {
+      return [];
+    }
+
+    try {
+      return await this.redisClient!.mGet(keys);
+    } catch (error) {
+      this.logger.error(`Error getting multiple keys:`, error);
+      return keys.map(() => null);
+    }
+  }
+
+  /**
+   * Set multiple key-value pairs at once
+   * @param pairs - Array of [key, value] pairs
+   */
+  async mset(pairs: [string, string][]): Promise<void> {
+    if (!(await this.ensureConnection())) {
+      return;
+    }
+
+    if (pairs.length === 0) {
+      return;
+    }
+
+    try {
+      // Flatten the array for mSet: ['key1', 'value1', 'key2', 'value2']
+      const flatPairs = pairs.flat();
+      await this.redisClient!.mSet(flatPairs);
+    } catch (error) {
+      this.logger.error(`Error setting multiple keys:`, error);
+    }
+  }
+
   async onModuleDestroy() {
     if (this.redisClient && this.redisClient.isOpen) {
       try {
@@ -166,4 +260,4 @@ export class RedisService implements OnModuleDestroy {
   isServiceEnabled(): boolean {
     return this.isEnabled && this.redisClient !== null;
   }
-} 
+}

@@ -17,7 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { AdminAuthGuard } from '../../auth/guards/admin-auth-guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { AdminService } from '../admin.service';
+import { AdminService } from '../service/admin.service';
 import { VendorService } from '../../vendor/services/vendor.service';
 import { UserService } from '../../user/services/user.service';
 import { Vendor } from '../../../entities';
