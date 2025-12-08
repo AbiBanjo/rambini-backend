@@ -10,6 +10,7 @@ export const COUNTRY_CURRENCY_MAP: Record<string, Currency> = {
   // United States
   'US': Currency.USD,
   
+  
   // European Union countries
   'AT': Currency.EUR, // Austria
   'BE': Currency.EUR, // Belgium
