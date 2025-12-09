@@ -664,41 +664,51 @@ export class WalletPaymentService {
       throw new BadRequestException('Wallet is not active');
     }
 
-    // Check if user has sufficient balance
-    if (!wallet.can_transact(amount)) {
-      throw new BadRequestException('Insufficient wallet balance');
+    // ✅ FIX: Check vendor_balance instead of balance
+    if (wallet.vendor_balance < amount) {
+      throw new BadRequestException(
+        `Insufficient vendor wallet balance. Available: ${wallet.vendor_balance}, Required: ${amount}`,
+      );
     }
 
     try {
-      // Debit wallet
-      const balanceBefore = wallet.balance;
+      // ✅ FIX: Store vendor_balance before debit
+      const balanceBefore = wallet.vendor_balance;
+
+      // Debit vendor wallet
       const debitSuccess = wallet.debitVendorWallet(amount);
       if (!debitSuccess) {
-        throw new BadRequestException('Failed to debit wallet');
+        throw new BadRequestException('Failed to debit vendor wallet');
       }
 
       // Save updated wallet
       await this.walletRepository.save(wallet);
 
-      // Create debit transaction record
+      // ✅ FIX: Create transaction record with correct vendor balance tracking
       const debitTransaction = await this.transactionRepository.create({
         wallet_id: wallet.id,
         transaction_type: TransactionType.DEBIT,
         amount: Number(amount),
         balance_before: Number(balanceBefore),
-        balance_after: Number(wallet.balance),
+        balance_after: Number(wallet.vendor_balance), // ✅ FIX: Use vendor_balance
         description: description,
         reference_id: `withdrawal_${Date.now()}`,
         status: TransactionStatus.COMPLETED,
         processed_at: new Date(),
+        metadata: {
+          withdrawal: true,
+          balance_type: 'vendor_balance', // ✅ Add metadata to clarify this is vendor balance
+        },
       });
 
       await this.transactionRepository.save(debitTransaction);
 
-      this.logger.log(`Wallet debited successfully for withdrawal: ${amount}`);
+      this.logger.log(
+        `Vendor wallet debited successfully for withdrawal: ${amount}, new vendor_balance: ${wallet.vendor_balance}`,
+      );
     } catch (error) {
       this.logger.error(
-        `Failed to debit wallet for withdrawal: ${error.message}`,
+        `Failed to debit vendor wallet for withdrawal: ${error.message}`,
       );
       throw error;
     }
