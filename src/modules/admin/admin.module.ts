@@ -1,10 +1,11 @@
 import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Vendor, User } from '@/entities';
+import { Vendor, User, Address } from '@/entities';
 
 // Services
 import { AdminService } from './service/admin.service';
 import { OtpMonitoringService } from './service/otp-monitoring.service';
+import { AdminProfileService } from './service/admin-profile.service'; // NEW - Profile management
 
 // Controllers
 import { AdminOrderController } from './controllers/admin-order.controller';
@@ -14,7 +15,9 @@ import { AdminVendorController } from './controllers/admin-vendor.controller';
 import { AdminUserController } from './controllers/admin-user.controller';
 import { AdminWithdrawalController } from './controllers/admin-withdrawal.controller';
 import { AdminNotificationController } from './controllers/admin-notification.controller';
-import { AdminOtpController } from './controllers/admin-otp.controller'; 
+import { AdminOtpController } from './controllers/admin-otp.controller';
+import { AdminUserProfileController } from './controllers/admin-user-profile.controller'; // NEW
+import { AdminVendorProfileController } from './controllers/admin-vendor-profile.controller'; // NEW
 
 // Modules
 import { OrderModule } from '../order/order.module';
@@ -27,14 +30,15 @@ import { UserModule } from '../user/user.module';
 import { VendorModule } from '../vendor/vendor.module';
 
 // Database
-import { RedisService } from '../../database/redis.service'; 
+import { RedisService } from '../../database/redis.service';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Vendor,
-      User, 
+      User,
+      Address, // NEW - Required for address management
     ]),
     OrderModule,
     MenuModule,
@@ -53,16 +57,20 @@ import { RedisService } from '../../database/redis.service';
     AdminUserController,
     AdminWithdrawalController,
     AdminNotificationController,
-    AdminOtpController, // NEW - Add OTP monitoring controller
+    AdminOtpController,
+    AdminUserProfileController, // NEW - User profile management
+    AdminVendorProfileController, // NEW - Vendor profile management
   ],
   providers: [
     AdminService,
-    OtpMonitoringService, // NEW - Add OTP monitoring service
-    RedisService, // NEW - Required for Redis operations
+    OtpMonitoringService,
+    AdminProfileService, // NEW - Profile management service
+    RedisService,
   ],
   exports: [
     AdminService,
-    OtpMonitoringService, // NEW - Export for other modules if needed
+    OtpMonitoringService,
+    AdminProfileService, // NEW - Export for potential use in other modules
   ],
 })
 export class AdminModule {}
