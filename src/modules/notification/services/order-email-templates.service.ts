@@ -1,6 +1,7 @@
 // src/modules/notification/services/order-email-templates.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { OrderStatus, OrderType } from '@/entities';
+import { AdminOrderEmailTemplatesService } from './admin-order-email-templates.service';
 
 export interface OrderEmailTemplate {
   subject: string;
@@ -11,6 +12,24 @@ export interface OrderEmailTemplate {
 @Injectable()
 export class OrderEmailTemplatesService {
   private readonly logger = new Logger(OrderEmailTemplatesService.name);
+
+  constructor(
+    private readonly adminTemplates: AdminOrderEmailTemplatesService,
+  ) {}
+
+  /**
+   * Delegate admin order summary to admin templates service
+   */
+  getAdminOrderSummaryTemplate(data: Parameters<typeof this.adminTemplates.getAdminOrderSummaryTemplate>[0]) {
+    return this.adminTemplates.getAdminOrderSummaryTemplate(data);
+  }
+
+  /**
+   * Delegate admin order status change to admin templates service
+   */
+  getAdminOrderStatusChangeTemplate(data: Parameters<typeof this.adminTemplates.getAdminOrderStatusChangeTemplate>[0]) {
+    return this.adminTemplates.getAdminOrderStatusChangeTemplate(data);
+  }
 
   /**
    * Get email template for new order (sent to vendor)

@@ -37,6 +37,7 @@ import {
   UserNotificationPreference,
   User,
 } from '../../entities';
+import { AdminOrderEmailTemplatesService } from './services/admin-order-email-templates.service';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import {
     InAppNotificationService,
     NotificationTemplateService,
     NotificationDeliveryService,
+    AdminOrderEmailTemplatesService, 
     NotificationQueueService,
     NotificationSSEService,
     
@@ -85,6 +87,7 @@ import {
     PushNotificationService,
     InAppNotificationService,
     NotificationTemplateService,
+     AdminOrderEmailTemplatesService,
     NotificationDeliveryService,
     NotificationQueueService,
     NotificationSSEService,
