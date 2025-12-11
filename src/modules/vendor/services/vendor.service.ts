@@ -20,6 +20,8 @@ import { AddressFormatter } from '../../../utils/address-formatter';
 @Injectable()
 export class VendorService {
   private readonly logger = new Logger(VendorService.name);
+  // Enable verbose logging only in development
+  private readonly enableAddressLogging = process.env.NODE_ENV === 'development';
 
   constructor(
     @InjectRepository(Vendor)
@@ -141,133 +143,70 @@ export class VendorService {
 
   /**
    * Enrich vendor object with complete address details
-   * This adds formatted address fields to the vendor object
-   */
-  // src/modules/vendor/services/vendor.service.ts - WITH DEBUGGING
-
-  /**
-   * Enrich vendor object with complete address details
-   * This adds formatted address fields to the vendor object
+   * Uses the improved AddressFormatter with smart logging
    */
   private enrichVendorWithAddressDetails(vendor: Vendor): Vendor {
-    if (!vendor) return vendor;
+    if (!vendor || !vendor.address) return vendor;
 
-    if (vendor.address) {
-      // ============================================================
-      // STEP 1: Clean address_line_2 if it contains corrupted data
-      // ============================================================
-      const cleanedAddressLine2 = this.cleanAddressLine2(vendor.address);
-
-      // Debug logging
-      this.logger.debug('========== ADDRESS DEBUG ==========');
-      this.logger.debug('Raw address data:', {
+    // Use AddressFormatter with optional logging (throttled automatically)
+    const fullAddress = AddressFormatter.formatFullAddress(
+      {
         address_line_1: vendor.address.address_line_1,
-        address_line_2_raw: vendor.address.address_line_2,
-        address_line_2_cleaned: cleanedAddressLine2,
+        address_line_2: vendor.address.address_line_2,
         city: vendor.address.city,
         state: vendor.address.state,
         postal_code: vendor.address.postal_code,
         country: vendor.address.country,
-      });
+      },
+      {
+        enableLogging: this.enableAddressLogging,
+        logger: this.logger,
+      }
+    );
 
-      // ============================================================
-      // STEP 2: Create formatted address using CLEANED data
-      // ============================================================
-      const fullAddress = AddressFormatter.formatFullAddress({
+    (vendor as any).fullAddress = fullAddress;
+
+    // Add formatted address with line breaks for display
+    (vendor as any).formattedAddress = AddressFormatter.formatAddressWithLineBreaks(
+      {
         address_line_1: vendor.address.address_line_1,
-        address_line_2: cleanedAddressLine2, // 👈 Use cleaned version
+        address_line_2: vendor.address.address_line_2,
         city: vendor.address.city,
         state: vendor.address.state,
         postal_code: vendor.address.postal_code,
         country: vendor.address.country,
-      });
+      },
+      {
+        enableLogging: this.enableAddressLogging,
+        logger: this.logger,
+      }
+    );
 
-      this.logger.debug('Formatted fullAddress:', fullAddress);
-
-      (vendor as any).fullAddress = fullAddress;
-
-      // Add formatted address with line breaks for display
-      (vendor as any).formattedAddress =
-        AddressFormatter.formatAddressWithLineBreaks({
-          address_line_1: vendor.address.address_line_1,
-          address_line_2: cleanedAddressLine2, // 👈 Use cleaned version
-          city: vendor.address.city,
-          state: vendor.address.state,
-          postal_code: vendor.address.postal_code,
-          country: vendor.address.country,
-        });
-
-      // ============================================================
-      // STEP 3: Add individual address components (CLEANED)
-      // ============================================================
-      const addressComponents = {
-        street: vendor.address.address_line_1 || '',
-        streetLine2: cleanedAddressLine2 || '', // 👈 Use cleaned version
-        city: vendor.address.city || '',
-        state: vendor.address.state || '',
-        postalCode: vendor.address.postal_code || '',
-        country: vendor.address.country || '',
+    // Add individual address components (cleaned automatically)
+    const addressComponents = AddressFormatter.extractAddressComponents(
+      {
+        address_line_1: vendor.address.address_line_1,
+        address_line_2: vendor.address.address_line_2,
+        city: vendor.address.city,
+        state: vendor.address.state,
+        postal_code: vendor.address.postal_code,
+        country: vendor.address.country,
         latitude: vendor.address.latitude,
         longitude: vendor.address.longitude,
-      };
+      },
+      {
+        enableLogging: this.enableAddressLogging,
+        logger: this.logger,
+      }
+    );
 
-      this.logger.debug('Address components:', addressComponents);
-      (vendor as any).addressComponents = addressComponents;
-
-      this.logger.debug('===================================');
-    }
+    (vendor as any).addressComponents = addressComponents;
 
     return vendor;
   }
 
   /**
-   * ============================================================
-   * NEW METHOD: Smart address_line_2 cleaner
-   * ============================================================
-   * Detects if address_line_2 contains full address data
-   * (corrupted from Shipbubble validation) and returns clean data
-   */
-  private cleanAddressLine2(address: any): string | null {
-    if (!address.address_line_2) return null;
-
-    const addressLine2 = address.address_line_2.trim();
-
-    // Check if address_line_2 contains commas (indicates it might be a full address)
-    if (!addressLine2.includes(',')) {
-      // It's a legitimate second line (e.g., "Suite 100", "Apartment 2B")
-      return addressLine2;
-    }
-
-    // Check if it contains city, state, or country - if so, it's corrupted
-    const suspiciousPatterns = [
-      address.city,
-      address.state,
-      address.country,
-      address.postal_code,
-    ].filter(Boolean);
-
-    const hasCorruptData = suspiciousPatterns.some(pattern =>
-      addressLine2.includes(pattern!),
-    );
-
-    if (hasCorruptData) {
-      this.logger.warn(
-        `⚠️ Detected corrupted address_line_2 for vendor: "${addressLine2}"`,
-      );
-      this.logger.warn(
-        `   Cleaning it to prevent duplication in formatted addresses`,
-      );
-      return null; // Clear corrupted data
-    }
-
-    // It has commas but doesn't match our fields - keep it
-    return addressLine2;
-  }
-
-  // Add this to your VendorService
-
-  /**
-   * Clean corrupted address data
+   * Clean corrupted address data for a single vendor
    * Removes old/duplicate data from address_line_2 if it looks like a full address
    */
   async cleanVendorAddress(vendorId: string): Promise<void> {
@@ -283,62 +222,89 @@ export class VendorService {
 
     const address = vendor.address;
 
-    // Check if address_line_2 contains commas (indicates it might be a full address)
-    if (address.address_line_2 && address.address_line_2.includes(',')) {
-      this.logger.warn(
-        `Vendor ${vendorId} has suspicious address_line_2: "${address.address_line_2}"`,
+    // Use AddressFormatter to check if address_line_2 is corrupted
+    const cleanedLine2 = AddressFormatter.cleanAddressLine2(
+      address.address_line_1,
+      address.address_line_2,
+      address.city,
+      address.state,
+      address.country
+    );
+
+    // If cleanAddressLine2 returned null but address_line_2 exists, it's corrupted
+    const isCorrupted = address.address_line_2 && !cleanedLine2;
+
+    if (isCorrupted) {
+      this.logger.log(
+        `Cleaning corrupted address_line_2 for vendor ${vendorId}: "${address.address_line_2}"`
       );
 
-      // If it contains city, state, or country - it's likely corrupt
-      const suspiciousPatterns = [
-        address.city,
-        address.state,
-        address.country,
-        address.postal_code,
-      ].filter(Boolean);
+      // Clear the corrupted address_line_2
+      await this.addressService.updateAddress(vendor.user_id, address.id, {
+        address_line_2: null,
+      });
 
-      const hasCorruptData = suspiciousPatterns.some(pattern =>
-        address.address_line_2?.includes(pattern!),
-      );
-
-      if (hasCorruptData) {
-        this.logger.log(`Cleaning address_line_2 for vendor ${vendorId}`);
-
-        // Clear the corrupted address_line_2
-        await this.addressService.updateAddress(vendor.user_id, address.id, {
-          address_line_2: null, // Clear it
-        });
-
-        this.logger.log(`✅ Cleaned address for vendor ${vendorId}`);
-      }
+      this.logger.log(`✅ Cleaned address for vendor ${vendorId}`);
     }
   }
 
   /**
    * Clean all vendor addresses (run once to fix database)
+   * Returns summary of cleaning operation
    */
-  async cleanAllVendorAddresses(): Promise<{ cleaned: number; total: number }> {
+  async cleanAllVendorAddresses(): Promise<{ 
+    cleaned: number; 
+    total: number;
+    corrupted: string[];
+  }> {
+    this.logger.log('Starting address cleanup for all vendors...');
+    
     const vendors = await this.vendorRepository.find({
       relations: ['address'],
     });
 
     let cleaned = 0;
+    const corruptedAddresses: string[] = [];
 
     for (const vendor of vendors) {
-      if (vendor.address?.address_line_2?.includes(',')) {
-        try {
-          await this.cleanVendorAddress(vendor.id);
-          cleaned++;
-        } catch (error) {
-          this.logger.error(
-            `Failed to clean address for vendor ${vendor.id}:`,
-            error,
-          );
+      if (vendor.address?.address_line_2) {
+        // Check if it's corrupted using AddressFormatter
+        const cleanedLine2 = AddressFormatter.cleanAddressLine2(
+          vendor.address.address_line_1,
+          vendor.address.address_line_2,
+          vendor.address.city,
+          vendor.address.state,
+          vendor.address.country
+        );
+
+        const isCorrupted = !cleanedLine2;
+
+        if (isCorrupted) {
+          try {
+            corruptedAddresses.push(
+              `${vendor.business_name}: "${vendor.address.address_line_2}"`
+            );
+            await this.cleanVendorAddress(vendor.id);
+            cleaned++;
+          } catch (error) {
+            this.logger.error(
+              `Failed to clean address for vendor ${vendor.id}:`,
+              error,
+            );
+          }
         }
       }
     }
 
-    return { cleaned, total: vendors.length };
+    this.logger.log(
+      `✅ Address cleanup complete: ${cleaned}/${vendors.length} addresses cleaned`
+    );
+
+    return { 
+      cleaned, 
+      total: vendors.length,
+      corrupted: corruptedAddresses
+    };
   }
 
   async updateVendor(

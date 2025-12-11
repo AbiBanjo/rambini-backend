@@ -23,69 +23,152 @@ export interface FormattedAddressComponents {
 }
 
 export class AddressFormatter {
+  // Cache to track logged addresses and prevent duplicate logs
+  private static loggedAddresses = new Map<string, number>();
+  private static readonly LOG_THROTTLE_MS = 60000; // Only log same address once per minute
+
   /**
-   * Format address object into a complete address string
-   * Format: "Street, Street2, City, State, PostalCode, Country"
-   * 
-   * @param address - Address object with components
-   * @returns Formatted address string with comma separators
-   * 
-   * @example
-   * formatFullAddress({ 
-   *   address_line_1: '123 Main St',
-   *   city: 'Lagos',
-   *   state: 'Lagos State',
-   *   country: 'NG'
-   * })
-   * // Returns: "123 Main St, Lagos, Lagos State, NG"
+   * Generate a unique key for an address to track logging
    */
-  static formatFullAddress(address: AddressComponents): string {
+  private static getAddressKey(address: AddressComponents): string {
+    return `${address.address_line_1}_${address.city}_${address.state}`;
+  }
+
+  /**
+   * Check if we should log this address (throttling mechanism)
+   */
+  private static shouldLogAddress(address: AddressComponents): boolean {
+    const key = this.getAddressKey(address);
+    const lastLogged = this.loggedAddresses.get(key);
+    const now = Date.now();
+
+    if (!lastLogged || now - lastLogged > this.LOG_THROTTLE_MS) {
+      this.loggedAddresses.set(key, now);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Clear old entries from the log cache (cleanup to prevent memory leaks)
+   */
+  private static cleanupLogCache(): void {
+    const now = Date.now();
+    for (const [key, timestamp] of this.loggedAddresses.entries()) {
+      if (now - timestamp > this.LOG_THROTTLE_MS * 2) {
+        this.loggedAddresses.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Detect if address_line_2 contains corrupted/duplicate data
+   * Returns cleaned address_line_2 or null if it should be skipped
+   */
+  static cleanAddressLine2(
+    addressLine1: string | undefined,
+    addressLine2: string | undefined,
+    city: string | undefined,
+    state: string | undefined,
+    country: string | undefined
+  ): string | null {
+    if (!addressLine2 || !addressLine2.trim()) {
+      return null;
+    }
+
+    const line2Lower = addressLine2.toLowerCase().trim();
+    const line1Lower = (addressLine1 || '').toLowerCase().trim();
+
+    // Check if address_line_2 contains city, state, or country (signs of corruption)
+    const cityLower = (city || '').toLowerCase().trim();
+    const stateLower = (state || '').toLowerCase().trim();
+    const countryLower = (country || '').toLowerCase().trim();
+
+    const hasCity = cityLower && line2Lower.includes(cityLower);
+    const hasState = stateLower && line2Lower.includes(stateLower);
+    const hasCountry = countryLower && line2Lower.includes(countryLower);
+
+    // Check if line2 is substantially similar to line1 (possible duplication)
+    const isSimilarToLine1 = line1Lower && line2Lower.includes(line1Lower.substring(0, 20));
+
+    // If corrupted, return null to skip it
+    if (hasCity || hasState || hasCountry || isSimilarToLine1) {
+      return null;
+    }
+
+    return addressLine2.trim();
+  }
+
+  /**
+   * Format address object into a complete address string with smart corruption handling
+   */
+  static formatFullAddress(
+    address: AddressComponents,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): string {
     if (!address) return '';
+
+    // Clean up log cache periodically
+    if (Math.random() < 0.01) { // 1% chance on each call
+      this.cleanupLogCache();
+    }
+
+    // Clean address_line_2 to prevent corruption
+    const cleanedLine2 = this.cleanAddressLine2(
+      address.address_line_1,
+      address.address_line_2,
+      address.city,
+      address.state,
+      address.country
+    );
+
+    const isCorrupted = address.address_line_2 && !cleanedLine2;
+
+    // Only log if enabled, logger provided, corrupted, and not recently logged
+    if (options?.enableLogging && options?.logger && isCorrupted) {
+      if (this.shouldLogAddress(address)) {
+        options.logger.warn(
+          `⚠️ Skipped corrupted address_line_2: "${address.address_line_2}" ` +
+          `for address: ${address.address_line_1}, ${address.city}`
+        );
+      }
+    }
 
     const parts = [
       address.address_line_1?.trim(),
-      address.address_line_2?.trim(),
+      cleanedLine2,
       address.city?.trim(),
       address.state?.trim(),
       address.postal_code?.trim(),
       address.country?.trim(),
-    ].filter(part => part && part.length > 0); // Remove null/undefined/empty values
+    ].filter(part => part && part.length > 0);
 
     return parts.join(', ');
   }
 
   /**
    * Format address for display with line breaks
-   * Useful for multi-line displays like address labels or shipping forms
-   * 
-   * @param address - Address object with components
-   * @returns Formatted address string with line breaks
-   * 
-   * @example
-   * formatAddressWithLineBreaks({
-   *   address_line_1: '123 Main St',
-   *   address_line_2: 'Suite 100',
-   *   city: 'Lagos',
-   *   state: 'Lagos State',
-   *   postal_code: '100001',
-   *   country: 'Nigeria'
-   * })
-   * // Returns:
-   * // "123 Main St
-   * //  Suite 100
-   * //  Lagos, Lagos State, 100001
-   * //  Nigeria"
    */
-  static formatAddressWithLineBreaks(address: AddressComponents): string {
+  static formatAddressWithLineBreaks(
+    address: AddressComponents,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): string {
     if (!address) return '';
 
     const lines = [];
     
     const street1 = address.address_line_1?.trim();
-    const street2 = address.address_line_2?.trim();
+    const cleanedLine2 = this.cleanAddressLine2(
+      address.address_line_1,
+      address.address_line_2,
+      address.city,
+      address.state,
+      address.country
+    );
     
     if (street1) lines.push(street1);
-    if (street2) lines.push(street2);
+    if (cleanedLine2) lines.push(cleanedLine2);
     
     const cityStateZip = [
       address.city?.trim(),
@@ -103,25 +186,54 @@ export class AddressFormatter {
 
   /**
    * Format address for HTML display with line breaks
-   * Uses <br> tags instead of \n for HTML rendering
-   * 
-   * @param address - Address object with components
-   * @returns Formatted address string with HTML line breaks
    */
-  static formatAddressForHTML(address: AddressComponents): string {
-    return this.formatAddressWithLineBreaks(address).replace(/\n/g, '<br>');
+  static formatAddressForHTML(
+    address: AddressComponents,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): string {
+    return this.formatAddressWithLineBreaks(address, options).replace(/\n/g, '<br>');
+  }
+
+  /**
+   * Extract formatted address components for API responses
+   */
+  static extractAddressComponents(
+    address: AddressComponents,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): FormattedAddressComponents {
+    if (!address) {
+      return {
+        street: '',
+        streetLine2: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: '',
+      };
+    }
+
+    const cleanedLine2 = this.cleanAddressLine2(
+      address.address_line_1,
+      address.address_line_2,
+      address.city,
+      address.state,
+      address.country
+    );
+
+    return {
+      street: address.address_line_1 || '',
+      streetLine2: cleanedLine2 || '',
+      city: address.city || '',
+      state: address.state || '',
+      postalCode: address.postal_code || '',
+      country: address.country || '',
+      latitude: address.latitude,
+      longitude: address.longitude,
+    };
   }
 
   /**
    * Parse address components from full address string
-   * Useful when you need to extract components from a formatted address
-   * 
-   * @param fullAddress - Full address string (comma-separated)
-   * @returns Object with parsed address components
-   * 
-   * @example
-   * parseAddressComponents("123 Main St, Lagos, Lagos State, Nigeria")
-   * // Returns: { street: '123 Main St', city: 'Lagos', state: 'Lagos State', country: 'Nigeria' }
    */
   static parseAddressComponents(fullAddress: string): {
     street: string;
@@ -144,46 +256,14 @@ export class AddressFormatter {
   }
 
   /**
-   * Extract formatted address components for API responses
-   * Provides a clean structure for frontend consumption
-   * 
-   * @param address - Address object with components
-   * @returns Structured address components object
-   */
-  static extractAddressComponents(address: AddressComponents): FormattedAddressComponents {
-    if (!address) {
-      return {
-        street: '',
-        streetLine2: '',
-        city: '',
-        state: '',
-        postalCode: '',
-        country: '',
-      };
-    }
-
-    return {
-      street: address.address_line_1 || '',
-      streetLine2: address.address_line_2 || '',
-      city: address.city || '',
-      state: address.state || '',
-      postalCode: address.postal_code || '',
-      country: address.country || '',
-      latitude: address.latitude,
-      longitude: address.longitude,
-    };
-  }
-
-  /**
    * Format address for single-line display (truncated if too long)
-   * Useful for tables or compact displays
-   * 
-   * @param address - Address object with components
-   * @param maxLength - Maximum character length (default: 50)
-   * @returns Truncated formatted address
    */
-  static formatAddressCompact(address: AddressComponents, maxLength: number = 50): string {
-    const fullAddress = this.formatFullAddress(address);
+  static formatAddressCompact(
+    address: AddressComponents,
+    maxLength: number = 50,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): string {
+    const fullAddress = this.formatFullAddress(address, options);
     
     if (fullAddress.length <= maxLength) {
       return fullAddress;
@@ -194,20 +274,27 @@ export class AddressFormatter {
 
   /**
    * Format address for shipping label
-   * Returns address in a structured format suitable for shipping labels
-   * 
-   * @param address - Address object with components
-   * @returns Object with formatted shipping address parts
    */
-  static formatForShippingLabel(address: AddressComponents): {
+  static formatForShippingLabel(
+    address: AddressComponents,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): {
     recipientLine: string;
     streetLines: string[];
     cityStateZip: string;
     country: string;
   } {
-    const streetLines = [
+    const cleanedLine2 = this.cleanAddressLine2(
       address.address_line_1,
       address.address_line_2,
+      address.city,
+      address.state,
+      address.country
+    );
+
+    const streetLines = [
+      address.address_line_1,
+      cleanedLine2,
     ].filter(Boolean);
 
     const cityStateZip = [
@@ -217,7 +304,7 @@ export class AddressFormatter {
     ].filter(Boolean).join(', ');
 
     return {
-      recipientLine: '', // This should be filled with recipient name from order
+      recipientLine: '',
       streetLines,
       cityStateZip,
       country: address.country || '',
@@ -226,9 +313,6 @@ export class AddressFormatter {
 
   /**
    * Validate if address has minimum required fields
-   * 
-   * @param address - Address object to validate
-   * @returns True if address has required fields
    */
   static isValidAddress(address: AddressComponents): boolean {
     return !!(
@@ -242,12 +326,11 @@ export class AddressFormatter {
 
   /**
    * Get short address (street + city only)
-   * Useful for compact displays or maps
-   * 
-   * @param address - Address object with components
-   * @returns Short formatted address
    */
-  static formatAddressShort(address: AddressComponents): string {
+  static formatAddressShort(
+    address: AddressComponents,
+    options?: { enableLogging?: boolean; logger?: any }
+  ): string {
     if (!address) return '';
 
     const parts = [
@@ -260,11 +343,6 @@ export class AddressFormatter {
 
   /**
    * Format coordinates for display
-   * 
-   * @param latitude - Latitude coordinate
-   * @param longitude - Longitude coordinate
-   * @param precision - Number of decimal places (default: 4)
-   * @returns Formatted coordinates string
    */
   static formatCoordinates(
     latitude?: number,
@@ -280,9 +358,6 @@ export class AddressFormatter {
 
   /**
    * Get Google Maps URL for address
-   * 
-   * @param address - Address object with components
-   * @returns Google Maps URL
    */
   static getGoogleMapsUrl(address: AddressComponents): string {
     if (address.latitude && address.longitude) {
@@ -295,5 +370,12 @@ export class AddressFormatter {
     }
 
     return '';
+  }
+
+  /**
+   * Reset the logging cache (useful for testing or manual cleanup)
+   */
+  static resetLogCache(): void {
+    this.loggedAddresses.clear();
   }
 }

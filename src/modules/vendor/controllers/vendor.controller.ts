@@ -31,9 +31,10 @@ export class VendorController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Create vendor profile',
-    description: 'Creates a new vendor profile for the authenticated user. Returns vendor with formatted address details.'
+    description:
+      'Creates a new vendor profile for the authenticated user. Returns vendor with formatted address details.',
   })
   @ApiResponse({
     status: 201,
@@ -58,7 +59,7 @@ export class VendorController {
           postalCode: '100001',
           country: 'NG',
           latitude: 6.5244,
-          longitude: 3.3792
+          longitude: 3.3792,
         },
         address: {
           id: 'address-uuid',
@@ -66,15 +67,15 @@ export class VendorController {
           city: 'Lagos',
           state: 'Lagos State',
           postal_code: '100001',
-          country: 'NG'
+          country: 'NG',
         },
         user: {
           id: 'user-uuid',
           email: 'vendor@example.com',
-          full_name: 'John Doe'
-        }
-      }
-    }
+          full_name: 'John Doe',
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 409,
@@ -92,9 +93,10 @@ export class VendorController {
   }
 
   @Get('profile')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Get current user vendor profile',
-    description: 'Retrieves the vendor profile for the authenticated user with formatted address details.'
+    description:
+      'Retrieves the vendor profile for the authenticated user with formatted address details.',
   })
   @ApiResponse({
     status: 200,
@@ -117,14 +119,14 @@ export class VendorController {
           postalCode: '100001',
           country: 'NG',
           latitude: 6.5244,
-          longitude: 3.3792
-        }
-      }
-    }
+          longitude: 3.3792,
+        },
+      },
+    },
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Vendor profile not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Vendor profile not found',
   })
   @ApiResponse({
     status: 401,
@@ -139,17 +141,18 @@ export class VendorController {
   }
 
   @Put('profile')
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Update vendor profile',
-    description: 'Updates the vendor profile for the authenticated user. Returns updated vendor with formatted address details.'
+    description:
+      'Updates the vendor profile for the authenticated user. Returns updated vendor with formatted address details.',
   })
   @ApiResponse({
     status: 200,
     description: 'Vendor profile updated successfully with formatted address',
   })
-  @ApiResponse({ 
-    status: 404, 
-    description: 'Vendor profile not found' 
+  @ApiResponse({
+    status: 404,
+    description: 'Vendor profile not found',
   })
   @ApiResponse({
     status: 401,
@@ -164,9 +167,9 @@ export class VendorController {
 
   @Post('activate')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Activate vendor profile',
-    description: 'Activates the vendor profile for the authenticated user.'
+    description: 'Activates the vendor profile for the authenticated user.',
   })
   @ApiResponse({
     status: 200,
@@ -184,11 +187,17 @@ export class VendorController {
     return await this.vendorService.activateVendor(user.id);
   }
 
+  // In your admin controller
+  @Post('vendors/clean-addresses')
+  async cleanAddresses() {
+    return await this.vendorService.cleanAllVendorAddresses();
+  }
+
   @Post('deactivate')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Deactivate vendor profile',
-    description: 'Deactivates the vendor profile for the authenticated user.'
+    description: 'Deactivates the vendor profile for the authenticated user.',
   })
   @ApiResponse({
     status: 200,
