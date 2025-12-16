@@ -17,7 +17,27 @@ export class OrderEmailNotificationService {
     private readonly configService: ConfigService,
   ) {
     this.frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://rambini.com';
-    this.adminEmail = this.configService.get<string>('ADMIN_EMAIL') || 'mysirigu.bankfields@gmail.com';
+    
+    // ⭐ IMPROVED: Try multiple sources for admin email with fallback ⭐
+    this.adminEmail = 
+      this.configService.get<string>('ADMIN_EMAIL') || 
+      process.env.ADMIN_EMAIL || 
+      'mysirigu.bankfields@gmail.com';
+    
+    this.logger.log(`✅ Admin email configured: ${this.adminEmail}`);
+    
+    // Validate email format
+    if (!this.isValidEmail(this.adminEmail)) {
+      this.logger.error(`❌ Invalid admin email format: ${this.adminEmail}`);
+    }
+  }
+
+  /**
+   * Validate email format
+   */
+  private isValidEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
   }
 
   /**
@@ -27,17 +47,14 @@ export class OrderEmailNotificationService {
     try {
       this.logger.log(`Sending new order email to vendor ${vendor.id} for order ${order.id}`);
 
-      // Format order items with proper numeric prices
       const formattedItems = order.order_items.map((item: OrderItem) => ({
         name: item.menu_item?.name || 'Unknown Item',
         quantity: item.quantity,
         price: Number(item.total_price),
       }));
 
-      // Calculate total item count
       const itemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
 
-      // Format addresses
       const deliveryAddress = order.delivery_address
         ? this.formatAddress(order.delivery_address)
         : undefined;
@@ -46,13 +63,9 @@ export class OrderEmailNotificationService {
         ? this.formatAddress(order.vendor.address)
         : undefined;
 
-      // Get vendor name
       const vendorName = order.vendor?.business_name || vendor.full_name || 'Vendor';
-
-      // Generate order URL
       const orderUrl = `${this.frontendUrl}/vendor/orders/${order.id}`;
 
-      // Get email template
       const template = this.templateService.getNewOrderTemplate({
         vendorName,
         orderNumber: order.order_number,
@@ -69,7 +82,6 @@ export class OrderEmailNotificationService {
         orderUrl,
       });
 
-      // Send email using the correct method signature
       await this.emailService.sendEmail({
         to: vendor.email,
         subject: template.subject,
@@ -97,14 +109,12 @@ export class OrderEmailNotificationService {
     try {
       this.logger.log(`Sending order confirmation email to customer ${customer.id} for order ${order.id}`);
 
-      // Format order items with proper numeric prices
       const formattedItems = order.order_items.map((item: OrderItem) => ({
         name: item.menu_item?.name || 'Unknown Item',
         quantity: item.quantity,
         price: Number(item.total_price),
       }));
 
-      // Format addresses
       const deliveryAddress = order.delivery_address
         ? this.formatAddress(order.delivery_address)
         : undefined;
@@ -113,14 +123,10 @@ export class OrderEmailNotificationService {
         ? this.formatAddress(order.vendor.address)
         : undefined;
 
-      // Get vendor details
       const vendorName = order.vendor?.business_name || 'Vendor';
       const vendorPhone = order.vendor?.user?.phone_number;
-
-      // Generate order URL
       const orderUrl = `${this.frontendUrl}/orders/${order.id}`;
 
-      // Get email template
       const template = this.templateService.getOrderConfirmationTemplate({
         customerName: customer.full_name || 'Customer',
         orderNumber: order.order_number,
@@ -136,7 +142,6 @@ export class OrderEmailNotificationService {
         orderUrl,
       });
 
-      // Send email using the correct method signature
       await this.emailService.sendEmail({
         to: customer.email,
         subject: template.subject,
@@ -175,7 +180,6 @@ export class OrderEmailNotificationService {
         `Sending order status update email to customer ${customer.id} for order ${order.id} with status ${newStatus}`,
       );
 
-      // Validate customer email
       if (!customer || !customer.email) {
         this.logger.warn(
           `Cannot send email - customer email not found for order ${order.id}. Customer ID: ${customer?.id || 'unknown'}`,
@@ -183,13 +187,9 @@ export class OrderEmailNotificationService {
         return false;
       }
 
-      // Get vendor name
       const vendorName = order.vendor?.business_name || 'Vendor';
-
-      // Generate order URL
       const orderUrl = `${this.frontendUrl}/orders/${order.id}`;
 
-      // Get email template
       const template = this.templateService.getOrderStatusUpdateTemplate({
         customerName: customer.full_name || 'Customer',
         orderNumber: order.order_number,
@@ -202,7 +202,6 @@ export class OrderEmailNotificationService {
         additionalNotes: options?.vendorNotes,
       });
 
-      // Send email using the correct method signature
       await this.emailService.sendEmail({
         to: customer.email,
         subject: template.subject,
@@ -230,25 +229,26 @@ export class OrderEmailNotificationService {
    */
   async sendOrderSummaryToAdmin(order: Order): Promise<boolean> {
     try {
-      this.logger.log(`Sending order summary to admin for order ${order.id}`);
-
-      // Validate admin email
-      if (!this.adminEmail) {
-        this.logger.warn('Admin email not configured, skipping admin notification');
+      this.logger.log(`📧 Attempting to send order summary to admin for order ${order.id}`);
+      
+      // ⭐ SIMPLIFIED VALIDATION - Admin email always has fallback now ⭐
+      if (!this.isValidEmail(this.adminEmail)) {
+        this.logger.error(
+          `❌ Invalid admin email: ${this.adminEmail}. Cannot send notification for order ${order.id}`
+        );
         return false;
       }
 
-      // Format order items with proper numeric prices
+      this.logger.log(`✅ Sending to admin email: ${this.adminEmail}`);
+
       const formattedItems = order.order_items.map((item: OrderItem) => ({
         name: item.menu_item?.name || 'Unknown Item',
         quantity: item.quantity,
         price: Number(item.total_price),
       }));
 
-      // Calculate total item count
       const itemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
 
-      // Format addresses
       const deliveryAddress = order.delivery_address
         ? this.formatAddress(order.delivery_address)
         : undefined;
@@ -257,7 +257,6 @@ export class OrderEmailNotificationService {
         ? this.formatAddress(order.vendor.address)
         : undefined;
 
-      // Get customer and vendor details
       const customerName = order.customer?.full_name || 'Unknown Customer';
       const customerEmail = order.customer?.email || 'N/A';
       const customerPhone = order.customer?.phone_number || 'N/A';
@@ -265,10 +264,10 @@ export class OrderEmailNotificationService {
       const vendorEmail = order.vendor?.user?.email || 'N/A';
       const vendorPhone = order.vendor?.user?.phone_number || 'N/A';
 
-      // Generate admin order URL
       const orderUrl = `${this.frontendUrl}/admin/orders/${order.id}`;
 
-      // Get email template
+      this.logger.log(`📝 Generating admin email template for order ${order.order_number}`);
+
       const template = this.templateService.getAdminOrderSummaryTemplate({
         orderNumber: order.order_number,
         orderStatus: order.order_status,
@@ -295,7 +294,9 @@ export class OrderEmailNotificationService {
         createdAt: order.created_at,
       });
 
-      // Send email to admin
+      this.logger.log(`📨 Sending admin email to: ${this.adminEmail}`);
+      this.logger.log(`📧 Email subject: ${template.subject}`);
+
       await this.emailService.sendEmail({
         to: this.adminEmail,
         subject: template.subject,
@@ -305,11 +306,11 @@ export class OrderEmailNotificationService {
         replyTo: process.env.EMAIL_REPLY_TO || 'support@rambini.com',
       });
 
-      this.logger.log(`Order summary email sent successfully to admin for order ${order.id}`);
+      this.logger.log(`✅ Order summary email sent successfully to admin (${this.adminEmail}) for order ${order.id}`);
       return true;
     } catch (error) {
       this.logger.error(
-        `Failed to send order summary email to admin for order ${order.id}: ${error.message}`,
+        `❌ Failed to send order summary email to admin for order ${order.id}: ${error.message}`,
         error.stack,
       );
       return false;
@@ -327,12 +328,14 @@ export class OrderEmailNotificationService {
   ): Promise<boolean> {
     try {
       this.logger.log(
-        `Sending order status change notification to admin for order ${order.id}`,
+        `📧 Attempting to send order status change notification to admin for order ${order.id}`,
       );
 
-      // Validate admin email
-      if (!this.adminEmail) {
-        this.logger.warn('Admin email not configured, skipping admin notification');
+      // ⭐ SIMPLIFIED VALIDATION ⭐
+      if (!this.isValidEmail(this.adminEmail)) {
+        this.logger.error(
+          `❌ Invalid admin email: ${this.adminEmail}. Cannot send status change notification for order ${order.id}`
+        );
         return false;
       }
 
@@ -340,7 +343,8 @@ export class OrderEmailNotificationService {
       const vendorName = order.vendor?.business_name || 'Unknown Vendor';
       const orderUrl = `${this.frontendUrl}/admin/orders/${order.id}`;
 
-      // Get email template
+      this.logger.log(`📝 Generating status change email: ${oldStatus} → ${newStatus}`);
+
       const template = this.templateService.getAdminOrderStatusChangeTemplate({
         orderNumber: order.order_number,
         oldStatus,
@@ -355,7 +359,8 @@ export class OrderEmailNotificationService {
         timestamp: new Date(),
       });
 
-      // Send email to admin
+      this.logger.log(`📨 Sending status change email to admin: ${this.adminEmail}`);
+
       await this.emailService.sendEmail({
         to: this.adminEmail,
         subject: template.subject,
@@ -366,12 +371,12 @@ export class OrderEmailNotificationService {
       });
 
       this.logger.log(
-        `Order status change email sent successfully to admin for order ${order.id}`,
+        `✅ Order status change email sent successfully to admin (${this.adminEmail}) for order ${order.id}`,
       );
       return true;
     } catch (error) {
       this.logger.error(
-        `Failed to send order status change email to admin for order ${order.id}: ${error.message}`,
+        `❌ Failed to send order status change email to admin for order ${order.id}: ${error.message}`,
         error.stack,
       );
       return false;
