@@ -1,11 +1,14 @@
 import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Vendor, User, Address } from '@/entities';
+import { Vendor, User, Address, Order, Wallet, Payment } from '@/entities';
 
 // Services
 import { AdminService } from './service/admin.service';
 import { OtpMonitoringService } from './service/otp-monitoring.service';
-import { AdminProfileService } from './service/admin-profile.service'; // NEW - Profile management
+import { AdminProfileService } from './service/admin-profile.service';
+import { AdminOrderService } from './service/admin-order.service';
+import { FixCustomerRefundsService } from './service/fix-customer-refunds.service';
+import { RevertCancellationService } from './service/revert-cancellation.service'; // NEW
 
 // Controllers
 import { AdminOrderController } from './controllers/admin-order.controller';
@@ -16,8 +19,10 @@ import { AdminUserController } from './controllers/admin-user.controller';
 import { AdminWithdrawalController } from './controllers/admin-withdrawal.controller';
 import { AdminNotificationController } from './controllers/admin-notification.controller';
 import { AdminOtpController } from './controllers/admin-otp.controller';
-import { AdminUserProfileController } from './controllers/admin-user-profile.controller'; // NEW
-import { AdminVendorProfileController } from './controllers/admin-vendor-profile.controller'; // NEW
+import { AdminUserProfileController } from './controllers/admin-user-profile.controller';
+import { AdminVendorProfileController } from './controllers/admin-vendor-profile.controller';
+import { AdminRefundFixController } from './controllers/admin-refund-fix.controller';
+import { AdminRevertCancellationController } from './controllers/admin-revert-cancellation.controller'; // NEW
 
 // Modules
 import { OrderModule } from '../order/order.module';
@@ -38,7 +43,10 @@ import { RedisService } from '../../database/redis.service';
     TypeOrmModule.forFeature([
       Vendor,
       User,
-      Address, // NEW - Required for address management
+      Address,
+      Order,   // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
+      Wallet,  // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
+      Payment, // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
     ]),
     OrderModule,
     MenuModule,
@@ -58,19 +66,27 @@ import { RedisService } from '../../database/redis.service';
     AdminWithdrawalController,
     AdminNotificationController,
     AdminOtpController,
-    AdminUserProfileController, // NEW - User profile management
-    AdminVendorProfileController, // NEW - Vendor profile management
+    AdminUserProfileController,
+    AdminVendorProfileController,
+    AdminRefundFixController, // Fix customer refunds
+    AdminRevertCancellationController, // NEW - Revert cancellations
   ],
   providers: [
     AdminService,
     OtpMonitoringService,
-    AdminProfileService, // NEW - Profile management service
+    AdminProfileService,
+    AdminOrderService, // Admin order operations (cancellation, refunds)
+    FixCustomerRefundsService, // Fix missing customer refunds
+    RevertCancellationService, // NEW - Revert cancelled orders
     RedisService,
   ],
   exports: [
     AdminService,
     OtpMonitoringService,
-    AdminProfileService, // NEW - Export for potential use in other modules
+    AdminProfileService,
+    AdminOrderService,
+    FixCustomerRefundsService, // Export for potential use elsewhere
+    RevertCancellationService, // NEW - Export for potential use elsewhere
   ],
 })
 export class AdminModule {}

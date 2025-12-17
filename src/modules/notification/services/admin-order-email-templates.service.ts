@@ -554,7 +554,7 @@ View order details: ${data.orderUrl}
       [PaymentStatus.PAID]: '#10b981',
       [PaymentStatus.FAILED]: '#ef4444',
       [PaymentStatus.REFUNDED]: '#8b5cf6',
-      [PaymentStatus.PARTIALLY_REFUNDED]: '#a855f7', // Added missing status
+      [PaymentStatus.PARTIALLY_REFUNDED]: '#a855f7', 
     };
     return colorMap[status] || '#6b7280';
   }

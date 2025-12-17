@@ -1,11 +1,14 @@
+// src/modules/admin/controllers/admin-order.controller.ts
 import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
+  Post,
   Put,
   Query,
-  Request,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -17,16 +20,30 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { OrderService } from '../../order/services/order.service';
+import { AdminOrderService } from '../service/admin-order.service';
 import { AdminAuthGuard } from '../../auth/guards/admin-auth-guard';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { OrderFilterDto, OrderResponseDto, UpdateOrderStatusDto } from '../../order/dto';
+import { GetUser } from '@/common/decorators/get-user.decorator';
+import { User } from '@/entities';
+import {
+  OrderFilterDto,
+  OrderResponseDto,
+  UpdateOrderStatusDto,
+} from '../../order/dto';
+import {
+  AdminCancelOrderDto,
+  AdminCancelOrderResponseDto,
+} from '../dto/admin-order.dto';
 
 @ApiTags('Admin - Orders')
 @Controller('admin/orders')
 @UseGuards(JwtAuthGuard, AdminAuthGuard)
 @ApiBearerAuth()
 export class AdminOrderController {
-  constructor(private readonly orderService: OrderService) {}
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly adminOrderService: AdminOrderService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -103,6 +120,20 @@ export class AdminOrderController {
     return await this.orderService.getOrderStats();
   }
 
+  @Get('failed-payments')
+  @ApiOperation({
+    summary: '[ADMIN ONLY]: Get orders with failed payments',
+    description: 'Returns orders where payment failed but status is still NEW',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Failed payment orders retrieved successfully',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getFailedPaymentOrders(): Promise<OrderResponseDto[]> {
+    return await this.adminOrderService.getFailedPaymentOrders();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '[ADMIN ONLY]: Get order by ID' })
   @ApiParam({ name: 'id', description: 'Order ID' })
@@ -113,11 +144,8 @@ export class AdminOrderController {
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Order not found' })
-  async getOrderById(
-    @Request() req,
-    @Param('id') id: string,
-  ): Promise<OrderResponseDto> {
-    return await this.orderService.getOrderById(id, req.user.id, 'ADMIN');
+  async getOrderById(@Param('id') id: string): Promise<OrderResponseDto> {
+    return await this.adminOrderService.getOrderByIdForAdmin(id);
   }
 
   @Put(':id/status')
@@ -135,10 +163,80 @@ export class AdminOrderController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async updateOrderStatus(
-    @Request() req,
+    @GetUser() admin: User,
     @Param('id') id: string,
     @Body() updateDto: UpdateOrderStatusDto,
   ): Promise<OrderResponseDto> {
-    return await this.orderService.updateOrderStatus(id, req.user.id, updateDto);
+    return await this.adminOrderService.updateOrderStatusAsAdmin(
+      id,
+      admin.id,
+      updateDto,
+    );
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[ADMIN ONLY]: Cancel an order and refund customer',
+    description: `
+      Cancels an order and processes refund if payment was successful.
+      - Can only cancel orders with status NEW, CONFIRMED, or PREPARING
+      - If payment was PAID: Refunds customer wallet and debits vendor wallet
+      - If payment was PENDING/FAILED: Just cancels the order
+      - Sends email notifications to customer, vendor, and admin
+      - Records cancellation details with admin info
+    `,
+  })
+  @ApiParam({ name: 'id', description: 'Order ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Order cancelled successfully with refund details',
+    type: AdminCancelOrderResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Cannot cancel - order status not eligible for cancellation',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async cancelOrder(
+    @GetUser() admin: User,
+    @Param('id') orderId: string,
+    @Body() cancelDto: AdminCancelOrderDto,
+  ): Promise<AdminCancelOrderResponseDto> {
+    return await this.adminOrderService.cancelOrderAsAdmin(
+      orderId,
+      admin,
+      cancelDto,
+    );
+  }
+
+  @Post(':id/mark-failed')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[ADMIN ONLY]: Mark order with failed payment as cancelled',
+    description: `
+      For orders where payment failed but status is still NEW.
+      This will update the order status to CANCELLED without any wallet operations.
+    `,
+  })
+  @ApiParam({ name: 'id', description: 'Order ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Order marked as cancelled successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Order not eligible' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async markFailedOrderCancelled(
+    @GetUser() admin: User,
+    @Param('id') orderId: string,
+    @Body() body: { reason?: string },
+  ): Promise<{ message: string; order: OrderResponseDto }> {
+    return await this.adminOrderService.markFailedOrderCancelled(
+      orderId,
+      admin,
+      body.reason,
+    );
   }
 }
