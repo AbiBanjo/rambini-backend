@@ -7,21 +7,22 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Vendor, UserType, User, NotificationType } from '../../../entities';
+import { Vendor, UserType, User, NotificationType } from '../../../../entities';
 import { CreateVendorDto } from '../dto/create-vendor.dto';
-import { AddressService } from '../../user/services/address.service';
-import { AddressType } from '../../../entities/address.entity';
-import { ErrorHandlerService } from '../../../common/services';
-import { UserService } from '../../user/services/user.service';
-import { EmailNotificationService } from '../../notification/services/email-notification.service';
-import { NotificationService } from '../../notification/notification.service';
-import { AddressFormatter } from '../../../utils/address-formatter';
+import { AddressService } from '../../../user/services/address.service';
+import { AddressType } from '../../../../entities/address.entity';
+import { ErrorHandlerService } from '../../../../common/services';
+import { UserService } from '../../../user/services/user.service';
+import { EmailNotificationService } from '../../../notification/services/email-notification.service';
+import { NotificationService } from '../../../notification/notification.service';
+import { AddressFormatter } from '../../../../utils/address-formatter';
 
 @Injectable()
 export class VendorService {
   private readonly logger = new Logger(VendorService.name);
   // Enable verbose logging only in development
-  private readonly enableAddressLogging = process.env.NODE_ENV === 'development';
+  private readonly enableAddressLogging =
+    process.env.NODE_ENV === 'development';
 
   constructor(
     @InjectRepository(Vendor)
@@ -161,26 +162,27 @@ export class VendorService {
       {
         enableLogging: this.enableAddressLogging,
         logger: this.logger,
-      }
+      },
     );
 
     (vendor as any).fullAddress = fullAddress;
 
     // Add formatted address with line breaks for display
-    (vendor as any).formattedAddress = AddressFormatter.formatAddressWithLineBreaks(
-      {
-        address_line_1: vendor.address.address_line_1,
-        address_line_2: vendor.address.address_line_2,
-        city: vendor.address.city,
-        state: vendor.address.state,
-        postal_code: vendor.address.postal_code,
-        country: vendor.address.country,
-      },
-      {
-        enableLogging: this.enableAddressLogging,
-        logger: this.logger,
-      }
-    );
+    (vendor as any).formattedAddress =
+      AddressFormatter.formatAddressWithLineBreaks(
+        {
+          address_line_1: vendor.address.address_line_1,
+          address_line_2: vendor.address.address_line_2,
+          city: vendor.address.city,
+          state: vendor.address.state,
+          postal_code: vendor.address.postal_code,
+          country: vendor.address.country,
+        },
+        {
+          enableLogging: this.enableAddressLogging,
+          logger: this.logger,
+        },
+      );
 
     // Add individual address components (cleaned automatically)
     const addressComponents = AddressFormatter.extractAddressComponents(
@@ -197,7 +199,7 @@ export class VendorService {
       {
         enableLogging: this.enableAddressLogging,
         logger: this.logger,
-      }
+      },
     );
 
     (vendor as any).addressComponents = addressComponents;
@@ -228,7 +230,7 @@ export class VendorService {
       address.address_line_2,
       address.city,
       address.state,
-      address.country
+      address.country,
     );
 
     // If cleanAddressLine2 returned null but address_line_2 exists, it's corrupted
@@ -236,7 +238,7 @@ export class VendorService {
 
     if (isCorrupted) {
       this.logger.log(
-        `Cleaning corrupted address_line_2 for vendor ${vendorId}: "${address.address_line_2}"`
+        `Cleaning corrupted address_line_2 for vendor ${vendorId}: "${address.address_line_2}"`,
       );
 
       // Clear the corrupted address_line_2
@@ -252,13 +254,13 @@ export class VendorService {
    * Clean all vendor addresses (run once to fix database)
    * Returns summary of cleaning operation
    */
-  async cleanAllVendorAddresses(): Promise<{ 
-    cleaned: number; 
+  async cleanAllVendorAddresses(): Promise<{
+    cleaned: number;
     total: number;
     corrupted: string[];
   }> {
     this.logger.log('Starting address cleanup for all vendors...');
-    
+
     const vendors = await this.vendorRepository.find({
       relations: ['address'],
     });
@@ -274,7 +276,7 @@ export class VendorService {
           vendor.address.address_line_2,
           vendor.address.city,
           vendor.address.state,
-          vendor.address.country
+          vendor.address.country,
         );
 
         const isCorrupted = !cleanedLine2;
@@ -282,7 +284,7 @@ export class VendorService {
         if (isCorrupted) {
           try {
             corruptedAddresses.push(
-              `${vendor.business_name}: "${vendor.address.address_line_2}"`
+              `${vendor.business_name}: "${vendor.address.address_line_2}"`,
             );
             await this.cleanVendorAddress(vendor.id);
             cleaned++;
@@ -297,13 +299,13 @@ export class VendorService {
     }
 
     this.logger.log(
-      `✅ Address cleanup complete: ${cleaned}/${vendors.length} addresses cleaned`
+      `✅ Address cleanup complete: ${cleaned}/${vendors.length} addresses cleaned`,
     );
 
-    return { 
-      cleaned, 
+    return {
+      cleaned,
       total: vendors.length,
-      corrupted: corruptedAddresses
+      corrupted: corruptedAddresses,
     };
   }
 

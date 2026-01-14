@@ -1,6 +1,13 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Order, OrderItem, MenuItem, Vendor, User, Address } from 'src/entities';
+import {
+  Order,
+  OrderItem,
+  MenuItem,
+  Vendor,
+  User,
+  Address,
+} from 'src/entities';
 import { DeliveryQuote } from 'src/entities/delivery-quote.entity';
 import { CartModule } from 'src/modules/cart/cart.module';
 import { MenuModule } from 'src/modules/menu/menu.module';
@@ -8,7 +15,7 @@ import { UserModule } from 'src/modules/user/user.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { PaymentModule } from 'src/modules/payment/payment.module';
 import { DeliveryModule } from 'src/modules/delivery/delivery.module';
-import { VendorModule } from 'src/modules/vendor/vendor.module';
+import { VendorModule } from '@/modules/vendors/vendor/vendor.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 
 // Controllers
@@ -23,7 +30,15 @@ import { OrderRepository } from './repositories/order.repository';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, MenuItem, Vendor, User, Address, DeliveryQuote]),
+    TypeOrmModule.forFeature([
+      Order,
+      OrderItem,
+      MenuItem,
+      Vendor,
+      User,
+      Address,
+      DeliveryQuote,
+    ]),
     forwardRef(() => CartModule),
     MenuModule,
     UserModule,
@@ -33,17 +48,8 @@ import { OrderRepository } from './repositories/order.repository';
     VendorModule, // Import VendorModule to get access to VendorService
     NotificationModule, // Import NotificationModule to get access to NotificationSSEService
   ],
-  controllers: [
-    OrderController,
-    VendorOrderController,
-  ],
-  providers: [
-    OrderService,
-    OrderRepository,
-  ],
-  exports: [
-    OrderService,
-    OrderRepository,
-  ],
+  controllers: [OrderController, VendorOrderController],
+  providers: [OrderService, OrderRepository],
+  exports: [OrderService, OrderRepository],
 })
-export class OrderModule {} 
+export class OrderModule {}

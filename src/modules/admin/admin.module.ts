@@ -32,7 +32,7 @@ import { AuthModule } from '../auth/auth.module';
 import { NotificationModule } from '../notification/notification.module';
 import { PaymentModule } from '../payment/payment.module';
 import { UserModule } from '../user/user.module';
-import { VendorModule } from '../vendor/vendor.module';
+import { VendorModule } from '../vendors/vendor/vendor.module';
 
 // Database
 import { RedisService } from '../../database/redis.service';
@@ -44,8 +44,8 @@ import { RedisService } from '../../database/redis.service';
       Vendor,
       User,
       Address,
-      Order,   // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
-      Wallet,  // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
+      Order, // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
+      Wallet, // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
       Payment, // Required for AdminOrderService, FixCustomerRefundsService, and RevertCancellationService
     ]),
     OrderModule,
