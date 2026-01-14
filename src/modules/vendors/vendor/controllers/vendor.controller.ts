@@ -16,11 +16,11 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { VendorService } from '../services/vendor.service';
 import { CreateVendorDto } from '../dto/create-vendor.dto';
-import { Vendor, User } from '../../../entities';
-import { GetUser } from '../../../common/decorators/get-user.decorator';
+import { Vendor, User } from '../../../../entities';
+import { GetUser } from '../../../../common/decorators/get-user.decorator';
 
 @ApiTags('Vendor')
 @Controller('vendor')

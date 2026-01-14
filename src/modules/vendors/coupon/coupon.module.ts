@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Coupon, CouponUsage } from 'src/entities';
 
 // Import the Auth Module
-import { AuthModule } from '../auth/auth.module';
+import { AuthModule } from '../../auth/auth.module';
 
 // Controllers
 import { CouponController } from './controllers/coupon.controller';
@@ -20,16 +20,8 @@ import { CouponRepository } from './repositories/coupon.repository';
     TypeOrmModule.forFeature([Coupon, CouponUsage]),
     AuthModule, // Add this line to import JWT authentication
   ],
-  controllers: [
-    CouponController,
-  ],
-  providers: [
-    CouponService,
-    CouponRepository,
-  ],
-  exports: [
-    CouponService,
-    CouponRepository,
-  ],
+  controllers: [CouponController],
+  providers: [CouponService, CouponRepository],
+  exports: [CouponService, CouponRepository],
 })
 export class CouponModule {}

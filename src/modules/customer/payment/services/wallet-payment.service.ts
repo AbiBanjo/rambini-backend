@@ -18,7 +18,7 @@ import {
 } from 'src/entities';
 import { PaymentRepository } from '../repositories/payment.repository';
 import { Payment } from 'src/entities/payment.entity';
-import { VendorService } from '@/modules/vendor/services/vendor.service';
+import { VendorService } from '@/modules/vendors/vendor/services/vendor.service';
 import {
   FundWalletDto,
   WalletFundingResponseDto,

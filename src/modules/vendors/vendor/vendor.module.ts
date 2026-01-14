@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Vendor } from '../../entities';
+import { Vendor } from '../../../entities';
 import { VendorController } from './controllers/vendor.controller';
 import { VendorService } from './services/vendor.service';
-import { UserModule } from '../user/user.module';
-import { AuthModule } from '../auth/auth.module';
-import { NotificationModule } from '../notification/notification.module';
+import { UserModule } from '../../user/user.module';
+import { AuthModule } from '../../auth/auth.module';
+import { NotificationModule } from '../../notification/notification.module';
 
 @Module({
   imports: [
@@ -22,4 +22,4 @@ export class VendorModule {}
 
 // Export DTOs for use in other modules
 export * from './dto/create-vendor.dto';
-export * from './dto/admin-verification.dto'; 
+export * from './dto/admin-verification.dto';

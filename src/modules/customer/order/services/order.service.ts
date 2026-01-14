@@ -16,7 +16,7 @@ import { PaymentService } from 'src/modules/payment/services/payment.service';
 import { DeliveryService } from 'src/modules/delivery/services/delivery.service';
 import { DeliveryProviderSelectorService } from 'src/modules/delivery/services/delivery-provider-selector.service';
 import { DeliveryQuoteService } from 'src/modules/delivery/services/delivery-quote.service';
-import { VendorService } from 'src/modules/vendor/services/vendor.service';
+import { VendorService } from '@/modules/vendors/vendor/services/vendor.service';
 import { NotificationSSEService } from 'src/modules/notification/services/notification-sse.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { NotificationType } from 'src/entities';

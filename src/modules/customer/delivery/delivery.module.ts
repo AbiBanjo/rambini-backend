@@ -16,16 +16,22 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { UserModule } from 'src/modules/user/user.module';
 import { CartModule } from 'src/modules/cart/cart.module';
-import { VendorModule } from 'src/modules/vendor/vendor.module';
+import { VendorModule } from '@/modules/vendors/vendor/vendor.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Delivery, DeliveryTracking, Address, DeliveryQuote, Order]),
+    TypeOrmModule.forFeature([
+      Delivery,
+      DeliveryTracking,
+      Address,
+      DeliveryQuote,
+      Order,
+    ]),
     HttpModule.register({
       timeout: 30000, // 30 seconds timeout
       maxRedirects: 5,
-      validateStatus: (status) => status < 500, // Resolve only if status < 500
+      validateStatus: status => status < 500, // Resolve only if status < 500
     }),
     ConfigModule,
     AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
@@ -33,7 +39,6 @@ import { NotificationModule } from 'src/modules/notification/notification.module
     forwardRef(() => CartModule), // Import CartModule to get access to CartService
     forwardRef(() => VendorModule), // Import VendorModule to get access to VendorService
     NotificationModule, // Import NotificationModule to get access to NotificationService and NotificationSSEService
-    
   ],
   controllers: [DeliveryController, DeliveryWebhookController],
   providers: [
@@ -45,6 +50,13 @@ import { NotificationModule } from 'src/modules/notification/notification.module
     DeliveryQuoteService,
     DeliveryRepository,
   ],
-  exports: [DeliveryService, DeliveryProviderFactoryService, DeliveryProviderSelectorService, ShipbubbleDeliveryService, UberDeliveryService, DeliveryQuoteService],
+  exports: [
+    DeliveryService,
+    DeliveryProviderFactoryService,
+    DeliveryProviderSelectorService,
+    ShipbubbleDeliveryService,
+    UberDeliveryService,
+    DeliveryQuoteService,
+  ],
 })
 export class DeliveryModule {}
