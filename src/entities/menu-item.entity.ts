@@ -7,7 +7,15 @@ import {
   BeforeInsert,
   BeforeUpdate,
 } from 'typeorm';
-import { IsString, IsOptional, IsBoolean, IsNumber, IsUrl, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsUrl,
+  Min,
+  Max,
+} from 'class-validator';
 import { BaseEntity } from './base.entity';
 
 @Entity('menu_items')
@@ -52,7 +60,7 @@ export class MenuItem extends BaseEntity {
   @IsBoolean()
   is_preOrder: boolean;
 
-  // add prep time in string which can be 15m, 30m, 45m, 1h, 1h30m, 2h, 2h30m, 3h 
+  // add prep time in string which can be 15m, 30m, 45m, 1h, 1h30m, 2h, 2h30m, 3h
   @Column({ type: 'varchar', nullable: true })
   @IsOptional()
   @IsString()
@@ -76,34 +84,33 @@ export class MenuItem extends BaseEntity {
     this.is_available = !this.is_available;
   }
 
-//  convert prep time string to preparation time in minutes on save or update
-@BeforeInsert()
-@BeforeUpdate()
-convertPrepTimeToPreparationAmount(): void {
-  if (this.prep_time) {
-    this.preparation_time_minutes = this.convertPrepTimeToNumber(this.prep_time);
+  //  convert prep time string to preparation time in minutes on save or update
+  @BeforeInsert()
+  @BeforeUpdate()
+  convertPrepTimeToPreparationAmount(): void {
+    if (this.prep_time) {
+      this.preparation_time_minutes = this.convertPrepTimeToNumber(
+        this.prep_time,
+      );
+    }
   }
-}
 
+  convertPrepTimeToNumber(prepTimeString: string): number {
+    let totalMinutes = 0;
 
-convertPrepTimeToNumber(prepTimeString: string): number {
-  let totalMinutes = 0;
-  
-  if (prepTimeString.includes('h')) {
-    const hoursPart = prepTimeString.split('h')[0];
-    totalMinutes += parseInt(hoursPart) * 60;
-    
-    if (prepTimeString.includes('m')) {
-      const minutesPart = prepTimeString.split('h')[1].split('m')[0];
+    if (prepTimeString.includes('h')) {
+      const hoursPart = prepTimeString.split('h')[0];
+      totalMinutes += parseInt(hoursPart) * 60;
+
+      if (prepTimeString.includes('m')) {
+        const minutesPart = prepTimeString.split('h')[1].split('m')[0];
+        totalMinutes += parseInt(minutesPart);
+      }
+    } else if (prepTimeString.includes('m')) {
+      const minutesPart = prepTimeString.split('m')[0];
       totalMinutes += parseInt(minutesPart);
     }
-  } else if (prepTimeString.includes('m')) {
 
-    const minutesPart = prepTimeString.split('m')[0];
-    totalMinutes += parseInt(minutesPart);
+    return totalMinutes;
   }
-  
-  return totalMinutes;
 }
-
-} 
