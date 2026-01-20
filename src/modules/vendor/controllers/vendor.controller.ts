@@ -97,6 +97,11 @@ export class VendorController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: ' Get a vendor profile by id' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor profile retrieved successfully',
+  })
   async getVendor(@Param('id') id: string) {
     return await this.vendorService.getVendorById(id);
   }
