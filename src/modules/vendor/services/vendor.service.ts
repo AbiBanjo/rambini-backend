@@ -1,4 +1,9 @@
-import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Vendor, UserType, User, NotificationType } from '../../../entities';
@@ -9,7 +14,7 @@ import { ErrorHandlerService } from '../../../common/services';
 import { UserService } from '../../user/services/user.service';
 import { EmailNotificationService } from '../../notification/services/email-notification.service';
 import { NotificationService } from '../../notification/notification.service';
-
+import { fetchPage } from '@/utils/pagination.utils';
 
 @Injectable()
 export class VendorService {
@@ -25,10 +30,13 @@ export class VendorService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async createVendor(user: User, createVendorDto: CreateVendorDto): Promise<Vendor> {
+  async createVendor(
+    user: User,
+    createVendorDto: CreateVendorDto,
+  ): Promise<Vendor> {
     // Check if user already has a vendor profile
     const existingVendor = await this.vendorRepository.findOne({
-      where: { user_id: user.id }
+      where: { user_id: user.id },
     });
 
     if (existingVendor) {
@@ -69,7 +77,7 @@ export class VendorService {
       'Your vendor profile has been created successfully',
       {
         vendor_name: createVendorDto.business_name,
-      }
+      },
     );
 
     // send an email notification to the vendor
@@ -83,9 +91,12 @@ export class VendorService {
     });
   }
 
-  async updateVendor(userId: string, updateData: Partial<CreateVendorDto>): Promise<Vendor> {
+  async updateVendor(
+    userId: string,
+    updateData: Partial<CreateVendorDto>,
+  ): Promise<Vendor> {
     const vendor = await this.getVendorByUserId(userId);
-    
+
     if (!vendor) {
       throw new NotFoundException('Vendor profile not found');
     }
@@ -117,7 +128,11 @@ export class VendorService {
       });
 
       if (Object.keys(addressUpdateData).length > 0) {
-        await this.addressService.updateAddress(userId, vendor.address_id, addressUpdateData);
+        await this.addressService.updateAddress(
+          userId,
+          vendor.address_id,
+          addressUpdateData,
+        );
       }
     }
 
@@ -126,7 +141,7 @@ export class VendorService {
 
   async activateVendor(userId: string): Promise<Vendor> {
     const vendor = await this.getVendorByUserId(userId);
-    
+
     if (!vendor) {
       throw new NotFoundException('Vendor profile not found');
     }
@@ -137,7 +152,7 @@ export class VendorService {
 
   async deactivateVendor(userId: string): Promise<Vendor> {
     const vendor = await this.getVendorByUserId(userId);
-    
+
     if (!vendor) {
       throw new NotFoundException('Vendor profile not found');
     }
@@ -147,18 +162,30 @@ export class VendorService {
   }
 
   // Admin methods for vendor management
-  async getAllVendors(): Promise<Vendor[]> {
-    return await this.vendorRepository.find({
-      relations: ['address'], // Include address details
-      order: { created_at: 'DESC' }
+  // async getAllVendors(): Promise<Vendor[]> {
+  //   return await this.vendorRepository.find({
+  //     relations: ['address'], // Include address details
+  //     order: { created_at: 'DESC' }
+  //   });
+  // }
+
+  async getAllVendors(page = 1, limit = 10) {
+    const qb = this.vendorRepository
+      .createQueryBuilder('vendor')
+      .leftJoinAndSelect('vendor.address', 'address')
+      .where('vendor.deleted_at IS NULL')
+      .orderBy('vendor.created_at', 'DESC');
+    return await fetchPage(qb, {
+      page,
+      count: limit,
     });
   }
 
-  // i should add where orderId is null here 
+  // i should add where orderId is null here
   async getVendorById(vendorId: string): Promise<Vendor | null> {
     return await this.vendorRepository.findOne({
       where: { id: vendorId },
-      relations: ['address', 'user'], // Include address details
+      relations: ['address', 'user', 'menu'], // Include address details
     });
   }
 
@@ -186,4 +213,4 @@ export class VendorService {
       inactive,
     };
   }
-} 
+}

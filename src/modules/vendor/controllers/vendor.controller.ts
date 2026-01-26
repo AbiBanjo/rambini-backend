@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -114,9 +115,8 @@ export class VendorController {
     description: 'All vendors retrieved successfully',
     type: [Vendor],
   })
-  async getAllVendors(): Promise<Vendor[]> {
-    // TODO: Add admin role check
-    return await this.vendorService.getAllVendors();
+  async getAllVendors(@Query('page') page = 1, @Query('limit') limit = 10) {
+    return this.vendorService.getAllVendors(Number(page), Number(limit));
   }
 
   @Get('admin/stats')
