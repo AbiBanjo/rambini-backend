@@ -195,11 +195,29 @@ export class Payment extends BaseEntity {
     }
   }
 
+  /**
+   * Process a refund for this payment
+   * CRITICAL FIX: Convert decimal values to numbers to prevent string concatenation
+   * 
+   * @param amount - Amount to refund
+   * @param reason - Reason for refund
+   */
   processRefund(amount: number, reason: string): void {
-    if (amount > 0 && amount <= this.amount - this.refunded_amount) {
-      this.refunded_amount += amount;
+    // ✅ CRITICAL: Convert to numbers to prevent string concatenation
+    // Database decimal columns can return strings, causing "0.00" + "1.15" = "0.001.15"
+    const refundAmount = Number(amount);
+    const currentRefundedAmount = Number(this.refunded_amount) || 0;
+    const totalAmount = Number(this.amount);
+    
+    // Calculate remaining amount that can be refunded
+    const remainingRefundableAmount = totalAmount - currentRefundedAmount;
+    
+    if (refundAmount > 0 && refundAmount <= remainingRefundableAmount) {
+      // ✅ Safe number addition (not string concatenation)
+      this.refunded_amount = currentRefundedAmount + refundAmount;
       
-      if (this.refunded_amount >= this.amount) {
+      // Determine if this is a full or partial refund
+      if (Number(this.refunded_amount) >= totalAmount) {
         this.status = PaymentTransactionStatus.REFUNDED;
         this.refunded_at = new Date();
       } else {
@@ -207,6 +225,12 @@ export class Payment extends BaseEntity {
       }
       
       this.refund_reason = reason;
+    } else if (refundAmount > remainingRefundableAmount) {
+      throw new Error(
+        `Refund amount (${refundAmount}) exceeds remaining refundable amount (${remainingRefundableAmount})`
+      );
+    } else if (refundAmount <= 0) {
+      throw new Error(`Refund amount must be greater than 0`);
     }
   }
 

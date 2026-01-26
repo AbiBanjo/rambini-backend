@@ -1,10 +1,23 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CartRepository } from '../repositories/cart.repository';
 import { OrderRepository } from 'src/modules/order/repositories/order.repository';
-import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
-import { AddToCartDto, UpdateCartItemDto, CartResponseDto, CartItemResponseDto, GroupedCartResponseDto, VendorCartGroupDto, VendorCartResponseDto } from '../dto';
-import { CartItem, MenuItem } from 'src/entities';
+import { CouponService } from 'src/modules/coupon/services/coupon.service';
+import {
+  AddToCartDto,
+  UpdateCartItemDto,
+  CartResponseDto,
+  CartItemResponseDto,
+  GroupedCartResponseDto,
+  VendorCartResponseDto,
+} from '../dto';
+import { CartItem } from 'src/entities';
 import { MenuItemService } from '@/modules/menu/services/menu-item.service';
 import { VendorService } from '@/modules/vendor/services/vendor.service';
 
@@ -12,61 +25,75 @@ import { VendorService } from '@/modules/vendor/services/vendor.service';
 export class CartService {
   private readonly logger = new Logger(CartService.name);
   private readonly serviceFeePercentage: number;
- 
+  // Store applied coupons per user and optionally per vendor
+  private appliedCoupons: Map<
+    string,
+    Map<string, { couponId: string; code: string; discountAmount: number }>
+  > = new Map();
 
   constructor(
     private readonly cartRepository: CartRepository,
     private readonly orderRepository: OrderRepository,
     private readonly menuItemService: MenuItemService,
     private readonly vendorService: VendorService,
+    private readonly couponService: CouponService,
     private readonly configService: ConfigService,
   ) {
-    this.serviceFeePercentage = this.configService.get<number>('fees.serviceFeePercentage') || 15;
+    this.serviceFeePercentage =
+      this.configService.get<number>('fees.serviceFeePercentage') || 15;
   }
 
-  async addToCart(userId: string, addToCartDto: AddToCartDto): Promise<CartItemResponseDto> {
-    this.logger.log(`Adding item ${addToCartDto.menu_item_id} to cart for user ${userId}`);
+  async addToCart(
+    userId: string,
+    addToCartDto: AddToCartDto,
+  ): Promise<CartItemResponseDto> {
+    this.logger.log(
+      `Adding item ${addToCartDto.menu_item_id} to cart for user ${userId}`,
+    );
 
-    // Validate menu item exists and is available
-    const menuItem = await this.menuItemService.getMenuItemById(addToCartDto.menu_item_id);
+    const menuItem = await this.menuItemService.getMenuItemById(
+      addToCartDto.menu_item_id,
+    );
     if (!menuItem) {
-      throw new NotFoundException(`Menu item with ID ${addToCartDto.menu_item_id} not found`);
+      throw new NotFoundException(
+        `Menu item with ID ${addToCartDto.menu_item_id} not found`,
+      );
     }
 
     if (!menuItem.is_available) {
-      throw new BadRequestException(`Menu item "${menuItem.name}" is not available for ordering`);
+      throw new BadRequestException(
+        `Menu item "${menuItem.name}" is not available for ordering`,
+      );
     }
 
-    // Check if item already exists in cart and is active (using vendor_id to match unique constraint)
-    const existingActiveCartItem = await this.cartRepository.findByUserMenuItemAndVendor(userId, addToCartDto.menu_item_id, menuItem.vendor_id, true);
-    this.logger.log(`Existing active cart item: ${JSON.stringify(existingActiveCartItem)}`);
-    
+    const existingActiveCartItem =
+      await this.cartRepository.findByUserMenuItemAndVendor(
+        userId,
+        addToCartDto.menu_item_id,
+        menuItem.vendor_id,
+        true,
+      );
+
     if (existingActiveCartItem) {
-      // Update existing active cart item
-      const newQuantity = Number(existingActiveCartItem.quantity) + Number(addToCartDto.quantity);
-      
-      // Calculate the new total price using the unit price from menu item (to ensure consistency)
+      const newQuantity =
+        Number(existingActiveCartItem.quantity) + Number(addToCartDto.quantity);
       const unitPrice = Number(menuItem.price);
       const newTotalPrice = unitPrice * newQuantity;
 
       existingActiveCartItem.updateQuantity(newQuantity);
-      
-      const updatedCartItem = await this.cartRepository.update(existingActiveCartItem.id, {
-        quantity: newQuantity,
-        unit_price: unitPrice,
-        total_price: newTotalPrice
-      });
-      this.logger.log(`Updated existing cart item ${updatedCartItem.id} with quantity ${newQuantity} and total price ${newTotalPrice}`);
 
-      console.log('updatedCartItem', updatedCartItem);
-      
+      const updatedCartItem = await this.cartRepository.update(
+        existingActiveCartItem.id,
+        {
+          quantity: newQuantity,
+          unit_price: unitPrice,
+          total_price: newTotalPrice,
+        },
+      );
+
       return this.mapToCartItemResponse(updatedCartItem);
     }
 
-
-    this.logger.log(`Creating new cart item`);
-
-    // Create new cart item
     const cartItem = await this.cartRepository.create({
       user_id: userId,
       menu_item_id: addToCartDto.menu_item_id,
@@ -76,32 +103,42 @@ export class CartService {
       total_price: Number(menuItem.price) * Number(addToCartDto.quantity),
     });
 
-    // ensure vendor details are added
     this.logger.log(`Added new item to cart: ${cartItem.id}`);
     return this.mapToCartItemResponse(cartItem);
   }
 
-  async getCart(userId: string, isActive: boolean = true): Promise<CartResponseDto> {
-    this.logger.log(`Fetching ${isActive ? 'active' : 'inactive'} cart for user ${userId}`);
+  async getCart(
+    userId: string,
+    isActive: boolean = true,
+  ): Promise<CartResponseDto> {
+    this.logger.log(
+      `Fetching ${isActive ? 'active' : 'inactive'} cart for user ${userId}`,
+    );
 
-    const cartItems = await this.cartRepository.getCartWithDetails(userId, isActive);
-    // const summary = await this.cartRepository.getCartSummary(userId, isActive);
-
-    // Get active orders for the customer to check for tracking
-    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(userId);
+    const cartItems = await this.cartRepository.getCartWithDetails(
+      userId,
+      isActive,
+    );
+    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(
+      userId,
+    );
     const activeVendorIds = new Set(activeOrders.map(order => order.vendor_id));
 
-    const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item, activeVendorIds));
+    const cartItemsResponse = cartItems.map(item =>
+      this.mapToCartItemResponse(item, activeVendorIds),
+    );
 
-    
     return {
       user_id: userId,
       items: cartItemsResponse,
-
     };
   }
 
-  async updateCartItem(userId: string, cartItemId: string, updateDto: UpdateCartItemDto): Promise<CartItemResponseDto> {
+  async updateCartItem(
+    userId: string,
+    cartItemId: string,
+    updateDto: UpdateCartItemDto,
+  ): Promise<CartItemResponseDto> {
     this.logger.log(`Updating cart item ${cartItemId} for user ${userId}`);
 
     const cartItem = await this.cartRepository.findById(cartItemId);
@@ -113,7 +150,6 @@ export class CartService {
       throw new BadRequestException('You can only update your own cart items');
     }
 
-    // Update quantity if provided
     if (updateDto.quantity !== undefined) {
       cartItem.updateQuantity(updateDto.quantity);
     }
@@ -121,9 +157,8 @@ export class CartService {
     const updatedCartItem = await this.cartRepository.update(cartItem.id, {
       quantity: cartItem.quantity,
       total_price: cartItem.total_price,
-      order_id: updateDto.order_id
+      order_id: updateDto.order_id,
     });
-    this.logger.log(`Cart item ${cartItemId} updated successfully`);
 
     return this.mapToCartItemResponse(updatedCartItem);
   }
@@ -148,8 +183,13 @@ export class CartService {
     this.logger.log(`Clearing cart for user ${userId}`);
 
     const removedCount = await this.cartRepository.clearUserCart(userId);
-    this.logger.log(`Cleared ${removedCount} items from cart for user ${userId}`);
 
+    // Clear applied coupons for this user
+    this.appliedCoupons.delete(userId);
+
+    this.logger.log(
+      `Cleared ${removedCount} items from cart for user ${userId}`,
+    );
     return { removed_count: removedCount };
   }
 
@@ -167,15 +207,19 @@ export class CartService {
     this.logger.log(`Validating cart for user ${userId}`);
 
     const validation = await this.cartRepository.validateCartItems(userId);
-    
-    const valid_items = validation.valid_items.map(item => this.mapToCartItemResponse(item));
-    const invalid_items = validation.invalid_items.map(item => this.mapToCartItemResponse(item));
 
-    // Get summary for valid items only
+    const valid_items = validation.valid_items.map(item =>
+      this.mapToCartItemResponse(item),
+    );
+    const invalid_items = validation.invalid_items.map(item =>
+      this.mapToCartItemResponse(item),
+    );
+
     const summary = await this.cartRepository.getCartSummary(userId);
 
     return {
-      is_valid: validation.valid_items.length > 0 && validation.errors.length === 0,
+      is_valid:
+        validation.valid_items.length > 0 && validation.errors.length === 0,
       valid_items,
       invalid_items,
       errors: validation.errors,
@@ -187,7 +231,10 @@ export class CartService {
     };
   }
 
-  async getCartItemById(userId: string, cartItemId: string): Promise<CartItemResponseDto> {
+  async getCartItemById(
+    userId: string,
+    cartItemId: string,
+  ): Promise<CartItemResponseDto> {
     const cartItem = await this.cartRepository.findById(cartItemId);
     if (!cartItem) {
       throw new NotFoundException(`Cart item with ID ${cartItemId} not found`);
@@ -200,38 +247,50 @@ export class CartService {
     return this.mapToCartItemResponse(cartItem);
   }
 
-  async getCartItemsByIds(userId: string, cartItemIds: string[]): Promise<CartItem[]> {
-    this.logger.log(`Getting cart items by IDs for user ${userId}: ${cartItemIds.join(', ')}`);
-    
-    const cartItems = await this.cartRepository.findByCartItemIds(userId, cartItemIds);
-    
+  async getCartItemsByIds(
+    userId: string,
+    cartItemIds: string[],
+  ): Promise<CartItem[]> {
+    this.logger.log(
+      `Getting cart items by IDs for user ${userId}: ${cartItemIds.join(', ')}`,
+    );
+
+    const cartItems = await this.cartRepository.findByCartItemIds(
+      userId,
+      cartItemIds,
+    );
+
     if (cartItems.length !== cartItemIds.length) {
       const foundIds = cartItems.map(item => item.id);
       const missingIds = cartItemIds.filter(id => !foundIds.includes(id));
-      throw new NotFoundException(`Cart items not found: ${missingIds.join(', ')}`);
+      throw new NotFoundException(
+        `Cart items not found: ${missingIds.join(', ')}`,
+      );
     }
-    this.logger.log(`Found ${cartItems.length} cart items for user ${userId}: ${cartItemIds.join(', ')}`);
+
     return cartItems;
   }
 
-  async validateCartItemsForCheckout(userId: string, cartItemIds: string[]): Promise<{
+  async validateCartItemsForCheckout(
+    userId: string,
+    cartItemIds: string[],
+  ): Promise<{
     cartItems: CartItem[];
     vendorId: string;
     subtotal: number;
     is_valid: boolean;
     issues: string[];
   }> {
-    this.logger.log(`Validating cart items for checkout: ${cartItemIds.join(', ')}`);
-    
-    // Get cart items by IDs
+    this.logger.log(
+      `Validating cart items for checkout: ${cartItemIds.join(', ')}`,
+    );
+
     const cartItems = await this.getCartItemsByIds(userId, cartItemIds);
-    
+
     const issues: string[] = [];
     let subtotal = 0;
-    
-    // Validate each cart item
+
     for (const cartItem of cartItems) {
-      // Check if menu item still exists and is available
       if (!cartItem.menu_item) {
         issues.push(`Menu item no longer exists for cart item ${cartItem.id}`);
         continue;
@@ -242,24 +301,26 @@ export class CartService {
         continue;
       }
 
-      // Check if price has changed significantly (more than 10%)
       const currentPrice = cartItem.menu_item.price;
       const cartPrice = cartItem.unit_price;
       const priceChange = Math.abs(currentPrice - cartPrice) / cartPrice;
-      
+
       if (priceChange > 0.1) {
-        issues.push(`Price for "${cartItem.menu_item.name}" has changed from ₦${cartPrice} to ₦${currentPrice}`);
+        issues.push(
+          `Price for "${cartItem.menu_item.name}" has changed from ₦${cartPrice} to ₦${currentPrice}`,
+        );
       }
 
       subtotal += Number(cartItem.total_price);
     }
 
-    // Validate single vendor
     const vendorIds = new Set(cartItems.map(item => item.vendor_id));
     if (vendorIds.size === 0) {
       issues.push('No valid vendor found for cart items');
     } else if (vendorIds.size > 1) {
-      issues.push('All items must be from the same vendor. Please create separate orders for different vendors.');
+      issues.push(
+        'All items must be from the same vendor. Please create separate orders for different vendors.',
+      );
     }
 
     const vendorId = vendorIds.size === 1 ? Array.from(vendorIds)[0] : '';
@@ -273,12 +334,17 @@ export class CartService {
     };
   }
 
-  private mapToCartItemResponse(cartItem: CartItem, activeVendorIds?: Set<string>): CartItemResponseDto {
+  private mapToCartItemResponse(
+    cartItem: CartItem,
+    activeVendorIds?: Set<string>,
+  ): CartItemResponseDto {
     const vendorId = cartItem.menu_item?.vendor_id || cartItem.vendor_id;
-    const hasTrackingOrder = activeVendorIds ? activeVendorIds.has(vendorId) : false;
+    const hasTrackingOrder = activeVendorIds
+      ? activeVendorIds.has(vendorId)
+      : false;
 
-    // Calculate service fee as percentage of (unit_price * quantity)
-    const itemSubtotal = Number(cartItem.unit_price) * Number(cartItem.quantity);
+    const itemSubtotal =
+      Number(cartItem.unit_price) * Number(cartItem.quantity);
     const serviceFee = (itemSubtotal * this.serviceFeePercentage) / 100;
 
     return {
@@ -287,7 +353,7 @@ export class CartService {
       quantity: cartItem.quantity,
       unit_price: cartItem.unit_price,
       service_fee: Number(serviceFee.toFixed(2)),
-      total_price: Number(cartItem.total_price) + Number(serviceFee.toFixed(2)) ,
+      total_price: Number(cartItem.total_price) + Number(serviceFee.toFixed(2)),
       created_at: cartItem.created_at,
       updated_at: cartItem.updated_at,
       is_preOrder: cartItem.menu_item?.is_preOrder,
@@ -300,101 +366,186 @@ export class CartService {
       tracking_order: hasTrackingOrder,
       order_id: cartItem.order_id,
       address_id: cartItem.menu_item?.vendor?.address_id,
-      address_name: cartItem.menu_item?.vendor?.address?.address_line_1 + ' ' + cartItem.menu_item?.vendor?.address?.address_line_2 + ' ' + cartItem.menu_item?.vendor?.address?.city + ' ' + cartItem.menu_item?.vendor?.address?.state + ' ' + cartItem.menu_item?.vendor?.address?.postal_code + ' ' + cartItem.menu_item?.vendor?.address?.country,
+      address_name:
+        cartItem.menu_item?.vendor?.address?.address_line_1 +
+        ' ' +
+        cartItem.menu_item?.vendor?.address?.address_line_2 +
+        ' ' +
+        cartItem.menu_item?.vendor?.address?.city +
+        ' ' +
+        cartItem.menu_item?.vendor?.address?.state +
+        ' ' +
+        cartItem.menu_item?.vendor?.address?.postal_code +
+        ' ' +
+        cartItem.menu_item?.vendor?.address?.country,
       address_phone: cartItem.menu_item?.vendor?.address?.phone,
     };
   }
 
-  async getCartGroupedByVendor(userId: string, isActive: boolean = true): Promise<GroupedCartResponseDto> {
-    this.logger.log(`Fetching ${isActive ? 'active' : 'inactive'} cart grouped by vendor for user ${userId}`);
+  async getCartGroupedByVendor(
+    userId: string,
+    isActive: boolean = true,
+  ): Promise<GroupedCartResponseDto> {
+    this.logger.log(
+      `Fetching ${
+        isActive ? 'active' : 'inactive'
+      } cart grouped by vendor for user ${userId}`,
+    );
 
-    const cartItems = await this.cartRepository.getCartItemsGroupedByVendor(userId, isActive);
-    
+    const cartItems = await this.cartRepository.getCartItemsGroupedByVendor(
+      userId,
+      isActive,
+    );
+
     if (cartItems.length === 0) {
       return {
         user_id: userId,
         vendors: [],
         total_items: 0,
         subtotal: 0,
-        service_fee:0,
+        service_fee: 0,
+        discount: 0,
         total_amount: 0,
         is_empty: true,
         vendor_count: 0,
+        applied_coupons: [],
       };
     }
 
-    // Get active orders for the customer to check for tracking
-    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(userId);
+    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(
+      userId,
+    );
     const activeVendorIds = new Set(activeOrders.map(order => order.vendor_id));
 
-    // Group cart items by vendor
     const vendorGroups = new Map<string, CartItem[]>();
-    
+
     for (const cartItem of cartItems) {
       const vendorId = cartItem.vendor_id || cartItem.menu_item?.vendor_id;
       if (!vendorId) continue;
-      
+
       if (!vendorGroups.has(vendorId)) {
         vendorGroups.set(vendorId, []);
       }
       vendorGroups.get(vendorId)!.push(cartItem);
     }
 
-    // Convert groups to response format
-    const vendors: VendorCartGroupDto[] = [];
+    const vendors = [];
     let totalItems = 0;
     let totalSubtotal = 0;
+    let totalDiscount = 0;
+
+    // Get user's applied coupons
+    const userCoupons = this.appliedCoupons.get(userId) || new Map();
+    const appliedCouponsList = [];
 
     for (const [vendorId, items] of vendorGroups) {
-      const vendorItems = items.map(item => this.mapToCartItemResponse(item, activeVendorIds));
-      const vendorTotalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-      // Coerce potential decimal strings to numbers before summing
-      const vendorSubtotal = items.reduce((sum, item) => sum + Number(item.total_price), 0);
-      
+      const vendorItems = items.map(item =>
+        this.mapToCartItemResponse(item, activeVendorIds),
+      );
+      const vendorTotalItems = items.reduce(
+        (sum, item) => sum + item.quantity,
+        0,
+      );
+      const vendorSubtotal = items.reduce(
+        (sum, item) => sum + Number(item.total_price),
+        0,
+      );
+
+      // Check if coupon is applied for this vendor
+      let vendorDiscount = 0;
+      const appliedCoupon = userCoupons.get(vendorId);
+
+      if (appliedCoupon) {
+        vendorDiscount = appliedCoupon.discountAmount;
+        appliedCouponsList.push({
+          vendor_id: vendorId,
+          coupon_code: appliedCoupon.code,
+          discount_amount: vendorDiscount,
+        });
+      }
+
       vendors.push({
         vendor_id: vendorId,
-        vendor_name: items[0]?.menu_item?.vendor?.business_name || 'Unknown Vendor',
+        vendor_name:
+          items[0]?.menu_item?.vendor?.business_name || 'Unknown Vendor',
         items: vendorItems,
         vendor_total_items: vendorTotalItems,
         vendor_subtotal: vendorSubtotal,
+        vendor_discount: vendorDiscount,
       });
 
       totalItems += vendorTotalItems;
       totalSubtotal += Number(vendorSubtotal);
+      totalDiscount += vendorDiscount;
     }
 
-    // service charge
-    const serviceCharge = (totalSubtotal * this.serviceFeePercentage) / 100
+    const serviceCharge = (totalSubtotal * this.serviceFeePercentage) / 100;
+    const finalTotal = totalSubtotal + serviceCharge - totalDiscount;
 
     return {
       user_id: userId,
       vendors,
       total_items: totalItems,
       subtotal: totalSubtotal,
-      service_fee:serviceCharge,
-      total_amount:totalSubtotal + serviceCharge , // No fees applied yet
+      service_fee: serviceCharge,
+      discount: totalDiscount,
+      total_amount: finalTotal,
       is_empty: false,
       vendor_count: vendors.length,
+      applied_coupons: appliedCouponsList,
     };
   }
 
-  async getCartByVendor(userId: string, vendorId: string, isActive: boolean = true): Promise<VendorCartResponseDto> {
-    this.logger.log(`Fetching ${isActive ? 'active' : 'inactive'} cart items for user ${userId} from vendor ${vendorId}`);
+  async getCartByVendor(
+    userId: string,
+    vendorId: string,
+    isActive: boolean = true,
+  ): Promise<VendorCartResponseDto> {
+    this.logger.log(
+      `Fetching ${
+        isActive ? 'active' : 'inactive'
+      } cart items for user ${userId} from vendor ${vendorId}`,
+    );
 
-    const [cartItems, summary ]= await Promise.all([ this.cartRepository.getCartItemsByVendor(userId, vendorId, isActive),this.cartRepository.getCartSummaryByVendor(userId, vendorId, isActive)])
-    
-    // Get active orders for the customer to check for tracking
-    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(userId);
+    const [cartItems, summary] = await Promise.all([
+      this.cartRepository.getCartItemsByVendor(userId, vendorId, isActive),
+      this.cartRepository.getCartSummaryByVendor(userId, vendorId, isActive),
+    ]);
+
+    const activeOrders = await this.orderRepository.getActiveOrdersForCustomer(
+      userId,
+    );
     const activeVendorIds = new Set(activeOrders.map(order => order.vendor_id));
-    
-    const cartItemsResponse = cartItems.map(item => this.mapToCartItemResponse(item, activeVendorIds));
 
-    // Get vendor name from first item or default
-    const vendorName = cartItems.length > 0 
-      ? cartItems[0]?.menu_item?.vendor?.business_name || 'Unknown Vendor'
-      : 'Unknown Vendor';
+    const cartItemsResponse = cartItems.map(item =>
+      this.mapToCartItemResponse(item, activeVendorIds),
+    );
 
-      const serviceCharge = (Number(summary.subtotal)  * this.serviceFeePercentage) / 100
+    const vendorName =
+      cartItems.length > 0
+        ? cartItems[0]?.menu_item?.vendor?.business_name || 'Unknown Vendor'
+        : 'Unknown Vendor';
+
+    const serviceCharge =
+      (Number(summary.subtotal) * this.serviceFeePercentage) / 100;
+
+    // Check if coupon is applied for this vendor
+    let discount = 0;
+    let appliedCoupon = null;
+    const userCoupons = this.appliedCoupons.get(userId);
+
+    if (userCoupons) {
+      const coupon = userCoupons.get(vendorId);
+      if (coupon) {
+        discount = coupon.discountAmount;
+        appliedCoupon = {
+          code: coupon.code,
+          discount_amount: discount,
+        };
+      }
+    }
+
+    const finalTotal = summary.subtotal + serviceCharge - discount;
 
     return {
       user_id: userId,
@@ -403,29 +554,36 @@ export class CartService {
       items: cartItemsResponse,
       total_items: summary.total_items,
       subtotal: summary.subtotal,
-      service_fee:serviceCharge,
-      total_amount:summary.subtotal + serviceCharge,
+      service_fee: serviceCharge,
+      discount: discount,
+      total_amount: finalTotal,
       is_empty: summary.is_empty,
+      applied_coupon: appliedCoupon,
     };
   }
 
   async removeCartItems(userId: string, cartItemIds: string[]): Promise<void> {
-    this.logger.log(`Removing cart items ${cartItemIds.join(', ')} for user ${userId}`);
+    this.logger.log(
+      `Removing cart items ${cartItemIds.join(', ')} for user ${userId}`,
+    );
 
     if (!cartItemIds || cartItemIds.length === 0) {
       return;
     }
 
-    // Validate that all cart items belong to the user
-    const cartItems = await this.cartRepository.findByCartItemIds(userId, cartItemIds);
-    
+    const cartItems = await this.cartRepository.findByCartItemIds(
+      userId,
+      cartItemIds,
+    );
+
     if (cartItems.length !== cartItemIds.length) {
       const foundIds = cartItems.map(item => item.id);
       const missingIds = cartItemIds.filter(id => !foundIds.includes(id));
-      throw new NotFoundException(`Cart items not found: ${missingIds.join(', ')}`);
+      throw new NotFoundException(
+        `Cart items not found: ${missingIds.join(', ')}`,
+      );
     }
 
-    // Remove all cart items
     for (const cartItemId of cartItemIds) {
       await this.cartRepository.delete(cartItemId);
     }
@@ -433,31 +591,225 @@ export class CartService {
     this.logger.log(`Successfully removed ${cartItemIds.length} cart items`);
   }
 
-  async makeCartItemsInactiveForVendor(userId: string, vendorId: string, orderId: string): Promise<void> {
-    this.logger.log(`Making cart items inactive for vendor ${vendorId} for order ${orderId}`);
-    await this.cartRepository.makeCartItemsInactiveForVendor(userId, vendorId, orderId);
+  async makeCartItemsInactiveForVendor(
+    userId: string,
+    vendorId: string,
+    orderId: string,
+  ): Promise<void> {
+    this.logger.log(
+      `Making cart items inactive for vendor ${vendorId} for order ${orderId}`,
+    );
+    await this.cartRepository.makeCartItemsInactiveForVendor(
+      userId,
+      vendorId,
+      orderId,
+    );
   }
 
-  async clearCartByVendor(userId: string, vendorId: string): Promise<{ removed_count: number }> {
+  async clearCartByVendor(
+    userId: string,
+    vendorId: string,
+  ): Promise<{ removed_count: number }> {
     this.logger.log(`Clearing cart for user ${userId} and vendor ${vendorId}`);
 
-    // Get all active cart items for this user and vendor
-    const cartItems = await this.cartRepository.getCartItemsByVendor(userId, vendorId, true);
-    
+    const cartItems = await this.cartRepository.getCartItemsByVendor(
+      userId,
+      vendorId,
+      true,
+    );
+
     if (cartItems.length === 0) {
-      this.logger.log(`No active cart items found for user ${userId} and vendor ${vendorId}`);
+      this.logger.log(
+        `No active cart items found for user ${userId} and vendor ${vendorId}`,
+      );
       return { removed_count: 0 };
     }
 
-    // Delete all cart items
     const cartItemIds = cartItems.map(item => item.id);
     for (const cartItemId of cartItemIds) {
       await this.cartRepository.delete(cartItemId);
     }
 
-    this.logger.log(`Cleared ${cartItems.length} items from cart for user ${userId} and vendor ${vendorId}`);
+    // Remove applied coupon for this vendor
+    const userCoupons = this.appliedCoupons.get(userId);
+    if (userCoupons) {
+      userCoupons.delete(vendorId);
+    }
+
+    this.logger.log(
+      `Cleared ${cartItems.length} items from cart for user ${userId} and vendor ${vendorId}`,
+    );
     return { removed_count: cartItems.length };
   }
 
+  // Coupon-related methods
+  // Update only the applyCouponToCart method in cart.service.ts
+  // This ensures proper error responses are returned
 
-} 
+  async applyCouponToCart(
+    userId: string,
+    code: string,
+    vendorId?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    discount_amount?: number;
+    updated_cart?: VendorCartResponseDto | GroupedCartResponseDto;
+    error?: string;
+  }> {
+    this.logger.log(`Applying coupon ${code} to cart for user ${userId}`);
+
+    // Get cart items for the vendor or all vendors
+    let subtotal = 0;
+    let targetVendorId = vendorId;
+
+    try {
+      if (vendorId) {
+        const summary = await this.cartRepository.getCartSummaryByVendor(
+          userId,
+          vendorId,
+          true,
+        );
+        if (summary.is_empty) {
+          return {
+            success: false,
+            message: 'Cart is empty for this vendor',
+            error: 'Cart is empty for this vendor',
+          };
+        }
+        subtotal = summary.subtotal;
+      } else {
+        const summary = await this.cartRepository.getCartSummary(userId, true);
+        if (summary.is_empty) {
+          return {
+            success: false,
+            message: 'Cart is empty',
+            error: 'Cart is empty',
+          };
+        }
+        subtotal = summary.subtotal;
+
+        // If no vendor specified, check if cart has single vendor
+        const cartItems = await this.cartRepository.getCartWithDetails(
+          userId,
+          true,
+        );
+        const vendorIds = new Set(cartItems.map(item => item.vendor_id));
+
+        if (vendorIds.size > 1) {
+          return {
+            success: false,
+            message:
+              'Please specify a vendor ID when cart contains items from multiple vendors',
+            error:
+              'Please specify a vendor ID when cart contains items from multiple vendors',
+          };
+        }
+
+        targetVendorId = Array.from(vendorIds)[0];
+      }
+
+      // Validate coupon
+      const validation = await this.couponService.validateCoupon(
+        code,
+        userId,
+        subtotal,
+        targetVendorId,
+      );
+
+      if (!validation.valid) {
+        return {
+          success: false,
+          message: validation.error || 'Invalid coupon',
+          error: validation.error || 'Invalid coupon',
+        };
+      }
+
+      // Store applied coupon
+      if (!this.appliedCoupons.has(userId)) {
+        this.appliedCoupons.set(userId, new Map());
+      }
+
+      const userCoupons = this.appliedCoupons.get(userId)!;
+
+      // Check if a coupon is already applied for this vendor
+      if (userCoupons.has(targetVendorId)) {
+        return {
+          success: false,
+          message:
+            'A coupon is already applied for this vendor. Please remove it first.',
+          error: 'A coupon is already applied for this vendor',
+        };
+      }
+
+      userCoupons.set(targetVendorId, {
+        couponId: validation.coupon!.id,
+        code: validation.coupon!.code,
+        discountAmount: validation.discount_amount!,
+      });
+
+      // Get updated cart
+      const updatedCart = vendorId
+        ? await this.getCartByVendor(userId, targetVendorId)
+        : await this.getCartGroupedByVendor(userId);
+
+      return {
+        success: true,
+        message: 'Coupon applied successfully',
+        discount_amount: validation.discount_amount,
+        updated_cart: updatedCart,
+      };
+    } catch (error) {
+      this.logger.error(`Error applying coupon: ${error.message}`, error.stack);
+      return {
+        success: false,
+        message: 'Failed to apply coupon. Please try again.',
+        error: error.message || 'Unknown error occurred',
+      };
+    }
+  }
+
+  async removeCouponFromCart(userId: string, vendorId?: string): Promise<void> {
+    this.logger.log(`Removing coupon from cart for user ${userId}`);
+
+    const userCoupons = this.appliedCoupons.get(userId);
+    if (!userCoupons) {
+      return;
+    }
+
+    if (vendorId) {
+      userCoupons.delete(vendorId);
+    } else {
+      this.appliedCoupons.delete(userId);
+    }
+  }
+
+  async getAppliedCoupons(
+    userId: string,
+    vendorId?: string,
+  ): Promise<Array<{ vendor_id: string; code: string; discount: number }>> {
+    const userCoupons = this.appliedCoupons.get(userId);
+    if (!userCoupons) {
+      return [];
+    }
+
+    if (vendorId) {
+      const coupon = userCoupons.get(vendorId);
+      return coupon
+        ? [
+            {
+              vendor_id: vendorId,
+              code: coupon.code,
+              discount: coupon.discountAmount,
+            },
+          ]
+        : [];
+    }
+
+    return Array.from(userCoupons.entries()).map(([vId, coupon]) => ({
+      vendor_id: vId,
+      code: coupon.code,
+      discount: coupon.discountAmount,
+    }));
+  }
+}

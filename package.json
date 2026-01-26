@@ -23,7 +23,8 @@
     "schema:sync": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm-ts-node-commonjs/dist/cli.js schema:sync -d src/database/typeorm-cli.config.ts",
     "db:seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeder.ts",
     "db:clear": "ts-node -r tsconfig-paths/register scripts/clear-database.ts",
-    "db:fix-null-emails": "ts-node -r tsconfig-paths/register run-fix-null-emails.ts"
+    "db:fix-null-emails": "ts-node -r tsconfig-paths/register run-fix-null-emails.ts",
+    "fix-duplicates": "ts-node -r tsconfig-paths/register fix-duplicates.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.658.1",

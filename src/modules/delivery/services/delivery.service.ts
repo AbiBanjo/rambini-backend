@@ -1,10 +1,27 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { DeliveryRepository } from '../repositories/delivery.repository';
 import { DeliveryProviderFactoryService } from './delivery-provider-factory.service';
-import { Delivery, ShipmentStatus, DeliveryProvider, DeliveryTracking, DeliveryQuote, Order, OrderStatus, OrderType, NotificationType } from 'src/entities';
+import {
+  Delivery,
+  ShipmentStatus,
+  DeliveryProvider,
+  DeliveryTracking,
+  DeliveryQuote,
+  Order,
+  OrderStatus,
+  OrderType,
+  NotificationType,
+} from 'src/entities';
 import { AddressService } from '../../user/services/address.service';
 import {
   AddressValidationDto,
@@ -57,52 +74,71 @@ export class DeliveryService {
     private readonly notificationSSEService: NotificationSSEService,
     private readonly notificationService: NotificationService,
     private readonly configService: ConfigService,
-
   ) {}
 
   private getProviderByCountry(country: string) {
     return this.providerFactory.getProviderByCountry(country);
   }
 
+  async intializeDelivery(
+    user_id: string,
+    userDetails: { name: string; email: string; phone: string },
+    intializeDto: IntializeDeliveryDto,
+  ) {
+    // ✅ NEW: Use getFormattedAddressForDelivery instead of getAddressByIdForDelivery
+    const customerAddress =
+      await this.addressService.getFormattedAddressForDelivery(
+        intializeDto.customer_address_id,
+      );
 
-  async intializeDelivery (user_id: string,userDetails:{name: string, email: string, phone: string}, intializeDto : IntializeDeliveryDto) {
+    this.logger.log('📍 Customer delivery address:', {
+      formatted: customerAddress.address,
+      components: {
+        line1: customerAddress.address_line_1,
+        line2: customerAddress.address_line_2,
+        city: customerAddress.city,
+        state: customerAddress.state,
+      },
+    });
 
-    const customerAddress = await this.addressService.getAddressByIdForDelivery(user_id, intializeDto.customer_address_id);
+    const vendor = await this.vendorService.getVendorById(
+      intializeDto.vendor_id,
+    );
 
-    const vendor = await this.vendorService.getVendorById(intializeDto.vendor_id);
-    // get user cart items for this vendor
-    const {subtotal, items} = await this.cartService.getCartByVendor(user_id, vendor.id);
+    // Get user cart items for this vendor
+    const { subtotal, items } = await this.cartService.getCartByVendor(
+      user_id,
+      vendor.id,
+    );
+
     this.logger.log('Subtotal', subtotal);
-    // select delivery provider based on vendor country
-     const selectedDeliveryProvider = this.deliveryProviderSelector.selectProvider(vendor.address.country);
-    // const selectedDeliveryProvider = DeliveryProvider.UBER;
-    // const selectedDeliveryProvider = DeliveryProvider.SHIPBUBBLE;
 
-      // Initialize delivery fee and provider
+    // Select delivery provider based on vendor country
+    const selectedDeliveryProvider =
+      this.deliveryProviderSelector.selectProvider(vendor.address.country);
+
     let deliveryFee = 0;
 
     try {
-
       this.logger.log('Getting delivery quote');
-      // Validate and get delivery quotes
+
+      // ✅ Pass the formatted customer address
       const deliveryQuoteResult = await this.getDeliveryQuoteForOrder(
         vendor,
-        customerAddress,
+        customerAddress, // 👈 Now using DeliveryAddressData
         items,
         subtotal,
         selectedDeliveryProvider,
-        userDetails
+        userDetails,
       );
 
+      this.logger.log('Delivery quote result', deliveryQuoteResult);
 
-      this.logger.log('Delivery quote result', deliveryQuoteResult);
-      
       deliveryFee = deliveryQuoteResult.fee;
-      this.logger.log('Delivery quote result', deliveryQuoteResult);
-      // let currency be based on vendor country
+
       const currency = getCurrencyForCountry(vendor.address.country);
-      
-      // save the delivery quote to db
+
+      // Save the delivery quote to db
       const deliveryQuote = this.deliveryQuoteRepository.create({
         provider: selectedDeliveryProvider,
         fee: deliveryQuoteResult.fee,
@@ -126,94 +162,112 @@ export class DeliveryService {
           name: vendor.user.full_name,
         },
         destination_address: {
-          address: customerAddress.address_line_2,
+          // ✅ Use the formatted address
+          address: customerAddress.address,
           city: customerAddress.city,
           state: customerAddress.state,
           country: customerAddress.country,
           postalCode: customerAddress.postal_code,
           latitude: customerAddress.latitude,
           longitude: customerAddress.longitude,
-          phone: customerAddress.phone,
-          email: customerAddress.email,
-          name: customerAddress.name,
-        }
+          phone: customerAddress.phone || userDetails.phone,
+          email: customerAddress.email || userDetails.email,
+          name: customerAddress.name || userDetails.name,
+        },
       });
 
       await this.deliveryQuoteRepository.save(deliveryQuote);
 
-      this.logger.log(`Delivery fee calculated: ${deliveryFee} via ${selectedDeliveryProvider}`);
+      this.logger.log(
+        `✅ Delivery fee calculated: ${deliveryFee} via ${selectedDeliveryProvider}`,
+      );
 
       return {
         fee: deliveryQuote.fee,
         delivery_id: deliveryQuote.id,
-      }
-      
+      };
     } catch (error) {
       this.logger.error('Failed to get delivery quotes', error);
       throw new BadRequestException('Failed to get delivery quotes');
     }
-
-
   }
 
   async validateAddress(
     country: string,
-    address: AddressValidationDto & { name: string; email: string; phone: string },
+    address: AddressValidationDto & {
+      name: string;
+      email: string;
+      phone: string;
+    },
   ): Promise<AddressValidationResponseDto> {
     const provider = this.getProviderByCountry(country);
-    
+
     if (!provider) {
-      throw new BadRequestException(`No delivery provider available for country: ${country}`);
+      throw new BadRequestException(
+        `No delivery provider available for country: ${country}`,
+      );
     }
 
     return await provider.validateAddress(address);
   }
-
 
   async getDeliveryRates(
     rateRequest: DeliveryRateRequestDto,
   ): Promise<DeliveryRateResponseDto[]> {
     const country = rateRequest.destination.country;
     const provider = this.getProviderByCountry(country);
-    
+
     if (!provider) {
-      throw new BadRequestException(`No delivery provider available for country: ${country}`);
+      throw new BadRequestException(
+        `No delivery provider available for country: ${country}`,
+      );
     }
 
     // Use legacy method for backward compatibility
-    if ('getDeliveryRates' in provider && typeof provider.getDeliveryRates === 'function') {
+    if (
+      'getDeliveryRates' in provider &&
+      typeof provider.getDeliveryRates === 'function'
+    ) {
       return await provider.getDeliveryRates(rateRequest);
     }
 
-    throw new BadRequestException(`Provider does not support legacy rate calculation`);
+    throw new BadRequestException(
+      `Provider does not support legacy rate calculation`,
+    );
   }
 
- 
   async createDelivery(
     deliveryQuoteId: string,
     orderId: string,
   ): Promise<DeliveryResponseDto> {
-    this.logger.log(`Creating delivery for order ${orderId} using delivery quote ${deliveryQuoteId}`);
+    this.logger.log(
+      `Creating delivery for order ${orderId} using delivery quote ${deliveryQuoteId}`,
+    );
 
     // Check if delivery already exists for this order
-    const existingDelivery = await this.deliveryRepository.findByOrderId(orderId);
+    const existingDelivery = await this.deliveryRepository.findByOrderId(
+      orderId,
+    );
     if (existingDelivery) {
       throw new BadRequestException('Delivery already exists for this order');
     }
 
     // Get the delivery quote
     const deliveryQuote = await this.deliveryQuoteRepository.findOne({
-      where: { id: deliveryQuoteId }
+      where: { id: deliveryQuoteId },
     });
 
     if (!deliveryQuote) {
       throw new NotFoundException('Delivery quote not found');
     }
 
-   this.logger.log('Delivery quote', deliveryQuote);
-   this.logger.log('Delivery quote provider', deliveryQuote.origin_address);
-   this.logger.log('Delivery quote destination address', deliveryQuote.destination_address);
-   
+    this.logger.log('Delivery quote', deliveryQuote);
+    this.logger.log('Delivery quote provider', deliveryQuote.origin_address);
+    this.logger.log(
+      'Delivery quote destination address',
+      deliveryQuote.destination_address,
+    );
+
     // Get the appropriate provider based on the quote
     let deliveryResult: any;
     let trackingNumber: string;
@@ -223,41 +277,49 @@ export class DeliveryService {
     if (deliveryQuote.provider === DeliveryProvider.UBER) {
       // Use Uber's createDelivery method
       this.logger.log('Creating delivery with Uber Direct');
-      
+
       // Get Uber delivery service
       const uberService = this.uberDeliveryService;
-      
+
       // Create delivery request from quote data
       const deliveryRequest = {
         pickup_name: deliveryQuote.origin_address?.name || 'Vendor', // This should come from vendor data
         pickup_address: JSON.stringify({
-          street_address:[ deliveryQuote.origin_address?.address],
+          street_address: [deliveryQuote.origin_address?.address],
           city: deliveryQuote.origin_address?.city,
           state: deliveryQuote.origin_address?.state,
           zip_code: deliveryQuote.origin_address?.postalCode,
           country: deliveryQuote.origin_address?.country,
         }),
-        pickup_phone_number: deliveryQuote.origin_address?.phone || '+1234567890', // This should come from vendor data
+        pickup_phone_number:
+          deliveryQuote.origin_address?.phone || '+1234567890', // This should come from vendor data
         dropoff_name: deliveryQuote.destination_address?.name || 'Customer', // This should come from order data
         dropoff_address: JSON.stringify({
-          street_address:[ deliveryQuote.destination_address?.address],
+          street_address: [deliveryQuote.destination_address?.address],
           city: deliveryQuote.destination_address?.city,
           state: deliveryQuote.destination_address?.state,
           zip_code: deliveryQuote.destination_address?.postalCode,
           country: deliveryQuote.destination_address?.country,
         }),
-        dropoff_phone_number: deliveryQuote.destination_address?.phone || '+1234567890', // This should come from order data
-        manifest_items: [{
-          name: 'Food Order',
-          description: 'Food delivery order',
-          quantity: deliveryQuote.quantity_of_items || 1,
-          price: Math.round((deliveryQuote.items_price || 0) * 100), 
-        }],
-        manifest_total_value: Math.round((deliveryQuote.package_details?.value || 0) * 100),
+        dropoff_phone_number:
+          deliveryQuote.destination_address?.phone || '+1234567890', // This should come from order data
+        manifest_items: [
+          {
+            name: 'Food Order',
+            description: 'Food delivery order',
+            quantity: deliveryQuote.quantity_of_items || 1,
+            price: Math.round((deliveryQuote.items_price || 0) * 100),
+          },
+        ],
+        manifest_total_value: Math.round(
+          (deliveryQuote.package_details?.value || 0) * 100,
+        ),
         pickup_ready_dt: new Date(Date.now() + 20 * 60 * 1000).toISOString(), // 20 minutes from now
         pickup_deadline_dt: new Date(Date.now() + 50 * 60 * 1000).toISOString(), // 50 minutes from now
         dropoff_ready_dt: new Date(Date.now() + 50 * 60 * 1000).toISOString(), // 50 minutes from now
-        dropoff_deadline_dt: new Date(Date.now() + 140 * 60 * 1000).toISOString(), // 140 minutes from now
+        dropoff_deadline_dt: new Date(
+          Date.now() + 140 * 60 * 1000,
+        ).toISOString(), // 140 minutes from now
         manifest_reference: orderId,
         external_store_id: orderId,
         external_id: orderId,
@@ -274,14 +336,13 @@ export class DeliveryService {
       trackingNumber = deliveryResult.id;
       referenceNumber = deliveryResult.external_id || orderId;
       labelUrl = deliveryResult.tracking_url;
-
     } else if (deliveryQuote.provider === DeliveryProvider.SHIPBUBBLE) {
       // Use Shipbubble's createShipmentLabel method
       this.logger.log('Creating shipment label with Shipbubble');
-      
+
       // Get Shipbubble delivery service
       const shipbubbleService = this.shipbubbleDeliveryService;
-      
+
       // Create shipment request from quote data
       const shipmentRequest = {
         request_token: deliveryQuote.provider_request_token,
@@ -291,16 +352,20 @@ export class DeliveryService {
 
       this.logger.log('Shipment request', shipmentRequest);
 
-      deliveryResult = await shipbubbleService.createShipmentLabel(shipmentRequest);
+      deliveryResult = await shipbubbleService.createShipmentLabel(
+        shipmentRequest,
+      );
       this.logger.log('Shipment response', deliveryResult);
-      trackingNumber = deliveryResult.data.tracking_number || deliveryResult.data.tracking_url
+      trackingNumber =
+        deliveryResult.data.tracking_number || deliveryResult.data.tracking_url;
       referenceNumber = deliveryResult.data.reference_number || orderId;
-      labelUrl = deliveryResult.data.tracking_url
-
+      labelUrl = deliveryResult.data.tracking_url;
     } else {
-      throw new BadRequestException(`Unsupported delivery provider: ${deliveryQuote.provider}`);
+      throw new BadRequestException(
+        `Unsupported delivery provider: ${deliveryQuote.provider}`,
+      );
     }
-    
+
     deliveryQuote.trackingNumber = trackingNumber;
     deliveryQuote.labelUrl = labelUrl;
     deliveryQuote.referenceNumber = referenceNumber;
@@ -309,27 +374,38 @@ export class DeliveryService {
     return this.mapToDeliveryResponse(deliveryQuote);
   }
 
- 
-  async trackDelivery(trackingNumber: string): Promise<ShipmentTrackingResponseDto> {
-    const delivery = await this.deliveryRepository.findByTrackingNumber(trackingNumber);
+  async trackDelivery(
+    trackingNumber: string,
+  ): Promise<ShipmentTrackingResponseDto> {
+    const delivery = await this.deliveryRepository.findByTrackingNumber(
+      trackingNumber,
+    );
     if (!delivery) {
       throw new NotFoundException('Delivery not found');
     }
 
     // Get provider based on the stored provider type
-    const deliveryProvider = delivery.provider === DeliveryProvider.SHIPBUBBLE 
-      ? this.providerFactory.getShipbubbleProvider()
-      : this.providerFactory.getUberProvider();
+    const deliveryProvider =
+      delivery.provider === DeliveryProvider.SHIPBUBBLE
+        ? this.providerFactory.getShipbubbleProvider()
+        : this.providerFactory.getUberProvider();
 
     const trackingData = await deliveryProvider.trackShipment(trackingNumber);
 
     // Update delivery status based on tracking data
-    const newStatus = this.mapTrackingStatusToDeliveryStatus(trackingData.status);
+    const newStatus = this.mapTrackingStatusToDeliveryStatus(
+      trackingData.status,
+    );
     if (newStatus !== delivery.status) {
       await this.deliveryRepository.updateStatus(delivery.id, newStatus);
-      
+
       // Add tracking event
-      await this.addTrackingEvent(delivery.id, trackingData.status, 'Status updated', trackingData.currentLocation);
+      await this.addTrackingEvent(
+        delivery.id,
+        trackingData.status,
+        'Status updated',
+        trackingData.currentLocation,
+      );
     }
 
     // Convert to standard format
@@ -346,9 +422,10 @@ export class DeliveryService {
     };
   }
 
- 
   async cancelDelivery(trackingNumber: string): Promise<boolean> {
-    const delivery = await this.deliveryRepository.findByTrackingNumber(trackingNumber);
+    const delivery = await this.deliveryRepository.findByTrackingNumber(
+      trackingNumber,
+    );
     if (!delivery) {
       throw new NotFoundException('Delivery not found');
     }
@@ -358,58 +435,75 @@ export class DeliveryService {
     }
 
     // Get provider based on the stored provider type
-    const deliveryProvider = delivery.provider === DeliveryProvider.SHIPBUBBLE 
-      ? this.providerFactory.getShipbubbleProvider()
-      : this.providerFactory.getUberProvider();
+    const deliveryProvider =
+      delivery.provider === DeliveryProvider.SHIPBUBBLE
+        ? this.providerFactory.getShipbubbleProvider()
+        : this.providerFactory.getUberProvider();
 
     const cancelled = await deliveryProvider.cancelShipment(trackingNumber);
     if (cancelled) {
-      await this.deliveryRepository.updateStatus(delivery.id, ShipmentStatus.CANCELLED);
-      await this.addTrackingEvent(delivery.id, 'cancelled', 'Delivery cancelled by user');
+      await this.deliveryRepository.updateStatus(
+        delivery.id,
+        ShipmentStatus.CANCELLED,
+      );
+      await this.addTrackingEvent(
+        delivery.id,
+        'cancelled',
+        'Delivery cancelled by user',
+      );
     }
 
     return cancelled;
   }
 
- 
   async processWebhook(
     provider: DeliveryProvider,
     payload: any,
     signature: string,
   ): Promise<DeliveryWebhookDto> {
     // Get provider based on the provider type
-    const deliveryProvider = provider === DeliveryProvider.SHIPBUBBLE 
-      ? this.providerFactory.getShipbubbleProvider()
-      : this.providerFactory.getUberProvider();
+    const deliveryProvider =
+      provider === DeliveryProvider.SHIPBUBBLE
+        ? this.providerFactory.getShipbubbleProvider()
+        : this.providerFactory.getUberProvider();
 
-    const webhookResult = await deliveryProvider.processWebhook(payload, signature);
-    
+    const webhookResult = await deliveryProvider.processWebhook(
+      payload,
+      signature,
+    );
+
     if (webhookResult.success && webhookResult.trackingId) {
       // Update delivery status based on webhook event
       // GET delivery quote with trackingid
-      const deliveryQuote = await this.deliveryQuoteRepository.findOne({ 
+      const deliveryQuote = await this.deliveryQuoteRepository.findOne({
         where: { provider_quote_id: webhookResult.trackingId },
-        relations: ['order', 'order.customer']
+        relations: ['order', 'order.customer'],
       });
 
       // if there is delivery, update the order status and send notifications to the customer
       if (deliveryQuote && deliveryQuote.order) {
-        this.logger.log(`Processing webhook for delivery quote ${deliveryQuote.id} and order ${deliveryQuote.order.id}`);
-        
+        this.logger.log(
+          `Processing webhook for delivery quote ${deliveryQuote.id} and order ${deliveryQuote.order.id}`,
+        );
+
         // Map delivery status to order status
-        const newOrderStatus = this.mapDeliveryStatusToOrderStatus(webhookResult.status || webhookResult.eventType);
-        
+        const newOrderStatus = this.mapDeliveryStatusToOrderStatus(
+          webhookResult.status || webhookResult.eventType,
+        );
+
         if (newOrderStatus) {
           const order = deliveryQuote.order;
           const previousStatus = order.order_status;
-          
+
           // Only update if status has changed
           if (previousStatus !== newOrderStatus) {
-            this.logger.log(`Updating order ${order.id} status from ${previousStatus} to ${newOrderStatus}`);
-            
+            this.logger.log(
+              `Updating order ${order.id} status from ${previousStatus} to ${newOrderStatus}`,
+            );
+
             // Update order status based on delivery status
             order.order_status = newOrderStatus;
-            
+
             // Update additional fields based on status
             if (newOrderStatus === OrderStatus.OUT_FOR_DELIVERY) {
               // Order is out for delivery
@@ -420,33 +514,48 @@ export class DeliveryService {
               // Order has been delivered
               order.delivered_at = new Date();
             }
-            
+
             // Save updated order using OrderRepository
             await this.orderRepository.save(order);
-            
+
             // Get customer ID
             const customerId = order.customer_id;
             const orderNumber = order.order_number;
-            
+
             // Send SSE notification to customer
             try {
-              const notificationMessage = this.getOrderStatusNotificationMessage(newOrderStatus, orderNumber, order.order_type);
+              const notificationMessage =
+                this.getOrderStatusNotificationMessage(
+                  newOrderStatus,
+                  orderNumber,
+                  order.order_type,
+                );
               this.notificationSSEService.sendOrderUpdate(
                 customerId,
                 order.id,
                 newOrderStatus,
-                notificationMessage
+                notificationMessage,
               );
-              this.logger.log(`SSE notification sent to customer ${customerId} for order ${order.id} status: ${newOrderStatus}`);
+              this.logger.log(
+                `SSE notification sent to customer ${customerId} for order ${order.id} status: ${newOrderStatus}`,
+              );
             } catch (error) {
-              this.logger.error(`Failed to send SSE notification for order ${order.id}: ${error.message}`);
+              this.logger.error(
+                `Failed to send SSE notification for order ${order.id}: ${error.message}`,
+              );
             }
-            
+
             // Send push notification to customer
             try {
-              const pushTitle = `Order #${orderNumber} - ${this.getOrderStatusTitle(newOrderStatus)}`;
-              const pushMessage = this.getOrderStatusNotificationMessage(newOrderStatus, orderNumber, order.order_type);
-              
+              const pushTitle = `Order #${orderNumber} - ${this.getOrderStatusTitle(
+                newOrderStatus,
+              )}`;
+              const pushMessage = this.getOrderStatusNotificationMessage(
+                newOrderStatus,
+                orderNumber,
+                order.order_type,
+              );
+
               await this.notificationService.sendPushNotification(
                 customerId,
                 NotificationType.ORDER_UPDATE,
@@ -457,30 +566,40 @@ export class DeliveryService {
                   order_number: orderNumber,
                   status: newOrderStatus,
                   order_type: order.order_type,
-                  delivery_status: webhookResult.status || webhookResult.eventType,
-                  delivery_provider: provider
-                }
+                  delivery_status:
+                    webhookResult.status || webhookResult.eventType,
+                  delivery_provider: provider,
+                },
               );
-              this.logger.log(`Push notification sent to customer ${customerId} for order ${order.id} status: ${newOrderStatus}`);
+              this.logger.log(
+                `Push notification sent to customer ${customerId} for order ${order.id} status: ${newOrderStatus}`,
+              );
             } catch (error) {
-              this.logger.error(`Failed to send push notification for order ${order.id}: ${error.message}`);
+              this.logger.error(
+                `Failed to send push notification for order ${order.id}: ${error.message}`,
+              );
             }
           } else {
-            this.logger.log(`Order ${order.id} status unchanged: ${previousStatus}`);
+            this.logger.log(
+              `Order ${order.id} status unchanged: ${previousStatus}`,
+            );
           }
         } else {
-          this.logger.warn(`Could not map delivery status ${webhookResult.status || webhookResult.eventType} to order status`);
+          this.logger.warn(
+            `Could not map delivery status ${
+              webhookResult.status || webhookResult.eventType
+            } to order status`,
+          );
         }
       } else {
-        this.logger.warn(`No order found for delivery quote ${webhookResult.trackingId}`);
+        this.logger.warn(
+          `No order found for delivery quote ${webhookResult.trackingId}`,
+        );
       }
     }
 
     return webhookResult;
   }
-
-
-
 
   private async addTrackingEvent(
     deliveryId: string,
@@ -499,8 +618,9 @@ export class DeliveryService {
     await this.deliveryTrackingRepository.save(trackingEvent);
   }
 
-
-  private mapTrackingStatusToDeliveryStatus(trackingStatus: string): ShipmentStatus {
+  private mapTrackingStatusToDeliveryStatus(
+    trackingStatus: string,
+  ): ShipmentStatus {
     switch (trackingStatus.toLowerCase()) {
       case 'picked_up':
         return ShipmentStatus.PICKED_UP;
@@ -521,8 +641,9 @@ export class DeliveryService {
     }
   }
 
-
-  private mapWebhookEventToDeliveryStatus(eventType: string): ShipmentStatus | null {
+  private mapWebhookEventToDeliveryStatus(
+    eventType: string,
+  ): ShipmentStatus | null {
     switch (eventType) {
       case 'shipment.picked_up':
         return ShipmentStatus.PICKED_UP;
@@ -549,20 +670,21 @@ export class DeliveryService {
     return await shipbubbleProvider.getPackageCategories();
   }
 
-  
   async getPackageDimensions(): Promise<ShipbubblePackageDimensionsResponseDto> {
     this.logger.log('Getting package dimensions from Shipbubble');
     const shipbubbleProvider = this.providerFactory.getShipbubbleProvider();
     return await shipbubbleProvider.getPackageDimensions();
   }
 
-
-  async createShipmentLabel(shipmentRequest: ShipbubbleCreateShipmentRequestDto): Promise<ShipbubbleCreateShipmentResponseDto> {
-    this.logger.log(`Creating shipment label with request token: ${shipmentRequest.request_token}`);
+  async createShipmentLabel(
+    shipmentRequest: ShipbubbleCreateShipmentRequestDto,
+  ): Promise<ShipbubbleCreateShipmentResponseDto> {
+    this.logger.log(
+      `Creating shipment label with request token: ${shipmentRequest.request_token}`,
+    );
     const shipbubbleProvider = this.providerFactory.getShipbubbleProvider();
     return await shipbubbleProvider.createShipmentLabel(shipmentRequest);
   }
-
 
   async fetchShippingRates(ratesRequest: any): Promise<any> {
     this.logger.log('Fetching shipping rates from Shipbubble');
@@ -570,7 +692,6 @@ export class DeliveryService {
     return await shipbubbleProvider.fetchShippingRates(ratesRequest);
   }
 
- 
   getSupportedCountries(): string[] {
     return this.providerFactory.getSupportedCountries();
   }
@@ -578,7 +699,6 @@ export class DeliveryService {
   isCountrySupported(country: string): boolean {
     return this.providerFactory.isCountrySupported(country);
   }
-
 
   getProviderNameByCountry(country: string): string {
     return this.providerFactory.getProviderNameByCountry(country);
@@ -601,45 +721,66 @@ export class DeliveryService {
 
   private async getDeliveryQuoteForOrder(
     vendor: any,
-    deliveryAddress: any,
+    deliveryAddress: any, // Now expects DeliveryAddressData from AddressService
     cartItems: any[],
     subtotal: number,
     provider: DeliveryProvider,
-    userDetails: {name: string, email: string, phone: string}
-  ): Promise<{fee: number, quote_requestToken?: string , quote_id:string, quote_ServiceCode?:string, courier_id?:string}> {
+    userDetails: { name: string; email: string; phone: string },
+  ): Promise<{
+    fee: number;
+    quote_requestToken?: string;
+    quote_id: string;
+    quote_ServiceCode?: string;
+    courier_id?: string;
+  }> {
     this.logger.log(`Getting delivery quotes for provider: ${provider}`);
 
-    // Validate addresses and get address codes for Shipbubble
     if (provider === DeliveryProvider.SHIPBUBBLE) {
-      return await this.getShipbubbleQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal, userDetails);
+      return await this.getShipbubbleQuoteForOrder(
+        vendor,
+        deliveryAddress,
+        cartItems,
+        subtotal,
+        userDetails,
+      );
     } else if (provider === DeliveryProvider.UBER) {
       this.logger.log('Getting Uber quote');
-      return await this.getUberQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal);
+      return await this.getUberQuoteForOrder(
+        vendor,
+        deliveryAddress,
+        cartItems,
+        subtotal,
+      );
     }
 
     throw new Error(`Unsupported delivery provider: ${provider}`);
   }
 
-   private async getShipbubbleQuoteForOrder(
+  private async getShipbubbleQuoteForOrder(
     vendor: any,
-    deliveryAddress: any,
+    deliveryAddress: any, // DeliveryAddressData
     cartItems: any[],
     subtotal: number,
-    userDetails: {name: string, email: string, phone: string}
-  ): Promise<{fee: number, quote_requestToken: string, quote_ServiceCode: string, quote_id: string, courier_id: string}> {
+    userDetails: { name: string; email: string; phone: string },
+  ): Promise<{
+    fee: number;
+    quote_requestToken: string;
+    quote_ServiceCode: string;
+    quote_id: string;
+    courier_id: string;
+  }> {
     const shipbubbleService = this.shipbubbleDeliveryService;
 
     let vendorAddressCode = vendor.address.shipbubble_address_code;
     let customerAddressCode = deliveryAddress.shipbubble_address_code;
 
-    // Check if vendor address doesn't have shipbubble address code, if not validate it
+    // Check if vendor address doesn't have shipbubble address code
     if (!vendorAddressCode) {
-      // Validate vendor address and get/save address code
       const vendorAddressValidation = await shipbubbleService.validateAddress({
         name: vendor.business_name || 'Vendor',
         email: vendor.user?.email || 'vendor@example.com',
         phone: vendor.user?.phone_number || '+2348000000000',
-        address:vendor.address.address_line_1 || vendor.address.address_line_2,
+        address: vendor.address.address_line_1 || vendor.address.address_line_2,
         latitude: vendor.address.latitude,
         longitude: vendor.address.longitude,
       });
@@ -650,50 +791,56 @@ export class DeliveryService {
         throw new Error('Vendor address validation failed');
       }
 
-      // Update vendor address with Shipbubble address code if needed
       if (vendorAddressValidation.data.address_code) {
         vendorAddressCode = vendorAddressValidation.data.address_code;
-        await this.addressService.updateAddressCode(vendor.address.id, vendorAddressCode);
+        await this.addressService.updateAddressCode(
+          vendor.address.id,
+          vendorAddressCode,
+        );
       }
     }
 
+    // Check if customer address doesn't have shipbubble address code
     if (!customerAddressCode) {
-      // Validate customer delivery address and get/save address code
-      const customerAddressValidation = await shipbubbleService.validateAddress({
-        name: userDetails.name, 
-        email: userDetails.email, 
-        phone: userDetails.phone, 
-        address: deliveryAddress.address_line_2 || deliveryAddress.address_line_1,
-        latitude: deliveryAddress.latitude,
-        longitude: deliveryAddress.longitude,
-      });
+      // ✅ Use the formatted address (clean, no duplication)
+      const customerAddressValidation = await shipbubbleService.validateAddress(
+        {
+          name: userDetails.name,
+          email: userDetails.email,
+          phone: userDetails.phone,
+          address: deliveryAddress.address, // 👈 Use formatted address
+          latitude: deliveryAddress.latitude,
+          longitude: deliveryAddress.longitude,
+        },
+      );
 
       this.logger.log('Customer address validation', customerAddressValidation);
 
-      if (!customerAddressValidation.success || !customerAddressValidation.data) {
+      if (
+        !customerAddressValidation.success ||
+        !customerAddressValidation.data
+      ) {
         throw new Error('Customer address validation failed');
       }
 
-      // Update customer address with Shipbubble address code if needed
       if (customerAddressValidation.data.address_code) {
         customerAddressCode = customerAddressValidation.data.address_code;
-        await this.addressService.updateAddressCode(deliveryAddress.id, customerAddressCode);
+        // Note: We can't update the address code here because we don't have the address ID
+        // The address code will be saved in the delivery quote
       }
     }
 
     // Get package categories
     const categories = await shipbubbleService.getPackageCategories();
     this.logger.log('Shipbubble package categories', categories);
-    
-    // Choose food category
-    const foodCategory = categories.data?.find((category: ShipbubblePackageCategoryDto) => category.category.toLowerCase() === 'food');
-    const categoryId = foodCategory?.category_id || categories.data?.[0]?.category_id || 1;
 
+    const foodCategory = categories.data?.find(
+      (category: any) => category.category.toLowerCase() === 'food',
+    );
+    const categoryId =
+      foodCategory?.category_id || categories.data?.[0]?.category_id || 1;
 
-    this.logger.log("cart items",cartItems)
-    // Calculate package dimensions based on cart items
     const packageDimensions = this.calculatePackageDimensions(cartItems);
-    
     this.logger.log('Package dimensions', packageDimensions);
 
     // Prepare Shipbubble rates request
@@ -704,19 +851,21 @@ export class DeliveryService {
       package_items: cartItems.map(item => ({
         name: item.menu_item?.name || 'Food Item',
         description: item.menu_item?.description || 'Food delivery',
-        unit_weight: (item.quantity * 0.5).toString(), // Estimate 0.5kg per item
+        unit_weight: (item.quantity * 0.5).toString(),
         unit_amount: item.unit_price.toString(),
         quantity: item.quantity.toString(),
       })),
       package_dimension: packageDimensions,
-      pickup_date: new Date().toISOString().split('T')[0], // Today's date
-      service_type:"pickup",
+      pickup_date: new Date().toISOString().split('T')[0],
+      service_type: 'pickup',
     };
 
-    this.logger.log("Rate Request",ratesRequest)
+    this.logger.log('Rate Request', ratesRequest);
 
     // Fetch rates from Shipbubble
-    const ratesResponse = await shipbubbleService.fetchShippingRates(ratesRequest);
+    const ratesResponse = await shipbubbleService.fetchShippingRates(
+      ratesRequest,
+    );
 
     this.logger.log('Shipbubble rates response', ratesResponse);
 
@@ -724,46 +873,50 @@ export class DeliveryService {
       throw new Error('No courier options available from Shipbubble');
     }
 
-    // Get courier selection strategy from environment variable
-    const selectionStrategy = this.configService.get<string>('shipbubble.courierSelectionStrategy', 'cheapest');
+    // Get courier selection strategy
+    const selectionStrategy = this.configService.get<string>(
+      'shipbubble.courierSelectionStrategy',
+      'cheapest',
+    );
     this.logger.log(`Using courier selection strategy: ${selectionStrategy}`);
 
     let selectedCourier: any;
     let selectionReason: string;
 
     if (selectionStrategy === 'fastest' && ratesResponse.fastest_courier) {
-      // Use the fastest courier if available
       selectedCourier = ratesResponse.fastest_courier;
       selectionReason = 'fastest';
-      this.logger.log(`Selected fastest courier: ${selectedCourier.courier_name} with delivery fee: ${selectedCourier.total}`);
+      this.logger.log(
+        `Selected fastest courier: ${selectedCourier.courier_name} with fee: ${selectedCourier.total}`,
+      );
     } else {
-      // Default to cheapest courier (either from cheapest_courier field or find from array)
       if (ratesResponse.cheapest_courier) {
         selectedCourier = ratesResponse.cheapest_courier;
         selectionReason = 'cheapest (from API)';
       } else {
-        // Fallback: find the lowest fee from couriers array
-        selectedCourier = ratesResponse.couriers.reduce((min, courier) => 
-          courier.total < min.total ? courier : min,
-          ratesResponse.couriers[0]
+        selectedCourier = ratesResponse.couriers.reduce(
+          (min, courier) => (courier.total < min.total ? courier : min),
+          ratesResponse.couriers[0],
         );
         selectionReason = 'cheapest (calculated)';
       }
-      this.logger.log(`Selected cheapest courier: ${selectedCourier.courier_name} with delivery fee: ${selectedCourier.total}`);
+      this.logger.log(
+        `Selected cheapest courier: ${selectedCourier.courier_name} with fee: ${selectedCourier.total}`,
+      );
     }
-    
+
     const selectedServiceCode = selectedCourier.service_code;
     const selectedCourierId = selectedCourier.courier_id.toString();
     const selectedFee = selectedCourier.total;
 
-    // Return request token too for later use
     const requestToken = ratesResponse.request_token;
+
     return {
       fee: selectedFee,
       quote_requestToken: requestToken,
       quote_id: selectedCourierId,
       quote_ServiceCode: selectedServiceCode,
-      courier_id: selectedCourierId
+      courier_id: selectedCourierId,
     };
   }
 
@@ -771,12 +924,12 @@ export class DeliveryService {
     vendor: any,
     deliveryAddress: any,
     cartItems: any[],
-    subtotal: number
-  ): Promise<{fee: number, quote_id:string }> {
+    subtotal: number,
+  ): Promise<{ fee: number; quote_id: string }> {
     this.logger.log('Getting Uber quote');
     const uberService = this.uberDeliveryService;
 
-    // get customer's phone 
+    // get customer's phone
     const user = await this.userService.findById(deliveryAddress.user_id);
 
     // Prepare Uber Direct quote request
@@ -799,9 +952,13 @@ export class DeliveryService {
       dropoff_phone_number: user.phone_number || '+2348020542618',
       manifest_total_value: Math.round(subtotal * 100), // Convert to cents
       pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
-      pickup_deadline_dt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
+      pickup_deadline_dt: new Date(
+        Date.now() + 2 * 60 * 60 * 1000,
+      ).toISOString(), // 2 hours from now
       dropoff_ready_dt: new Date(Date.now() + 45 * 60 * 1000).toISOString(), // 45 minutes from now
-      dropoff_deadline_dt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
+      dropoff_deadline_dt: new Date(
+        Date.now() + 3 * 60 * 60 * 1000,
+      ).toISOString(), // 3 hours from now
     };
 
     this.logger.log('Quote request', quoteRequest);
@@ -819,17 +976,23 @@ export class DeliveryService {
 
     return {
       fee: deliveryFee,
-      quote_id:quoteResponse.id,
+      quote_id: quoteResponse.id,
     };
   }
 
- 
-  private calculatePackageDimensions(cartItems: any[]): {length: number, width: number, height: number} {
-    const totalQuantity = cartItems.reduce((sum, item) => sum + Number(item.quantity), 0);
-    
+  private calculatePackageDimensions(cartItems: any[]): {
+    length: number;
+    width: number;
+    height: number;
+  } {
+    const totalQuantity = cartItems.reduce(
+      (sum, item) => sum + Number(item.quantity),
+      0,
+    );
+
     // Base dimensions for food delivery
     let length = 30; // cm
-    let width = 30;  // cm
+    let width = 30; // cm
     let height = 15; // cm
 
     // Scale dimensions based on quantity
@@ -849,53 +1012,62 @@ export class DeliveryService {
   /**
    * Map delivery status to order status
    */
-  private mapDeliveryStatusToOrderStatus(deliveryStatus: string): OrderStatus | null {
+  private mapDeliveryStatusToOrderStatus(
+    deliveryStatus: string,
+  ): OrderStatus | null {
     if (!deliveryStatus) return null;
 
     const status = deliveryStatus.toLowerCase();
-    
+
     // Map shipment statuses
-    if (status.includes('picked') || status.includes('pickup') || status.includes('picked_up')) {
+    if (
+      status.includes('picked') ||
+      status.includes('pickup') ||
+      status.includes('picked_up')
+    ) {
       return OrderStatus.OUT_FOR_DELIVERY;
     }
-    
+
     if (status.includes('transit') || status.includes('in_transit')) {
       return OrderStatus.OUT_FOR_DELIVERY;
     }
-    
-    if (status.includes('out_for_delivery') || status.includes('out for delivery')) {
+
+    if (
+      status.includes('out_for_delivery') ||
+      status.includes('out for delivery')
+    ) {
       return OrderStatus.OUT_FOR_DELIVERY;
     }
-    
+
     if (status.includes('delivered') || status.includes('completed')) {
       return OrderStatus.DELIVERED;
     }
-    
+
     if (status.includes('cancelled') || status.includes('canceled')) {
       return OrderStatus.CANCELLED;
     }
-    
+
     // Map webhook event types
     if (status.includes('shipment.picked_up')) {
       return OrderStatus.OUT_FOR_DELIVERY;
     }
-    
+
     if (status.includes('shipment.in_transit')) {
       return OrderStatus.OUT_FOR_DELIVERY;
     }
-    
+
     if (status.includes('shipment.out_for_delivery')) {
       return OrderStatus.OUT_FOR_DELIVERY;
     }
-    
+
     if (status.includes('shipment.delivered')) {
       return OrderStatus.DELIVERED;
     }
-    
+
     if (status.includes('shipment.cancelled')) {
       return OrderStatus.CANCELLED;
     }
-    
+
     // Default: no mapping
     return null;
   }
@@ -903,20 +1075,24 @@ export class DeliveryService {
   /**
    * Get notification message based on order status
    */
-  private getOrderStatusNotificationMessage(status: OrderStatus, orderNumber: string, orderType: OrderType): string {
+  private getOrderStatusNotificationMessage(
+    status: OrderStatus,
+    orderNumber: string,
+    orderType: OrderType,
+  ): string {
     switch (status) {
       case OrderStatus.OUT_FOR_DELIVERY:
         return `Your order #${orderNumber} is out for delivery! Track your order for real-time updates.`;
-      
+
       case OrderStatus.DELIVERED:
         if (orderType === OrderType.PICKUP) {
           return `Your order #${orderNumber} has been delivered. Thank you for your order!`;
         }
         return `Your order #${orderNumber} has been delivered! We hope you enjoy your meal.`;
-      
+
       case OrderStatus.CANCELLED:
         return `Your order #${orderNumber} has been cancelled. Please contact support if you have any questions.`;
-      
+
       default:
         return `Your order #${orderNumber} status has been updated to ${status}.`;
     }
@@ -929,15 +1105,15 @@ export class DeliveryService {
     switch (status) {
       case OrderStatus.OUT_FOR_DELIVERY:
         return 'Out for Delivery';
-      
+
       case OrderStatus.DELIVERED:
         return 'Delivered';
-      
+
       case OrderStatus.CANCELLED:
         return 'Cancelled';
-      
+
       default:
-        return status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
   }
 }

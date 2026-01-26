@@ -1,11 +1,12 @@
+import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import {
-  Entity,
-  Column,
-  ManyToOne,
-  JoinColumn,
-  Index,
-} from 'typeorm';
-import { IsEnum, IsOptional, IsString, IsNumber, Min, IsBoolean } from 'class-validator';
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsNumber,
+  Min,
+  IsBoolean,
+} from 'class-validator';
 import { BaseEntity } from './base.entity';
 import { User } from './user.entity';
 import { Currency } from './wallet.entity';
@@ -44,14 +45,14 @@ export class Withdrawal extends BaseEntity {
   @IsString()
   user_id: string;
 
-  @Column({ 
-    type: 'decimal', 
-    precision: 15, 
+  @Column({
+    type: 'decimal',
+    precision: 15,
     scale: 2,
     transformer: {
       to: (value: number) => value,
-      from: (value: string) => parseFloat(value) || 0
-    }
+      from: (value: string) => parseFloat(value) || 0,
+    },
   })
   @IsNumber()
   @Min(0.01)
@@ -65,18 +66,27 @@ export class Withdrawal extends BaseEntity {
   @IsEnum(Country)
   country: Country;
 
-  @Column({ type: 'enum', enum: WithdrawalStatus, default: WithdrawalStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: WithdrawalStatus,
+    default: WithdrawalStatus.PENDING,
+  })
   @IsEnum(WithdrawalStatus)
   status: WithdrawalStatus;
 
-  @Column({ type: 'decimal', 
-    precision: 15, 
-    scale: 2, 
+  // In withdrawal.entity.ts
+  @Column({ type: 'timestamp', nullable: true })
+  wallet_debited_at?: Date;
+
+  @Column({
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
     default: 0,
     transformer: {
       to: (value: number) => value,
-      from: (value: string) => parseFloat(value) || 0
-    }
+      from: (value: string) => parseFloat(value) || 0,
+    },
   })
   @IsNumber()
   @Min(0)
@@ -202,7 +212,11 @@ export class Withdrawal extends BaseEntity {
   }
 
   get is_final_status(): boolean {
-    return [WithdrawalStatus.COMPLETED, WithdrawalStatus.FAILED, WithdrawalStatus.REJECTED].includes(this.status);
+    return [
+      WithdrawalStatus.COMPLETED,
+      WithdrawalStatus.FAILED,
+      WithdrawalStatus.REJECTED,
+    ].includes(this.status);
   }
 
   // Methods
@@ -211,7 +225,11 @@ export class Withdrawal extends BaseEntity {
     this.processed_by = adminId;
   }
 
-  markAsCompleted(adminId: string, transactionRef?: string, notes?: string): void {
+  markAsCompleted(
+    adminId: string,
+    transactionRef?: string,
+    notes?: string,
+  ): void {
     this.status = WithdrawalStatus.COMPLETED;
     this.processed_by = adminId;
     this.processed_at = new Date();

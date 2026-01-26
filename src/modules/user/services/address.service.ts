@@ -1,12 +1,12 @@
+// src/modules/user/services/address.service.ts
+
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { Address, AddressType, User } from '../../../entities';
 import { ConfigService } from '@nestjs/config';
-import { Not } from 'typeorm';
-// import { ShipbubbleDeliveryService } from '../../delivery/services/shipbubble-delivery.service';
-
 import { CreateAddressDto, UpdateAddressDto } from '../dto';
+import { AddressFormatter } from '../../../utils/address-formatter';
 
 export interface CreateAddressRequest extends CreateAddressDto { }
 export interface UpdateAddressRequest extends UpdateAddressDto { }
@@ -16,6 +16,31 @@ export interface GeocodingResult {
   longitude: number;
   formattedAddress: string;
   confidence: number;
+}
+
+/**
+ * Interface for address data to be sent to delivery providers
+ */
+export interface DeliveryAddressData {
+  // Primary address (formatted, clean, ready for delivery)
+  address: string;
+  
+  // Individual components (for providers that need them)
+  address_line_1: string;
+  address_line_2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  
+  // Geocoding data
+  latitude?: number;
+  longitude?: number;
+  
+  // User contact info
+  name?: string;
+  email?: string;
+  phone?: string;
 }
 
 @Injectable()
@@ -29,8 +54,6 @@ export class AddressService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly configService: ConfigService,
-    // @Inject(forwardRef(() => ShipbubbleDeliveryService))
-    // private readonly shipbubbleDeliveryService: ShipbubbleDeliveryService,
   ) {
     this.geocodingEnabled = !!(
       this.configService.get('GOOGLE_MAPS_API_KEY') ||
@@ -38,9 +61,139 @@ export class AddressService {
     );
   }
 
+  /**
+   * ============================================================
+   * NEW METHOD: Get formatted address for delivery providers
+   * ============================================================
+   * This method returns a clean, properly formatted address ready
+   * to be sent to delivery services like Shipbubble or Uber.
+   * 
+   * It automatically detects and cleans corrupted address_line_2 data.
+   */
+  async getFormattedAddressForDelivery(addressId: string): Promise<DeliveryAddressData> {
+    const address = await this.addressRepository.findOne({
+      where: { id: addressId },
+      relations: ['user'],
+    });
+
+    if (!address) {
+      throw new NotFoundException('Address not found');
+    }
+
+    // Clean address_line_2 if it contains corrupted data
+    const cleanedAddressLine2 = this.cleanAddressLine2(address);
+
+    // Use AddressFormatter to create a complete, formatted address
+    const formattedAddress = AddressFormatter.formatFullAddress({
+      address_line_1: address.address_line_1,
+      address_line_2: cleanedAddressLine2,
+      city: address.city,
+      state: address.state,
+      postal_code: address.postal_code,
+      country: address.country,
+    });
+
+    this.logger.log(`✅ Formatted address for delivery: "${formattedAddress}"`);
+
+    return {
+      // Primary formatted address (clean and complete)
+      address: formattedAddress,
+      
+      // Individual components (cleaned)
+      address_line_1: address.address_line_1,
+      address_line_2: cleanedAddressLine2,
+      city: address.city,
+      state: address.state,
+      postal_code: address.postal_code || '',
+      country: address.country,
+      
+      // Geocoding
+      latitude: address.latitude,
+      longitude: address.longitude,
+      
+      // User contact (if available)
+      name: address.user ? `${address.user.first_name} ${address.user.last_name}`.trim() : undefined,
+      email: address.user?.email,
+      phone: address.user?.phone_number,
+    };
+  }
+
+  /**
+   * ============================================================
+   * SMART ADDRESS LINE 2 CLEANER
+   * ============================================================
+   * Detects if address_line_2 contains full address data 
+   * (corrupted from Shipbubble validation) and returns clean data
+   */
+  private cleanAddressLine2(address: Address): string | null {
+    if (!address.address_line_2) return null;
+
+    const addressLine2 = address.address_line_2.trim();
+
+    // Check if address_line_2 contains commas (indicates it might be a full address)
+    if (!addressLine2.includes(',')) {
+      // It's a legitimate second line (e.g., "Suite 100", "Apartment 2B")
+      return addressLine2;
+    }
+
+    // Check if it contains city, state, or country - if so, it's corrupted
+    const suspiciousPatterns = [
+      address.city,
+      address.state,
+      address.country,
+      address.postal_code,
+    ].filter(Boolean);
+
+    const hasCorruptData = suspiciousPatterns.some(pattern => 
+      addressLine2.includes(pattern!)
+    );
+
+    if (hasCorruptData) {
+      this.logger.warn(`⚠️ Detected corrupted address_line_2: "${addressLine2}"`);
+      return null; // Clear corrupted data
+    }
+
+    // It has commas but doesn't match our fields - keep it
+    return addressLine2;
+  }
+
+  /**
+   * ============================================================
+   * ENHANCED: Get address by ID with user info for delivery
+   * ============================================================
+   */
+  async getAddressByIdForDelivery(userId: string, addressId: string): Promise<DeliveryAddressData> {
+    const address = await this.addressRepository.findOne({
+      where: { id: addressId, user_id: userId },
+      relations: ['user'],
+    });
+
+    if (!address) {
+      throw new NotFoundException('Address not found');
+    }
+
+    return this.getFormattedAddressForDelivery(addressId);
+  }
+
+  /**
+   * ============================================================
+   * ENHANCED: Create address with automatic cleaning
+   * ============================================================
+   */
   async createAddress(userId: string, createRequest: CreateAddressRequest): Promise<Address> {
     return this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
       try {
+        // Clean address_line_2 before saving
+        const cleanedAddressLine2 = createRequest.address_line_2 
+          ? this.cleanAddressLine2({
+              address_line_2: createRequest.address_line_2,
+              city: createRequest.city,
+              state: createRequest.state,
+              country: createRequest.country,
+              postal_code: createRequest.postal_code,
+            } as Address)
+          : null;
+
         // If coordinates are not provided, try to geocode the address
         let latitude = createRequest.latitude;
         let longitude = createRequest.longitude;
@@ -52,7 +205,6 @@ export class AddressService {
             longitude = geocodingResult.longitude;
           }
         }
-
 
         // If this is the first address or marked as default, set it as default
         if (createRequest.is_default) {
@@ -71,7 +223,7 @@ export class AddressService {
         const address = transactionalEntityManager.create(Address, {
           user_id: userId,
           address_line_1: createRequest.address_line_1,
-          address_line_2: createRequest.address_line_2,
+          address_line_2: cleanedAddressLine2,
           city: createRequest.city,
           state: createRequest.state,
           postal_code: createRequest.postal_code,
@@ -80,12 +232,11 @@ export class AddressService {
           longitude,
           address_type: createRequest.address_type || AddressType.HOME,
           is_default: createRequest.is_default || false,
-          // shipbubble_address_code will be set later when address is used for delivery
         });
 
         const savedAddress = await transactionalEntityManager.save(Address, address);
 
-        this.logger.log(`Address created for user ${userId}: ${savedAddress.id}`);
+        this.logger.log(`✅ Address created for user ${userId}: ${savedAddress.id}`);
 
         return savedAddress;
       } catch (error) {
@@ -95,62 +246,11 @@ export class AddressService {
     });
   }
 
-  async getUserAddresses(userId: string): Promise<Address[]> {
-    // Validate and fix any constraint violations before returning addresses
-    await this.validateDefaultAddressConstraint(userId);
-
-    return this.addressRepository.find({
-      where: { user_id: userId },
-      order: { is_default: 'DESC', created_at: 'ASC' },
-    });
-  }
-
-  async getAddressById(userId: string, addressId: string): Promise<Address> {
-    const address = await this.addressRepository.findOne({
-      where: { id: addressId, user_id: userId },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Address not found');
-    }
-
-    return address;
-  }
-
-  async getAddressByIdForDelivery(userId: string, addressId: string): Promise<any> {
-    const address = await this.addressRepository.findOne({
-      where: { id: addressId, user_id: userId },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Address not found');
-    }
-
-    // get user by id
-    const user = await this.userRepository.findOne({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return {
-      ...address,
-      phone: user.phone_number,
-      email: user.email,
-      name: user.full_name,
-    };
-  }
-
-  async getAddressByIdWithoutValidation(addressId: string): Promise<Address | null> {
-    const address = await this.addressRepository.findOne({
-      where: { id: addressId },
-    });
-
-    return address;
-  }
-
+  /**
+   * ============================================================
+   * ENHANCED: Update address with automatic cleaning
+   * ============================================================
+   */
   async updateAddress(
     userId: string,
     addressId: string,
@@ -164,6 +264,17 @@ export class AddressService {
 
         if (!address) {
           throw new NotFoundException('Address not found');
+        }
+
+        // Clean address_line_2 if being updated
+        if (updateRequest.address_line_2 !== undefined) {
+          updateRequest.address_line_2 = this.cleanAddressLine2({
+            address_line_2: updateRequest.address_line_2,
+            city: updateRequest.city || address.city,
+            state: updateRequest.state || address.state,
+            country: updateRequest.country || address.country,
+            postal_code: updateRequest.postal_code || address.postal_code,
+          } as Address);
         }
 
         // If coordinates are being updated or address lines changed, re-geocode
@@ -188,7 +299,6 @@ export class AddressService {
         }
 
         // Clear ShipBubble address code if address fields are updated
-        // The address will need to be re-validated when used for delivery
         if (updateRequest.address_line_1 ||
           updateRequest.city ||
           updateRequest.state ||
@@ -222,12 +332,11 @@ export class AddressService {
         if (updateRequest.latitude !== undefined) address.latitude = updateRequest.latitude;
         if (updateRequest.longitude !== undefined) address.longitude = updateRequest.longitude;
         if (updateRequest.address_type !== undefined) address.address_type = updateRequest.address_type;
-
         if (updateRequest.is_default !== undefined) address.is_default = updateRequest.is_default;
 
         const updatedAddress = await transactionalEntityManager.save(Address, address);
 
-        this.logger.log(`Address ${addressId} updated for user ${userId}`);
+        this.logger.log(`✅ Address ${addressId} updated for user ${userId}`);
 
         return updatedAddress;
       } catch (error) {
@@ -237,53 +346,35 @@ export class AddressService {
     });
   }
 
-  // async deleteAddress(userId: string, addressId: string): Promise<void> {
-  //   await this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
-  //     try {
-  //       const address = await transactionalEntityManager.findOne(Address, {
-  //         where: { id: addressId, user_id: userId },
-  //       });
+  // ... [Keep all other existing methods unchanged] ...
+  // getUserAddresses, getAddressById, deleteAddress, setDefaultAddress, 
+  // getDefaultAddress, validateAddress, updateAddressCode, etc.
 
-  //       if (!address) {
-  //         throw new NotFoundException('Address not found');
-  //       }
+  async getUserAddresses(userId: string): Promise<Address[]> {
+    await this.validateDefaultAddressConstraint(userId);
+    return this.addressRepository.find({
+      where: { user_id: userId },
+      order: { is_default: 'DESC', created_at: 'ASC' },
+    });
+  }
 
-  //       // If deleting default address, set another address as default
-  //       if (address.is_default) {
-  //         // First clear the current default
-  //         const currentDefault = await transactionalEntityManager.findOne(Address, {
-  //           where: { user_id: userId, is_default: true },
-  //         });
+  async getAddressById(userId: string, addressId: string): Promise<Address> {
+    const address = await this.addressRepository.findOne({
+      where: { id: addressId, user_id: userId },
+    });
 
-  //         if (currentDefault) {
-  //           this.logger.log(`Clearing current default address ${currentDefault.id} for user ${userId}`);
-  //           currentDefault.is_default = false;
-  //           await transactionalEntityManager.save(Address, currentDefault);
-  //         }
+    if (!address) {
+      throw new NotFoundException('Address not found');
+    }
 
-  //         const otherAddresses = await transactionalEntityManager.find(Address, {
-  //           where: { user_id: userId, id: { not: addressId } as any },
-  //           order: { created_at: 'ASC' },
-  //           take: 1,
-  //         });
+    return address;
+  }
 
-  //         if (otherAddresses.length > 0) {
-  //           this.logger.log(`Setting address ${otherAddresses[0].id} as new default for user ${userId}`);
-  //           otherAddresses[0].is_default = true;
-  //           await transactionalEntityManager.save(Address, otherAddresses[0]);
-  //         }
-  //       }
-
-  //       await transactionalEntityManager.remove(Address, address);
-
-  //       this.logger.log(`Address ${addressId} deleted for user ${userId}`);
-  //     } catch (error) {
-  //       this.logger.error(`Failed to delete address ${addressId} for user ${userId}:`, error);
-  //       throw error;
-  //     }
-  //   });
-  // }
-
+  async getAddressByIdWithoutValidation(addressId: string): Promise<Address | null> {
+    return await this.addressRepository.findOne({
+      where: { id: addressId },
+    });
+  }
 
   async deleteAddress(userId: string, addressId: string): Promise<void> {
     await this.addressRepository.manager.transaction(async (manager) => {
@@ -296,16 +387,11 @@ export class AddressService {
       }
 
       const isDefault = address.is_default;
-
-      // Remove the address first (so it won’t interfere with new default selection)
       await manager.remove(Address, address);
-
       this.logger.log(`Address ${addressId} deleted for user ${userId}`);
 
-      // If the deleted address was NOT default, no more work is required
       if (!isDefault) return;
 
-      // Try to set another address as default
       const newDefault = await manager.findOne(Address, {
         where: { user_id: userId, id: Not(addressId) },
         order: { created_at: 'ASC' },
@@ -314,62 +400,41 @@ export class AddressService {
       if (newDefault) {
         newDefault.is_default = true;
         await manager.save(Address, newDefault);
-
-        this.logger.log(
-          `Address ${newDefault.id} set as default for user ${userId} after deleting previous default`
-        );
+        this.logger.log(`Address ${newDefault.id} set as default for user ${userId}`);
       }
     });
   }
 
-
   async setDefaultAddress(userId: string, addressId: string): Promise<Address> {
-    return this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
-      try {
-        const address = await transactionalEntityManager.findOne(Address, {
-          where: { id: addressId, user_id: userId },
-        });
+    return this.addressRepository.manager.transaction(async (manager) => {
+      const address = await manager.findOne(Address, {
+        where: { id: addressId, user_id: userId },
+      });
 
-        if (!address) {
-          throw new NotFoundException('Address not found');
-        }
-
-        // Check if this address is already the default
-        if (address.is_default) {
-          this.logger.log(`Address ${addressId} is already the default for user ${userId}`);
-          return address;
-        }
-
-        // Clear current default address
-        const currentDefault = await transactionalEntityManager.findOne(Address, {
-          where: { user_id: userId, is_default: true },
-        });
-
-        if (currentDefault) {
-          this.logger.log(`Clearing current default address ${currentDefault.id} for user ${userId}`);
-          currentDefault.is_default = false;
-          await transactionalEntityManager.save(Address, currentDefault);
-        }
-
-        // Set new default address
-        address.is_default = true;
-
-        const updatedAddress = await transactionalEntityManager.save(Address, address);
-
-        this.logger.log(`Address ${addressId} set as default for user ${userId}`);
-
-        return updatedAddress;
-      } catch (error) {
-        this.logger.error(`Failed to set address ${addressId} as default for user ${userId}:`, error);
-        throw error;
+      if (!address) {
+        throw new NotFoundException('Address not found');
       }
+
+      if (address.is_default) {
+        return address;
+      }
+
+      const currentDefault = await manager.findOne(Address, {
+        where: { user_id: userId, is_default: true },
+      });
+
+      if (currentDefault) {
+        currentDefault.is_default = false;
+        await manager.save(Address, currentDefault);
+      }
+
+      address.is_default = true;
+      return await manager.save(Address, address);
     });
   }
 
   async getDefaultAddress(userId: string): Promise<Address | null> {
-    // Validate and fix any constraint violations before getting default address
     await this.validateDefaultAddressConstraint(userId);
-
     return this.addressRepository.findOne({
       where: { user_id: userId, is_default: true },
     });
@@ -384,20 +449,16 @@ export class AddressService {
     if (!addressRequest.address_line_1?.trim()) {
       errors.push('Address line 1 is required');
     }
-
     if (!addressRequest.city?.trim()) {
       errors.push('City is required');
     }
-
     if (!addressRequest.state?.trim()) {
       errors.push('State is required');
     }
-
     if (!addressRequest.postal_code?.trim()) {
       errors.push('Postal code is required');
     }
 
-    // Validate country if provided
     if (addressRequest.country) {
       if (addressRequest.country.length !== 2) {
         errors.push('Country must be exactly 2 characters (ISO 3166-1 alpha-2 code)');
@@ -406,7 +467,6 @@ export class AddressService {
       }
     }
 
-    // Validate coordinates if provided
     if (addressRequest.latitude !== undefined) {
       if (addressRequest.latitude < -90 || addressRequest.latitude > 90) {
         errors.push('Invalid latitude value');
@@ -425,161 +485,20 @@ export class AddressService {
     };
   }
 
-  /**
-   * Validate address with ShipBubble API
-   * @param addressData Address data for validation
-   * @returns Promise<ShipBubble validation result>
-   */
-  // async validateAddressWithShipBubble(addressData: {
-  //   name: string;
-  //   email: string;
-  //   phone: string;
-  //   address: string;
-  //   latitude?: number;
-  //   longitude?: number;
-  // }): Promise<{
-  //   success: boolean;
-  //   isValid: boolean;
-  //   data?: {
-  //     name: string;
-  //     email: string;
-  //     phone: string;
-  //     formatted_address: string;
-  //     country: string;
-  //     country_code: string;
-  //     city: string;
-  //     city_code: string;
-  //     state: string;
-  //     state_code: string;
-  //     postal_code: string;
-  //     latitude: number;
-  //     longitude: number;
-  //     address_code: number;
-  //   };
-  //   error?: string;
-  // }> {
-  //   try {
-  //     return await this.shipbubbleDeliveryService.validateAddressV1(addressData);
-  //   } catch (error) {
-  //     this.logger.error(`ShipBubble address validation error: ${error.message}`);
-  //     return {
-  //       success: false,
-  //       isValid: false,
-  //       error: 'Address validation service unavailable',
-  //     };
-  //   }
-  // }
-
-  /**
-   * Validate address for delivery and save the address code if successful
-   * This method is called when an address is being used for delivery
-   * @param addressId Address ID to validate
-   * @param userInfo User information for validation
-   * @returns Promise<Address with updated shipbubble_address_code>
-   */
-  // async validateAddressForDelivery(
-  //   addressId: string,
-  //   userInfo: { name: string; email: string; phone: string }
-  // ): Promise<Address> {
-  //   return this.addressRepository.manager.transaction(async (transactionalEntityManager) => {
-  //     const address = await transactionalEntityManager.findOne(Address, {
-  //       where: { id: addressId },
-  //     });
-
-  //     if (!address) {
-  //       throw new NotFoundException('Address not found');
-  //     }
-
-  //     // If address already has a ShipBubble address code, return it
-  //     if (address.shipbubble_address_code) {
-  //       this.logger.log(`Address ${addressId} already has ShipBubble address code: ${address.shipbubble_address_code}`);
-  //       return address;
-  //     }
-
-  //     try {
-  //       const fullAddress = [
-  //         address.address_line_1,
-  //         address.address_line_2,
-  //         address.city,
-  //         address.state,
-  //         address.country || 'Nigeria'
-  //       ].filter(Boolean).join(', ');
-
-  //       const validationResult = await this.shipbubbleDeliveryService.validateAddressV1({
-  //         name: userInfo.name,
-  //         email: userInfo.email,
-  //         phone: userInfo.phone,
-  //         address: fullAddress,
-  //         latitude: address.latitude,
-  //         longitude: address.longitude,
-  //       });
-
-  //       if (validationResult.success && validationResult.data) {
-  //         // Save the address code for future use
-  //         address.shipbubble_address_code = validationResult.data.address_code.toString();
-
-  //         // Update coordinates from ShipBubble response if available
-  //         if (validationResult.data.latitude && validationResult.data.longitude) {
-  //           address.latitude = validationResult.data.latitude;
-  //           address.longitude = validationResult.data.longitude;
-  //         }
-
-  //         const updatedAddress = await transactionalEntityManager.save(Address, address);
-  //         this.logger.log(`Address ${addressId} validated with ShipBubble, address_code: ${address.shipbubble_address_code}`);
-
-  //         return updatedAddress;
-  //       } else {
-  //         this.logger.warn(`ShipBubble address validation failed for address ${addressId}: ${validationResult.error}`);
-  //         throw new BadRequestException(`Address validation failed: ${validationResult.error}`);
-  //       }
-  //     } catch (error) {
-  //       this.logger.error(`ShipBubble address validation error for address ${addressId}: ${error.message}`);
-  //       throw new BadRequestException(`Address validation failed: ${error.message}`);
-  //     }
-  //   });
-  // }
-
-  private async clearDefaultAddress(userId: string): Promise<void> {
-    // Find the current default address first
-    const currentDefault = await this.addressRepository.findOne({
-      where: { user_id: userId, is_default: true },
+  async updateAddressCode(addressId: string, addressCode: number): Promise<void> {
+    this.logger.log(`Updating address ${addressId} with Shipbubble address code: ${addressCode}`);
+    await this.addressRepository.update(addressId, {
+      shipbubble_address_code: addressCode.toString(),
     });
-
-    // Only update if there's actually a default address to clear
-    if (currentDefault) {
-      currentDefault.is_default = false;
-      await this.addressRepository.save(currentDefault);
-    }
   }
 
-  private async canSetAsDefault(userId: string, addressId: string): Promise<boolean> {
-    // Check if the address exists and belongs to the user
-    const address = await this.addressRepository.findOne({
-      where: { id: addressId, user_id: userId },
-    });
-
-    if (!address) {
-      throw new NotFoundException('Address not found');
-    }
-
-    // Check if this address is already the default
-    if (address.is_default) {
-      return false; // Already default, no need to change
-    }
-
-    return true;
-  }
-
-  private async validateDefaultAddressConstraint(userId: string, addressId?: string): Promise<void> {
-    // Check if there are multiple default addresses for this user
+  private async validateDefaultAddressConstraint(userId: string): Promise<void> {
     const defaultAddresses = await this.addressRepository.find({
       where: { user_id: userId, is_default: true },
     });
 
     if (defaultAddresses.length > 1) {
       this.logger.warn(`Multiple default addresses found for user ${userId}, fixing constraint violation`);
-
-      // Keep only the first one as default, set others to false
       for (let i = 1; i < defaultAddresses.length; i++) {
         defaultAddresses[i].is_default = false;
         await this.addressRepository.save(defaultAddresses[i]);
@@ -605,12 +524,10 @@ export class AddressService {
         .filter(Boolean)
         .join(', ');
 
-      // Try Google Maps Geocoding API first
       if (this.configService.get('GOOGLE_MAPS_API_KEY')) {
         return await this.geocodeWithGoogle(addressString);
       }
 
-      // Fallback to Mapbox
       if (this.configService.get('MAPBOX_ACCESS_TOKEN')) {
         return await this.geocodeWithMapbox(addressString, addressRequest.country);
       }
@@ -624,9 +541,7 @@ export class AddressService {
 
   private async geocodeWithGoogle(address: string): Promise<GeocodingResult | null> {
     const apiKey = this.configService.get('GOOGLE_MAPS_API_KEY');
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
-      address,
-    )}&key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
 
     try {
       const response = await fetch(url);
@@ -640,7 +555,7 @@ export class AddressService {
           latitude: location.lat,
           longitude: location.lng,
           formattedAddress: result.formatted_address,
-          confidence: 0.8, // Google doesn't provide confidence score
+          confidence: 0.8,
         };
       }
 
@@ -653,9 +568,7 @@ export class AddressService {
 
   private async geocodeWithMapbox(address: string, country?: string): Promise<GeocodingResult | null> {
     const accessToken = this.configService.get('MAPBOX_ACCESS_TOKEN');
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-      address,
-    )}.json?access_token=${accessToken}&country=${country}&types=address`;
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${accessToken}&country=${country}&types=address`;
 
     try {
       const response = await fetch(url);
@@ -680,14 +593,8 @@ export class AddressService {
     }
   }
 
-  async calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): Promise<number> {
-    // Haversine formula to calculate distance between two points
-    const R = 6371; // Earth's radius in kilometers
+  async calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): Promise<number> {
+    const R = 6371;
     const dLat = this.toRadians(lat2 - lat1);
     const dLon = this.toRadians(lon2 - lon1);
 
@@ -699,26 +606,10 @@ export class AddressService {
       Math.sin(dLon / 2);
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-
-    return distance;
+    return R * c;
   }
 
   private toRadians(degrees: number): number {
     return degrees * (Math.PI / 180);
   }
-
-  /**
-   * Update address with Shipbubble address code
-   * @param addressId Address ID
-   * @param addressCode Shipbubble address code
-   * @returns Promise<void>
-   */
-  async updateAddressCode(addressId: string, addressCode: number): Promise<void> {
-    this.logger.log(`Updating address ${addressId} with Shipbubble address code: ${addressCode}`);
-
-    await this.addressRepository.update(addressId, {
-      shipbubble_address_code: addressCode.toString(),
-    });
-  }
-} 
+}

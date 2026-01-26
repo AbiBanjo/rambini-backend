@@ -158,11 +158,24 @@ export class WalletPaymentService {
     orderId: string,
     paymentReference: string,
   ): Promise<void> {
-    // Get vendor wallet
     this.logger.log(`Getting vendor wallet for: ${vendorId}`);
-    this.logger.log(`Original amount: ${amount}`);
-    this.logger.log(`Order ID: ${orderId}`);
     this.logger.log(`Payment reference: ${paymentReference}`);
+
+    // ✅ CRITICAL FIX: Check if this payment was already credited
+    const existingCredit = await this.transactionRepository.findOne({
+      where: {
+        reference_id: paymentReference,
+        transaction_type: TransactionType.CREDIT,
+        status: TransactionStatus.COMPLETED,
+      },
+    });
+
+    if (existingCredit) {
+      this.logger.warn(
+        `⚠️ Payment ${paymentReference} already credited to vendor. Skipping duplicate credit to prevent double payment.`,
+      );
+      return; // Exit early - already processed
+    }
 
     // Get service fee and commission percentages from config
     const serviceFeePercentage = this.configService.get<number>(
@@ -175,14 +188,11 @@ export class WalletPaymentService {
     );
 
     // Calculate deductions
-    // const serviceFee = (amount * serviceFeePercentage) / 100;
     const commission = (amount * commissionPercentage) / 100;
-    // const totalDeductions = commission;
     const amountToCreditVendor = amount - commission;
 
-    // this.logger.log(`Service fee (${serviceFeePercentage}%): ${serviceFee}`);
+    this.logger.log(`Original amount: ${amount}`);
     this.logger.log(`Commission (${commissionPercentage}%): ${commission}`);
-    // this.logger.log(`Total deductions: ${totalDeductions}`);
     this.logger.log(`Amount to credit vendor: ${amountToCreditVendor}`);
 
     // get vendor with vendor id
@@ -192,12 +202,8 @@ export class WalletPaymentService {
       where: { user_id: vendor.user_id },
     });
 
-    this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
-
     if (!vendorWallet) {
-      // Create vendor wallet if it doesn't exist\
       this.logger.log(`Creating vendor wallet for: ${vendorId}`);
-
       vendorWallet = this.walletRepository.create({
         user_id: vendor.user_id,
         balance: 0,
@@ -206,22 +212,15 @@ export class WalletPaymentService {
       await this.walletRepository.save(vendorWallet);
     }
 
-    this.logger.log(`Vendor wallet found: ${vendorWallet?.id}`);
-
     // Store balance before credit for transaction record
     const balanceBefore = vendorWallet.balance;
 
     // Credit vendor wallet with amount after deductions
-    this.logger.log(`vendor wallet balance: ${balanceBefore}`);
     vendorWallet.creditVendor(amountToCreditVendor);
-
     await this.walletRepository.save(vendorWallet);
 
     this.logger.log(`Vendor wallet credited: ${vendorWallet?.id}`);
 
-    this.logger.log(
-      `Creating credit transaction record for: ${vendorWallet?.id}`,
-    );
     // Create credit transaction record
     const creditTransaction = await this.transactionRepository.create({
       wallet_id: vendorWallet.id,
@@ -235,11 +234,9 @@ export class WalletPaymentService {
       processed_at: new Date(),
       metadata: {
         original_amount: Number(amount),
-        // service_fee: Number(serviceFee),
         service_fee_percentage: serviceFeePercentage,
         commission: Number(commission),
         commission_percentage: commissionPercentage,
-        // total_deductions: Number(totalDeductions),
         net_amount: Number(amountToCreditVendor),
       },
     });
@@ -247,9 +244,8 @@ export class WalletPaymentService {
     await this.transactionRepository.save(creditTransaction);
 
     this.logger.log(
-      `Vendor wallet credited: ${vendorId}, net amount: ${amountToCreditVendor} (after ${serviceFeePercentage}% service fee and ${commissionPercentage}% commission)`,
+      `Vendor wallet credited successfully: ${vendorId}, net amount: ${amountToCreditVendor}`,
     );
-    return;
   }
 
   /**
@@ -668,41 +664,51 @@ export class WalletPaymentService {
       throw new BadRequestException('Wallet is not active');
     }
 
-    // Check if user has sufficient balance
-    if (!wallet.can_transact(amount)) {
-      throw new BadRequestException('Insufficient wallet balance');
+    // ✅ FIX: Check vendor_balance instead of balance
+    if (wallet.vendor_balance < amount) {
+      throw new BadRequestException(
+        `Insufficient vendor wallet balance. Available: ${wallet.vendor_balance}, Required: ${amount}`,
+      );
     }
 
     try {
-      // Debit wallet
-      const balanceBefore = wallet.balance;
+      // ✅ FIX: Store vendor_balance before debit
+      const balanceBefore = wallet.vendor_balance;
+
+      // Debit vendor wallet
       const debitSuccess = wallet.debitVendorWallet(amount);
       if (!debitSuccess) {
-        throw new BadRequestException('Failed to debit wallet');
+        throw new BadRequestException('Failed to debit vendor wallet');
       }
 
       // Save updated wallet
       await this.walletRepository.save(wallet);
 
-      // Create debit transaction record
+      // ✅ FIX: Create transaction record with correct vendor balance tracking
       const debitTransaction = await this.transactionRepository.create({
         wallet_id: wallet.id,
         transaction_type: TransactionType.DEBIT,
         amount: Number(amount),
         balance_before: Number(balanceBefore),
-        balance_after: Number(wallet.balance),
+        balance_after: Number(wallet.vendor_balance), // ✅ FIX: Use vendor_balance
         description: description,
         reference_id: `withdrawal_${Date.now()}`,
         status: TransactionStatus.COMPLETED,
         processed_at: new Date(),
+        metadata: {
+          withdrawal: true,
+          balance_type: 'vendor_balance', // ✅ Add metadata to clarify this is vendor balance
+        },
       });
 
       await this.transactionRepository.save(debitTransaction);
 
-      this.logger.log(`Wallet debited successfully for withdrawal: ${amount}`);
+      this.logger.log(
+        `Vendor wallet debited successfully for withdrawal: ${amount}, new vendor_balance: ${wallet.vendor_balance}`,
+      );
     } catch (error) {
       this.logger.error(
-        `Failed to debit wallet for withdrawal: ${error.message}`,
+        `Failed to debit vendor wallet for withdrawal: ${error.message}`,
       );
       throw error;
     }

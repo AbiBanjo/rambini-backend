@@ -1,8 +1,11 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CartItem, MenuItem, Order } from 'src/entities';
+import { CartItem, MenuItem, Order, Coupon, CouponUsage } from 'src/entities';
 import { MenuModule } from 'src/modules/menu/menu.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
+import { VendorModule } from '../vendor/vendor.module';
+import { OrderModule } from '../order/order.module';
+import { CouponModule } from '../coupon/coupon.module';
 
 // Controllers
 import { CartController } from './controllers/cart.controller';
@@ -13,15 +16,14 @@ import { CartService } from './services/cart.service';
 // Repositories
 import { CartRepository } from './repositories/cart.repository';
 import { OrderRepository } from '../order/repositories/order.repository';
-import { VendorModule } from '../vendor/vendor.module';
-import { OrderModule } from '../order/order.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CartItem, MenuItem, Order]),
+    TypeOrmModule.forFeature([CartItem, MenuItem, Order, Coupon, CouponUsage]),
     MenuModule,
-    AuthModule, // Import AuthModule to get access to JWTService and JwtAuthGuard
-    VendorModule, // Import VendorModule to get access to VendorService
+    AuthModule,
+    VendorModule,
+    CouponModule, // Import CouponModule to access CouponService
     forwardRef(() => OrderModule),
   ],
   controllers: [
@@ -36,4 +38,4 @@ import { OrderModule } from '../order/order.module';
     CartRepository,
   ],
 })
-export class CartModule {} 
+export class CartModule {}

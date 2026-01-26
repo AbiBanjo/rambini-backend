@@ -1,4 +1,13 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { OrderRepository } from '../repositories/order.repository';
 import { CartService } from 'src/modules/cart/services/cart.service';
 import { MenuItemRepository } from 'src/modules/menu/repositories/menu-item.repository';
@@ -11,21 +20,31 @@ import { VendorService } from 'src/modules/vendor/services/vendor.service';
 import { NotificationSSEService } from 'src/modules/notification/services/notification-sse.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { NotificationType } from 'src/entities';
-import { 
-  CreateOrderDto, 
-  UpdateOrderStatusDto, 
-  OrderResponseDto, 
+import { OrderEmailNotificationService } from '../../notification/services/order-email-notification.service';
+import {
+  CreateOrderDto,
+  UpdateOrderStatusDto,
+  OrderResponseDto,
   OrderItemResponseDto,
   OrderFilterDto,
   CalculateOrderCostDto,
   OrderCostResponseDto,
-  OrderPaymentResponseDto
+  OrderPaymentResponseDto,
 } from '../dto';
-import { Order, OrderItem, OrderStatus, PaymentStatus, OrderType, PaymentMethod, DeliveryProvider, Currency, PaymentTransactionStatus } from 'src/entities';
+import {
+  Order,
+  OrderItem,
+  OrderStatus,
+  PaymentStatus,
+  OrderType,
+  PaymentMethod,
+  DeliveryProvider,
+  Currency,
+  PaymentTransactionStatus,
+} from 'src/entities';
 import { ShipbubblePackageCategoryDto } from '@/modules/delivery/dto/delivery-rate.dto';
 import { getCurrencyForCountry } from 'src/utils/currency-mapper';
 import { ConfigService } from '@nestjs/config';
-
 
 @Injectable()
 export class OrderService {
@@ -46,79 +65,97 @@ export class OrderService {
     private readonly notificationSSEService: NotificationSSEService,
     private readonly notificationService: NotificationService,
     private readonly configService: ConfigService,
+    private readonly orderEmailNotification: OrderEmailNotificationService,
   ) {
-    this.serviceFeePercentage = this.configService.get<number>('fees.serviceFeePercentage') || 15;
+    this.serviceFeePercentage =
+      this.configService.get<number>('fees.serviceFeePercentage') || 15;
   }
 
-  async createOrder(customerId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto | OrderPaymentResponseDto> {
-    this.logger.log(`Creating order for customer ${customerId} with cart items: ${createOrderDto.vendor_id}`);
+  async createOrder(
+    customerId: string,
+    createOrderDto: CreateOrderDto,
+  ): Promise<OrderResponseDto | OrderPaymentResponseDto> {
+    this.logger.log(
+      `Creating order for customer ${customerId} with cart items: ${createOrderDto.vendor_id}`,
+    );
 
-       // get vendor currency
-       const vendor = await this.vendorService.getVendorById(createOrderDto.vendor_id);
-      //  check if vendor exists
-      if (!vendor) {
-        throw new NotFoundException('Vendor not found');
-      }
+    // get vendor currency
+    const vendor = await this.vendorService.getVendorById(
+      createOrderDto.vendor_id,
+    );
+    //  check if vendor exists
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found');
+    }
 
-      // if vendor is not active
-      if (!vendor.is_active) {
-        throw new BadRequestException('Vendor is not active');
-      }
+    // if vendor is not active
+    if (!vendor.is_active) {
+      throw new BadRequestException('Vendor is not active');
+    }
 
-      // get vendor currency from vendor country
-      const vendorCurrency = getCurrencyForCountry(vendor.address.country);
+    // get vendor currency from vendor country
+    const vendorCurrency = getCurrencyForCountry(vendor.address.country);
 
     // Validate delivery address if there is one and get country for provider selection
     let deliveryFee = 0;
-    
+
     if (createOrderDto.order_type === OrderType.DELIVERY) {
-      
-      const deliveryQuote = await this.deliveryQuoteService.getQuoteById(createOrderDto.delivery_quote_id);
+      const deliveryQuote = await this.deliveryQuoteService.getQuoteById(
+        createOrderDto.delivery_quote_id,
+      );
       if (!deliveryQuote) {
         throw new NotFoundException('Delivery quote not found');
       }
       deliveryFee = deliveryQuote.fee;
-      
     }
 
- 
-
     // get all cart items for this vendor
-    const {  items } = await this.cartService.getCartByVendor(customerId, createOrderDto.vendor_id);
+    const { items } = await this.cartService.getCartByVendor(
+      customerId,
+      createOrderDto.vendor_id,
+    );
 
     // get all cart item ids for this vendor
     const cartItemIds = items.map(item => item.id);
     // Validate cart items for checkout
-    const cartValidation = await this.cartService.validateCartItemsForCheckout(customerId, cartItemIds);
+    const cartValidation = await this.cartService.validateCartItemsForCheckout(
+      customerId,
+      cartItemIds,
+    );
 
     this.logger.log(`Cart validation: ${JSON.stringify(cartValidation)}`);
-    
+
     if (!cartValidation.is_valid) {
-      throw new BadRequestException(`Cart validation failed: ${cartValidation.issues.join(', ')}`);
+      throw new BadRequestException(
+        `Cart validation failed: ${cartValidation.issues.join(', ')}`,
+      );
     }
 
-    const { cartItems, vendorId, subtotal } = cartValidation
+    const { cartItems, vendorId, subtotal } = cartValidation;
 
     this.logger.log(`Delivery fee: ${deliveryFee}`);
 
-    const serviceFee = (Number(subtotal) * this.serviceFeePercentage) / 100
-  
-    const totalAmount =Number(subtotal) + Number(deliveryFee) + Number(serviceFee)
+    const serviceFee = (Number(subtotal) * this.serviceFeePercentage) / 100;
+
+    const totalAmount =
+      Number(subtotal) + Number(deliveryFee) + Number(serviceFee);
 
     // Determine currency based on delivery address or use provided currency
     let orderCurrency = vendorCurrency;
-    
 
     // Generate order number (UUID-based - no race conditions!)
     const orderNumber = await this.orderRepository.generateOrderNumber();
     this.logger.log(`Order number: ${orderNumber}`);
-    
+
     // Create order
     const order = await this.orderRepository.create({
       order_number: orderNumber,
       customer_id: customerId,
       vendor_id: vendorId,
-      delivery_address_id: createOrderDto.order_type === OrderType.PICKUP ? null : createOrderDto.delivery_address_id,
+      delivery_address_id:
+        createOrderDto.order_type === OrderType.PICKUP
+          ? null
+          : createOrderDto.delivery_address_id,
       order_status: OrderStatus.NEW,
       order_type: createOrderDto.order_type,
       payment_method: createOrderDto.payment_method,
@@ -129,7 +166,7 @@ export class OrderService {
       currency: orderCurrency,
       special_instructions: createOrderDto.delivery_instructions,
       vendor_notes: createOrderDto.vendor_notes,
-      delivery_quote_id:createOrderDto.delivery_quote_id
+      delivery_quote_id: createOrderDto.delivery_quote_id,
     });
 
     this.logger.log(`Order created: ${order.id}`);
@@ -142,7 +179,7 @@ export class OrderService {
         quantity: cartItem.quantity,
         unit_price: cartItem.unit_price,
         total_price: cartItem.total_price,
-        cart_item_id:cartItem.id
+        cart_item_id: cartItem.id,
       });
 
       // Update cart item with order_id
@@ -167,7 +204,7 @@ export class OrderService {
         });
       } else {
         this.logger.log(`Processing payment for order ${order.id}`);
-        const paymentResult =  await this.paymentService.processPayment({
+        const paymentResult = await this.paymentService.processPayment({
           order_id: order.id,
           payment_method: createOrderDto.payment_method,
           currency: orderCurrency,
@@ -179,19 +216,28 @@ export class OrderService {
         return {
           payment_url: paymentResult?.payment_url,
           external_payment_reference: paymentResult?.external_reference,
-          payment_processing_status: paymentResult?.status as PaymentTransactionStatus,
-          order_id:order.id
-        }
+          payment_processing_status:
+            paymentResult?.status as PaymentTransactionStatus,
+          order_id: order.id,
+        };
       }
     } catch (error) {
-      this.logger.error(`Payment processing failed for order ${order.id}: ${error.message}`);
+      this.logger.error(
+        `Payment processing failed for order ${order.id}: ${error.message}`,
+      );
       // Don't fail the order creation, just log the error
       // return the order with payment processing status as failed
-      throw new BadRequestException(`Payment processing failed for order ${order.id}: ${error.message}`);
+      throw new BadRequestException(
+        `Payment processing failed for order ${order.id}: ${error.message}`,
+      );
     }
 
     // make all user cart items inactive for the vendor for this order
-    await this.cartService.makeCartItemsInactiveForVendor(customerId, vendorId, order.id);
+    await this.cartService.makeCartItemsInactiveForVendor(
+      customerId,
+      vendorId,
+      order.id,
+    );
 
     // Get complete order with relations
     const completeOrder = await this.orderRepository.findById(order.id);
@@ -199,8 +245,49 @@ export class OrderService {
       throw new NotFoundException('Failed to retrieve created order');
     }
 
+    try {
+      await this.orderEmailNotification.sendNewOrderEmailToVendor(
+        completeOrder,
+        vendor.user,
+      );
+      this.logger.log(`New order email sent to vendor for order ${order.id}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send new order email to vendor: ${error.message}`,
+      );
+      // Don't fail order creation if email fails
+    }
+
+    // Send email confirmation to customer
+    // After sending confirmation to customer (around line 267)
+    try {
+      await this.orderEmailNotification.sendOrderConfirmationToCustomer(
+        completeOrder,
+        completeOrder.customer,
+      );
+      this.logger.log(
+        `Order confirmation email sent to customer for order ${order.id}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send order confirmation email to customer: ${error.message}`,
+      );
+      // Don't fail order creation if email fails
+    }
+
+    // ⭐ ADD THIS BLOCK HERE ⭐
+    // Send order summary to admin
+    try {
+      await this.orderEmailNotification.sendOrderSummaryToAdmin(completeOrder);
+      this.logger.log(`Order summary sent to admin for order ${order.id}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send order summary to admin: ${error.message}`,
+      );
+      // Don't fail order creation if admin email fails
+    }
     // Send push notification to vendor about new order
-     this.notificationService.sendPushNotification(
+    this.notificationService.sendPushNotification(
       vendor.user_id,
       NotificationType.ORDER_UPDATE,
       `New Order #${orderNumber}!`,
@@ -211,15 +298,20 @@ export class OrderService {
         status: completeOrder.order_status,
         order_type: completeOrder.order_type,
         total_amount: completeOrder.total_amount,
-      }
+      },
     );
 
-    this.logger.log(`Order created successfully: ${order.id} (${orderNumber}) for vendor: ${vendorId}`);
+    this.logger.log(
+      `Order created successfully: ${order.id} (${orderNumber}) for vendor: ${vendorId}`,
+    );
     return this.mapToOrderResponse(completeOrder);
   }
 
-
-  async getOrderById(orderId: string, userId: string, userType: string): Promise<OrderResponseDto> {
+  async getOrderById(
+    orderId: string,
+    userId: string,
+    userType: string,
+  ): Promise<OrderResponseDto> {
     const order = await this.orderRepository.findById(orderId);
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -237,50 +329,73 @@ export class OrderService {
     return this.mapToOrderResponse(order);
   }
 
-  async getCustomerOrders(customerId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
-    const result = await this.orderRepository.findByCustomerId(customerId, filterDto);
-    
+  async getCustomerOrders(
+    customerId: string,
+    filterDto?: OrderFilterDto,
+  ): Promise<{ orders: OrderResponseDto[] }> {
+    const result = await this.orderRepository.findByCustomerId(
+      customerId,
+      filterDto,
+    );
+
     const orders = result.orders.map(order => this.mapToOrderResponse(order));
-    
+
     return {
       orders,
     };
   }
 
-  async getAllOrders(filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
-    const result = await this.orderRepository.findAll(filterDto);
-    
-    const orders = result.orders.map(order => this.mapToOrderResponse(order));
-    
+  async getAllOrders(
+    filterDto?: OrderFilterDto,
+  ): Promise<{ orders: OrderResponseDto[] }> {
+    const result = await this.orderRepository.findAll(filterDto, {
+      isForAdmin: true,
+    });
+
+    const orders = result.orders.map(order =>
+      this.mapToOrderResponse(order, { isForAdmin: true }),
+    );
+
     return {
       orders,
     };
   }
 
-  async getVendorOrders(vendorId: string, filterDto?: OrderFilterDto): Promise<{ orders: OrderResponseDto[]}> {
+  async getVendorOrders(
+    vendorId: string,
+    filterDto?: OrderFilterDto,
+  ): Promise<{ orders: OrderResponseDto[] }> {
     // get vendor with userid
     const vendor = await this.vendorService.getVendorByUserId(vendorId);
     if (!vendor) {
       throw new NotFoundException('Vendor not found');
     }
-    // make payment status paid 
+    // make payment status paid
     filterDto.payment_status = PaymentStatus.PAID;
-    const result = await this.orderRepository.findByVendorId(vendor.id, filterDto);
-    
+    const result = await this.orderRepository.findByVendorId(
+      vendor.id,
+      filterDto,
+    );
+
     const orders = result.orders.map(order => this.mapToOrderResponse(order));
-    
+
     return {
       orders,
     };
   }
 
+  // Add email notifications to each status case in updateOrderStatus method
+
   async updateOrderStatus(
-    orderId: string, 
-    userId: string, 
-    updateDto: UpdateOrderStatusDto
+    orderId: string,
+    userId: string,
+    updateDto: UpdateOrderStatusDto,
   ): Promise<OrderResponseDto> {
-    this.logger.log(`Updating order ${orderId} status to ${updateDto.order_status}`);
+    this.logger.log(
+      `Updating order ${orderId} status to ${updateDto.order_status}`,
+    );
     this.logger.log(`Vendor ID: ${userId}`);
+
     // get vendor with userid
     const vendor = await this.vendorService.getVendorByUserId(userId);
     if (!vendor) {
@@ -294,7 +409,9 @@ export class OrderService {
 
     // Verify vendor ownership
     if (order.vendor_id !== vendor.id) {
-      throw new ForbiddenException('You can only update orders for your vendor account');
+      throw new ForbiddenException(
+        'You can only update orders for your vendor account',
+      );
     }
 
     // Validate status transition
@@ -307,82 +424,244 @@ export class OrderService {
 
     // Handle specific status updates
     switch (updateDto.order_status) {
+      // In your OrderService.updateOrderStatus method, replace the email notification sections with this:
+
+      // For CONFIRMED status:
       case OrderStatus.CONFIRMED:
         if (updateDto.estimated_prep_time_minutes) {
-          updateData.estimated_prep_time_minutes = updateDto.estimated_prep_time_minutes;
+          updateData.estimated_prep_time_minutes =
+            updateDto.estimated_prep_time_minutes;
+        }
+
+        // Send email to customer about order confirmation
+        try {
+          const estimatedTime = updateDto.estimated_prep_time_minutes
+            ? `${updateDto.estimated_prep_time_minutes} minutes`
+            : undefined;
+
+          if (order.customer && order.customer.email) {
+            await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+              order,
+              order.customer,
+              OrderStatus.CONFIRMED,
+              {
+                estimatedTime,
+                vendorNotes: updateDto.vendor_notes,
+              },
+            );
+            this.logger.log(
+              `Order confirmation email sent to customer for order ${orderId}`,
+            );
+          } else {
+            this.logger.warn(
+              `Cannot send confirmation email - customer not loaded or missing email for order ${orderId}`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `Failed to send order confirmation email: ${error.message}`,
+          );
+        }
+
+        // ⭐ ADD THIS BLOCK HERE ⭐
+        // Send status change notification to admin
+        try {
+          await this.orderEmailNotification.sendOrderStatusChangeToAdmin(
+            order,
+            order.order_status, // old status
+            OrderStatus.CONFIRMED, // new status
+            `Vendor: ${vendor.business_name || 'Unknown'}`,
+          );
+          this.logger.log(
+            `Admin notified of status change for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send admin status change notification: ${error.message}`,
+          );
         }
 
         // Send push notification to customer about order being confirmed
         try {
-          const prepTimeMsg = updateDto.estimated_prep_time_minutes 
-            ? ` Estimated preparation time: ${updateDto.estimated_prep_time_minutes} minutes.` 
+          const prepTimeMsg = updateDto.estimated_prep_time_minutes
+            ? ` Estimated preparation time: ${updateDto.estimated_prep_time_minutes} minutes.`
             : '';
           await this.notificationService.sendPushNotification(
             order.customer_id,
             NotificationType.ORDER_UPDATE,
             `Order #${order.order_number} Confirmed!`,
             `Your order has been confirmed by the vendor.${prepTimeMsg}`,
-            { 
-              order_id: orderId, 
+            {
+              order_id: orderId,
               order_number: order.order_number,
               status: updateDto.order_status,
-              estimated_prep_time_minutes: updateDto.estimated_prep_time_minutes,
-              order_type: order.order_type
-            }
+              estimated_prep_time_minutes:
+                updateDto.estimated_prep_time_minutes,
+              order_type: order.order_type,
+            },
           );
-          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+          this.logger.error(
+            `Failed to send push notification for order ${orderId}: ${error.message}`,
+          );
         }
         break;
 
+      // For PREPARING status:
       case OrderStatus.PREPARING:
         if (updateDto.estimated_prep_time_minutes) {
-          updateData.estimated_prep_time_minutes = updateDto.estimated_prep_time_minutes;
+          updateData.estimated_prep_time_minutes =
+            updateDto.estimated_prep_time_minutes;
+        }
+
+        // Send email to customer about order being prepared
+        try {
+          const estimatedTime = updateDto.estimated_prep_time_minutes
+            ? `${updateDto.estimated_prep_time_minutes} minutes`
+            : undefined;
+
+          if (order.customer && order.customer.email) {
+            await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+              order,
+              order.customer,
+              OrderStatus.PREPARING,
+              {
+                estimatedTime,
+                vendorNotes: updateDto.vendor_notes,
+              },
+            );
+            this.logger.log(
+              `Preparing status email sent to customer for order ${orderId}`,
+            );
+          } else {
+            this.logger.warn(
+              `Cannot send preparing email - customer not loaded or missing email for order ${orderId}`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(`Failed to send preparing email: ${error.message}`);
+        }
+
+        // ⭐ ADD THIS BLOCK HERE ⭐
+        // Send status change notification to admin
+        try {
+          await this.orderEmailNotification.sendOrderStatusChangeToAdmin(
+            order,
+            order.order_status,
+            OrderStatus.PREPARING,
+            `Vendor: ${vendor.business_name || 'Unknown'}`,
+          );
+          this.logger.log(
+            `Admin notified of status change for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send admin status change notification: ${error.message}`,
+          );
         }
 
         // Send push notification to customer about order being prepared
         try {
-          const prepTimeMsg = updateDto.estimated_prep_time_minutes 
-            ? ` Estimated time: ${updateDto.estimated_prep_time_minutes} minutes.` 
+          const prepTimeMsg = updateDto.estimated_prep_time_minutes
+            ? ` Estimated time: ${updateDto.estimated_prep_time_minutes} minutes.`
             : '';
           await this.notificationService.sendPushNotification(
             order.customer_id,
             NotificationType.ORDER_UPDATE,
             `Order #${order.order_number} Being Prepared`,
             `Your order is now being prepared!`,
-            { 
-              order_id: orderId, 
+            {
+              order_id: orderId,
               order_number: order.order_number,
               status: updateDto.order_status,
-              estimated_prep_time_minutes: updateDto.estimated_prep_time_minutes,
-              order_type: order.order_type
-            }
+              estimated_prep_time_minutes:
+                updateDto.estimated_prep_time_minutes,
+              order_type: order.order_type,
+            },
           );
-          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+          this.logger.error(
+            `Failed to send push notification for order ${orderId}: ${error.message}`,
+          );
         }
         break;
+
+      // Apply the same pattern for other statuses (READY, OUT_FOR_DELIVERY, DELIVERED, CANCELLED)
+      // Always check if order.customer && order.customer.email exists before sending emails
 
       case OrderStatus.READY:
         updateData.order_ready_at = new Date();
         if (updateDto.estimated_delivery_time) {
-          updateData.estimated_delivery_time = new Date(updateDto.estimated_delivery_time);
+          updateData.estimated_delivery_time = new Date(
+            updateDto.estimated_delivery_time,
+          );
         }
-        
+
         // If this is a delivery order, create delivery
-        if (order.order_type === OrderType.DELIVERY && order.delivery_quote_id) {
+        if (
+          order.order_type === OrderType.DELIVERY &&
+          order.delivery_quote_id
+        ) {
           try {
-            this.logger.log(`Creating delivery for order ${orderId} with quote ${order.delivery_quote_id}`);
-            const deliveryResult = await this.deliveryService.createDelivery(order.delivery_quote_id, orderId);
-            this.logger.log(`Delivery created successfully: ${deliveryResult.id} with tracking number: ${deliveryResult.trackingNumber}`);
-            
+            this.logger.log(
+              `Creating delivery for order ${orderId} with quote ${order.delivery_quote_id}`,
+            );
+            const deliveryResult = await this.deliveryService.createDelivery(
+              order.delivery_quote_id,
+              orderId,
+            );
+            this.logger.log(
+              `Delivery created successfully: ${deliveryResult.id} with tracking number: ${deliveryResult.trackingNumber}`,
+            );
           } catch (error) {
-            this.logger.error(`Failed to create delivery for order ${orderId}: ${error.message}`);
-            // Don't fail the order status update, just log the error
-            // The order can still be marked as ready even if delivery creation fails
+            this.logger.error(
+              `Failed to create delivery for order ${orderId}: ${error.message}`,
+            );
           }
+        }
+
+        // Send email to customer about order being ready
+        try {
+          await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+            order,
+            order.customer,
+            OrderStatus.READY,
+            {
+              estimatedTime: updateDto.estimated_delivery_time
+                ? new Date(updateDto.estimated_delivery_time).toLocaleString()
+                : undefined,
+              vendorNotes: updateDto.vendor_notes,
+            },
+          );
+          this.logger.log(
+            `Ready status email sent to customer for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(`Failed to send ready email: ${error.message}`);
+        }
+
+        // ⭐ ADD THIS BLOCK HERE ⭐
+        // Send status change notification to admin
+        try {
+          await this.orderEmailNotification.sendOrderStatusChangeToAdmin(
+            order,
+            order.order_status,
+            OrderStatus.READY,
+            `Vendor: ${vendor.business_name || 'Unknown'}`,
+          );
+          this.logger.log(
+            `Admin notified of status change for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send admin status change notification: ${error.message}`,
+          );
         }
 
         // Send SSE notification to customer about order being ready
@@ -391,12 +670,17 @@ export class OrderService {
             order.customer_id,
             orderId,
             updateDto.order_status,
-            `Your order ${order.order_number} is ready for ${order.order_type === OrderType.DELIVERY ? 'delivery' : 'pickup'}!`
+            `Your order ${order.order_number} is ready for ${
+              order.order_type === OrderType.DELIVERY ? 'delivery' : 'pickup'
+            }!`,
           );
-          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
-          // Don't fail the order status update if SSE fails
+          this.logger.error(
+            `Failed to send SSE notification for order ${orderId}: ${error.message}`,
+          );
         }
 
         // Send push notification to customer
@@ -405,56 +689,23 @@ export class OrderService {
             order.customer_id,
             NotificationType.ORDER_UPDATE,
             `Order #${order.order_number} is Ready!`,
-            `Your order is ready for ${order.order_type === OrderType.DELIVERY ? 'delivery' : 'pickup'}!`,
-            { 
-              order_id: orderId, 
+            `Your order is ready for ${
+              order.order_type === OrderType.DELIVERY ? 'delivery' : 'pickup'
+            }!`,
+            {
+              order_id: orderId,
               order_number: order.order_number,
               status: updateDto.order_status,
-              order_type: order.order_type
-            }
+              order_type: order.order_type,
+            },
           );
-          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
-        } catch (error) {
-          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
-          // Don't fail the order status update if push notification fails
-        }
-        break;
-
-      case OrderStatus.OUT_FOR_DELIVERY:
-        if (updateDto.estimated_delivery_time) {
-          updateData.estimated_delivery_time = new Date(updateDto.estimated_delivery_time);
-        }
-        
-        // Send SSE notification to customer about order being out for delivery
-        try {
-          this.notificationSSEService.sendOrderUpdate(
-            order.customer_id,
-            orderId,
-            updateDto.order_status,
-            `Your order ${order.order_number} is out for delivery! Track your order for real-time updates.`
+          this.logger.log(
+            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
           );
-          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
         } catch (error) {
-          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
-        }
-
-        // Send push notification to customer
-        try {
-          await this.notificationService.sendPushNotification(
-            order.customer_id,
-            NotificationType.ORDER_UPDATE,
-            `Order #${order.order_number} Out for Delivery!`,
-            `Your order is out for delivery! Track your order for real-time updates.`,
-            { 
-              order_id: orderId, 
-              order_number: order.order_number,
-              status: updateDto.order_status,
-              order_type: order.order_type
-            }
+          this.logger.error(
+            `Failed to send push notification for order ${orderId}: ${error.message}`,
           );
-          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
-        } catch (error) {
-          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
         }
         break;
 
@@ -466,18 +717,57 @@ export class OrderService {
         if (updateDto.customer_review) {
           updateData.customer_review = updateDto.customer_review;
         }
-        
+
+        // Send email to customer about delivery
+        try {
+          await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+            order,
+            order.customer,
+            OrderStatus.DELIVERED,
+            {
+              vendorNotes: updateDto.vendor_notes,
+            },
+          );
+          this.logger.log(
+            `Delivered status email sent to customer for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(`Failed to send delivered email: ${error.message}`);
+        }
+
+        // ⭐ ADD THIS BLOCK HERE ⭐
+        // Send status change notification to admin
+        try {
+          await this.orderEmailNotification.sendOrderStatusChangeToAdmin(
+            order,
+            order.order_status,
+            OrderStatus.DELIVERED,
+            `Vendor: ${vendor.business_name || 'Unknown'}`,
+          );
+          this.logger.log(
+            `Admin notified of status change for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send admin status change notification: ${error.message}`,
+          );
+        }
+
         // Send SSE notification to customer about order being delivered
         try {
           this.notificationSSEService.sendOrderUpdate(
             order.customer_id,
             orderId,
             updateDto.order_status,
-            `Your order ${order.order_number} has been delivered! Thank you for choosing Rambini.`
+            `Your order ${order.order_number} has been delivered! Thank you for choosing Rambini.`,
           );
-          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+          this.logger.error(
+            `Failed to send SSE notification for order ${orderId}: ${error.message}`,
+          );
         }
 
         // Send push notification to customer
@@ -487,35 +777,83 @@ export class OrderService {
             NotificationType.ORDER_UPDATE,
             `Order #${order.order_number} Delivered!`,
             `Your order has been delivered! Thank you for choosing Rambini.`,
-            { 
-              order_id: orderId, 
+            {
+              order_id: orderId,
               order_number: order.order_number,
               status: updateDto.order_status,
-              order_type: order.order_type
-            }
+              order_type: order.order_type,
+            },
           );
-          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+          this.logger.error(
+            `Failed to send push notification for order ${orderId}: ${error.message}`,
+          );
         }
         break;
 
       case OrderStatus.CANCELLED:
         updateData.cancelled_at = new Date();
-        updateData.cancellation_reason = updateDto.reason || 'Cancelled by vendor';
+        updateData.cancellation_reason =
+          updateDto.reason || 'Cancelled by vendor';
         updateData.cancelled_by = 'VENDOR';
-        
+
+        // Send email to customer about cancellation
+        try {
+          await this.orderEmailNotification.sendOrderStatusUpdateToCustomer(
+            order,
+            order.customer,
+            OrderStatus.CANCELLED,
+            {
+              vendorNotes: updateDto.reason || 'Cancelled by vendor',
+            },
+          );
+          this.logger.log(
+            `Cancellation email sent to customer for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send cancellation email: ${error.message}`,
+          );
+        }
+
+        // ⭐ ADD THIS BLOCK HERE ⭐
+        // Send status change notification to admin
+        try {
+          await this.orderEmailNotification.sendOrderStatusChangeToAdmin(
+            order,
+            order.order_status,
+            OrderStatus.CANCELLED,
+            `Vendor: ${vendor.business_name || 'Unknown'}`,
+          );
+          this.logger.log(
+            `Admin notified of status change for order ${orderId}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Failed to send admin status change notification: ${error.message}`,
+          );
+        }
+
         // Send SSE notification to customer about order being cancelled
         try {
           this.notificationSSEService.sendOrderUpdate(
             order.customer_id,
             orderId,
             updateDto.order_status,
-            `Your order ${order.order_number} has been cancelled. ${updateDto.reason || 'Please contact support for more information.'}`
+            `Your order ${order.order_number} has been cancelled. ${
+              updateDto.reason || 'Please contact support for more information.'
+            }`,
           );
-          this.logger.log(`SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `SSE notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send SSE notification for order ${orderId}: ${error.message}`);
+          this.logger.error(
+            `Failed to send SSE notification for order ${orderId}: ${error.message}`,
+          );
         }
 
         // Send push notification to customer
@@ -524,18 +862,24 @@ export class OrderService {
             order.customer_id,
             NotificationType.ORDER_UPDATE,
             `Order #${order.order_number} Cancelled`,
-            `Your order has been cancelled. ${updateDto.reason || 'Please contact support for more information.'}`,
-            { 
-              order_id: orderId, 
+            `Your order has been cancelled. ${
+              updateDto.reason || 'Please contact support for more information.'
+            }`,
+            {
+              order_id: orderId,
               order_number: order.order_number,
               status: updateDto.order_status,
               reason: updateDto.reason || 'Cancelled by vendor',
-              order_type: order.order_type
-            }
+              order_type: order.order_type,
+            },
           );
-          this.logger.log(`Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`);
+          this.logger.log(
+            `Push notification sent to customer ${order.customer_id} for order ${orderId} status: ${updateDto.order_status}`,
+          );
         } catch (error) {
-          this.logger.error(`Failed to send push notification for order ${orderId}: ${error.message}`);
+          this.logger.error(
+            `Failed to send push notification for order ${orderId}: ${error.message}`,
+          );
         }
         break;
     }
@@ -550,11 +894,18 @@ export class OrderService {
       throw new NotFoundException('Failed to update order');
     }
 
-    this.logger.log(`Order ${orderId} status updated to ${updateDto.order_status}`);
+    this.logger.log(
+      `Order ${orderId} status updated to ${updateDto.order_status}`,
+    );
     return this.mapToOrderResponse(updatedOrder);
   }
 
-  async cancelOrder(orderId: string, userId: string, userType: string, reason: string): Promise<OrderResponseDto> {
+  async cancelOrder(
+    orderId: string,
+    userId: string,
+    userType: string,
+    reason: string,
+  ): Promise<OrderResponseDto> {
     this.logger.log(`Cancelling order ${orderId} by ${userType} ${userId}`);
 
     const order = await this.orderRepository.findById(orderId);
@@ -568,14 +919,20 @@ export class OrderService {
         throw new ForbiddenException('You can only cancel your own orders');
       }
       if (!this.canCustomerCancel(order.order_status)) {
-        throw new BadRequestException('Order cannot be cancelled at this stage');
+        throw new BadRequestException(
+          'Order cannot be cancelled at this stage',
+        );
       }
     } else if (userType === 'VENDOR') {
       if (order.vendor_id !== userId) {
-        throw new ForbiddenException('You can only cancel orders for your vendor account');
+        throw new ForbiddenException(
+          'You can only cancel orders for your vendor account',
+        );
       }
       if (!this.canVendorCancel(order.order_status)) {
-        throw new BadRequestException('Order cannot be cancelled at this stage');
+        throw new BadRequestException(
+          'Order cannot be cancelled at this stage',
+        );
       }
     } else {
       throw new ForbiddenException('Invalid user type for order cancellation');
@@ -602,7 +959,7 @@ export class OrderService {
           order.vendor_id,
           orderId,
           OrderStatus.CANCELLED,
-          `Order ${order.order_number} has been cancelled by the customer. Reason: ${reason}`
+          `Order ${order.order_number} has been cancelled by the customer. Reason: ${reason}`,
         );
       } else {
         // Notify customer about vendor cancellation
@@ -610,14 +967,18 @@ export class OrderService {
           order.customer_id,
           orderId,
           OrderStatus.CANCELLED,
-          `Your order ${order.order_number} has been cancelled by the vendor. Reason: ${reason}`
+          `Your order ${order.order_number} has been cancelled by the vendor. Reason: ${reason}`,
         );
       }
       this.logger.log(`SSE notification sent for cancelled order ${orderId}`);
     } catch (error) {
-      this.logger.error(`Failed to send SSE notification for cancelled order ${orderId}: ${error.message}`);
+      this.logger.error(
+        `Failed to send SSE notification for cancelled order ${orderId}: ${error.message}`,
+      );
     }
 
+    // Send push notification to customer (always notify customer regardless of who cancelled)
+    // After existing email/push notifications in cancelOrder method
     // Send push notification to customer (always notify customer regardless of who cancelled)
     try {
       const cancelledBy = userType === 'CUSTOMER' ? 'You' : 'The vendor';
@@ -626,35 +987,70 @@ export class OrderService {
         NotificationType.ORDER_UPDATE,
         `Order #${order.order_number} Cancelled`,
         `${cancelledBy} cancelled this order. ${reason}`,
-        { 
-          order_id: orderId, 
+        {
+          order_id: orderId,
           order_number: order.order_number,
           status: OrderStatus.CANCELLED,
           reason: reason,
           cancelled_by: userType,
-          order_type: order.order_type
-        }
+          order_type: order.order_type,
+        },
       );
-      this.logger.log(`Push notification sent to customer ${order.customer_id} for cancelled order ${orderId}`);
+      this.logger.log(
+        `Push notification sent to customer ${order.customer_id} for cancelled order ${orderId}`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to send push notification for cancelled order ${orderId}: ${error.message}`);
+      this.logger.error(
+        `Failed to send push notification for cancelled order ${orderId}: ${error.message}`,
+      );
+    }
+
+    // ⭐ ADD THIS BLOCK HERE ⭐
+    // Notify admin about cancellation
+    try {
+      const cancelledBy =
+        userType === 'CUSTOMER'
+          ? `Customer: ${order.customer?.full_name || 'Unknown'}`
+          : `Vendor: ${order.vendor?.business_name || 'Unknown'}`;
+
+      await this.orderEmailNotification.sendOrderStatusChangeToAdmin(
+        order,
+        order.order_status,
+        OrderStatus.CANCELLED,
+        cancelledBy,
+      );
+      this.logger.log(
+        `Admin notified of order cancellation for order ${orderId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send admin cancellation notification: ${error.message}`,
+      );
     }
 
     this.logger.log(`Order ${orderId} cancelled successfully`);
     return this.mapToOrderResponse(updatedOrder);
   }
 
-  async getOrderStats(vendorId?: string, customerId?: string): Promise<{
+  async getOrderStats(
+    vendorId?: string,
+    customerId?: string,
+  ): Promise<{
     total_orders: number;
     total_revenue: number;
     average_order_value: number;
     orders_by_status: Record<string, number>;
     recent_orders: OrderResponseDto[];
   }> {
-    const stats = await this.orderRepository.getOrderStats(vendorId, customerId);
-    
-    const recentOrders = stats.recent_orders.map(order => this.mapToOrderResponse(order));
-    
+    const stats = await this.orderRepository.getOrderStats(
+      vendorId,
+      customerId,
+    );
+
+    const recentOrders = stats.recent_orders.map(order =>
+      this.mapToOrderResponse(order),
+    );
+
     return {
       ...stats,
       recent_orders: recentOrders,
@@ -685,14 +1081,14 @@ export class OrderService {
   //   if (orderType === OrderType.PICKUP) {
   //     return 0;
   //   }
-    
+
   //   // Base delivery fee: ₦200 for orders under ₦1000, ₦100 for orders over ₦1000
   //   return subtotal < 1000 ? 200 : 100;
   // }
 
   private calculateServiceFee(subtotal: number): number {
     // 5% service fee
-    return subtotal * this.serviceFeePercentage / 100;
+    return (subtotal * this.serviceFeePercentage) / 100;
   }
 
   private calculateTaxAmount(subtotal: number): number {
@@ -705,13 +1101,38 @@ export class OrderService {
     return subtotal * 0.15;
   }
 
-  private validateStatusTransition(currentStatus: OrderStatus, newStatus: OrderStatus): void {
+  private validateStatusTransition(
+    currentStatus: OrderStatus,
+    newStatus: OrderStatus,
+  ): void {
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.NEW]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED, OrderStatus.PREPARING, OrderStatus.READY],
-      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED, OrderStatus.READY, OrderStatus.PREPARING, OrderStatus.OUT_FOR_DELIVERY],
-      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED, OrderStatus.OUT_FOR_DELIVERY],
-      [OrderStatus.READY]: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, OrderStatus.DELIVERED],
-      [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+      [OrderStatus.NEW]: [
+        OrderStatus.CONFIRMED,
+        OrderStatus.CANCELLED,
+        OrderStatus.PREPARING,
+        OrderStatus.READY,
+      ],
+      [OrderStatus.CONFIRMED]: [
+        OrderStatus.PREPARING,
+        OrderStatus.CANCELLED,
+        OrderStatus.READY,
+        OrderStatus.PREPARING,
+        OrderStatus.OUT_FOR_DELIVERY,
+      ],
+      [OrderStatus.PREPARING]: [
+        OrderStatus.READY,
+        OrderStatus.CANCELLED,
+        OrderStatus.OUT_FOR_DELIVERY,
+      ],
+      [OrderStatus.READY]: [
+        OrderStatus.OUT_FOR_DELIVERY,
+        OrderStatus.CANCELLED,
+        OrderStatus.DELIVERED,
+      ],
+      [OrderStatus.OUT_FOR_DELIVERY]: [
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED,
+      ],
       [OrderStatus.DELIVERED]: [], // Final state
       [OrderStatus.CANCELLED]: [], // Final state
       [OrderStatus.REFUNDED]: [], // Final state
@@ -719,7 +1140,7 @@ export class OrderService {
 
     if (!validTransitions[currentStatus].includes(newStatus)) {
       throw new BadRequestException(
-        `Invalid status transition from ${currentStatus} to ${newStatus}`
+        `Invalid status transition from ${currentStatus} to ${newStatus}`,
       );
     }
   }
@@ -729,9 +1150,12 @@ export class OrderService {
   }
 
   private canVendorCancel(status: OrderStatus): boolean {
-    return [OrderStatus.NEW, OrderStatus.CONFIRMED, OrderStatus.PREPARING].includes(status);
+    return [
+      OrderStatus.NEW,
+      OrderStatus.CONFIRMED,
+      OrderStatus.PREPARING,
+    ].includes(status);
   }
-
 
   private async validateVendorExistsAndActive(vendorId: string): Promise<void> {
     const vendor = await this.vendorService.getVendorById(vendorId);
@@ -741,18 +1165,23 @@ export class OrderService {
     if (!vendor.is_active) {
       throw new BadRequestException('Vendor is not active');
     }
-   
   }
 
-  private mapToOrderResponse(order: Order): OrderResponseDto {
+  private mapToOrderResponse(
+    order: Order,
+    options?: { isForAdmin?: boolean },
+  ): OrderResponseDto {
     // add service fee to response
     const service_fee = this.calculateServiceFee(order.subtotal);
     return {
       id: order.id,
       order_number: order.order_number,
       customer_id: order.customer_id,
-      customer_name: order.customer?.first_name + ' ' + order.customer?.last_name || 'Unknown',
+      customer_name:
+        order.customer?.first_name + ' ' + order.customer?.last_name ||
+        'Unknown',
       customer_phone: order.customer?.phone_number || '',
+      vendor: order.vendor,
       vendor_id: order.vendor_id,
       vendor_name: order.vendor?.business_name || 'Unknown',
       vendor_phone: order.vendor?.user?.phone_number || '',
@@ -782,32 +1211,37 @@ export class OrderService {
       vendor_notes: order.vendor_notes,
       created_at: order.created_at,
       updated_at: order.updated_at,
-      order_items: order.order_items?.map(item => this.mapToOrderItemResponse(item)) || [],
-      delivery_address: order.delivery_quote?.destination_address ? {
-        address_line_1: order.delivery_quote.destination_address.address,
-        address_line_2: '',
-        city: order.delivery_quote.destination_address.city,
-        state: order.delivery_quote.destination_address.state,
-        postal_code: order.delivery_quote.destination_address.postalCode,
-        country: order.delivery_quote.destination_address.country,
-        latitude: order.delivery_quote.destination_address.latitude,
-        longitude: order.delivery_quote.destination_address.longitude,
-      } :{
-        address_line_1: '',
-        city: '',
-        state: '',
-        country: '',
-      },
-      pickup_address: order.vendor?.address ? {
-        address_line_1: order.vendor.address.address_line_1,
-        address_line_2: order.vendor.address.address_line_2,
-        city: order.vendor.address.city,
-        state: order.vendor.address.state,
-        postal_code: order.vendor.address.postal_code,
-        country: order.vendor.address.country,
-        latitude: order.vendor.address.latitude,
-        longitude: order.vendor.address.longitude,
-      } : undefined,
+      order_items:
+        order.order_items?.map(item => this.mapToOrderItemResponse(item)) || [],
+      delivery_address: order.delivery_quote?.destination_address
+        ? {
+            address_line_1: order.delivery_quote.destination_address.address,
+            address_line_2: '',
+            city: order.delivery_quote.destination_address.city,
+            state: order.delivery_quote.destination_address.state,
+            postal_code: order.delivery_quote.destination_address.postalCode,
+            country: order.delivery_quote.destination_address.country,
+            latitude: order.delivery_quote.destination_address.latitude,
+            longitude: order.delivery_quote.destination_address.longitude,
+          }
+        : {
+            address_line_1: '',
+            city: '',
+            state: '',
+            country: '',
+          },
+      pickup_address: order.vendor?.address
+        ? {
+            address_line_1: order.vendor.address.address_line_1,
+            address_line_2: order.vendor.address.address_line_2,
+            city: order.vendor.address.city,
+            state: order.vendor.address.state,
+            postal_code: order.vendor.address.postal_code,
+            country: order.vendor.address.country,
+            latitude: order.vendor.address.latitude,
+            longitude: order.vendor.address.longitude,
+          }
+        : undefined,
     };
   }
 
@@ -824,21 +1258,30 @@ export class OrderService {
     };
   }
 
-
   private async getDeliveryQuoteForOrder(
     vendor: any,
     deliveryAddress: any,
     cartItems: any[],
     subtotal: number,
-    provider: DeliveryProvider
-  ): Promise<{lowestFee: number, quotes: any[], requestToken?: string}> {
+    provider: DeliveryProvider,
+  ): Promise<{ lowestFee: number; quotes: any[]; requestToken?: string }> {
     this.logger.log(`Getting delivery quotes for provider: ${provider}`);
 
     // Validate addresses and get address codes for Shipbubble
     if (provider === DeliveryProvider.SHIPBUBBLE) {
-      return await this.getShipbubbleQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal);
+      return await this.getShipbubbleQuoteForOrder(
+        vendor,
+        deliveryAddress,
+        cartItems,
+        subtotal,
+      );
     } else if (provider === DeliveryProvider.UBER) {
-      return await this.getUberQuoteForOrder(vendor, deliveryAddress, cartItems, subtotal);
+      return await this.getUberQuoteForOrder(
+        vendor,
+        deliveryAddress,
+        cartItems,
+        subtotal,
+      );
     }
 
     throw new Error(`Unsupported delivery provider: ${provider}`);
@@ -851,9 +1294,10 @@ export class OrderService {
     vendor: any,
     deliveryAddress: any,
     cartItems: any[],
-    subtotal: number
-  ): Promise<{lowestFee: number, quotes: any[], requestToken: string}> {
-    const shipbubbleService = this.deliveryService['providerFactory'].getShipbubbleProvider();
+    subtotal: number,
+  ): Promise<{ lowestFee: number; quotes: any[]; requestToken: string }> {
+    const shipbubbleService =
+      this.deliveryService['providerFactory'].getShipbubbleProvider();
 
     // Validate vendor address and get/save address code
     const vendorAddressValidation = await shipbubbleService.validateAddress({
@@ -871,7 +1315,10 @@ export class OrderService {
 
     // Update vendor address with Shipbubble address code if needed
     if (vendorAddressValidation.data.address_code) {
-      await this.addressService.updateAddressCode(vendor.address.id, vendorAddressValidation.data.address_code);
+      await this.addressService.updateAddressCode(
+        vendor.address.id,
+        vendorAddressValidation.data.address_code,
+      );
     }
 
     // Validate customer delivery address and get/save address code
@@ -890,14 +1337,21 @@ export class OrderService {
 
     // Update customer address with Shipbubble address code if needed
     if (customerAddressValidation.data.address_code) {
-      await this.addressService.updateAddressCode(deliveryAddress.id, customerAddressValidation.data.address_code);
+      await this.addressService.updateAddressCode(
+        deliveryAddress.id,
+        customerAddressValidation.data.address_code,
+      );
     }
 
     // Get package categories
     const categories = await shipbubbleService.getPackageCategories();
     // choose food category
-    const foodCategory = categories.data?.find((category: ShipbubblePackageCategoryDto) => category.category.toLowerCase() === 'ood');
-    const categoryId = foodCategory?.category_id || categories.data?.[0]?.category_id || 1;
+    const foodCategory = categories.data?.find(
+      (category: ShipbubblePackageCategoryDto) =>
+        category.category.toLowerCase() === 'ood',
+    );
+    const categoryId =
+      foodCategory?.category_id || categories.data?.[0]?.category_id || 1;
 
     // Calculate package dimensions based on cart items
     const packageDimensions = this.calculatePackageDimensions(cartItems);
@@ -919,12 +1373,14 @@ export class OrderService {
     };
 
     // Fetch rates from Shipbubble
-    const ratesResponse = await shipbubbleService.fetchShippingRates(ratesRequest);
+    const ratesResponse = await shipbubbleService.fetchShippingRates(
+      ratesRequest,
+    );
 
     // Find the lowest fee
-    const lowestFee = ratesResponse.couriers.reduce((min, courier) => 
-      courier.total < min ? courier.total : min, 
-      ratesResponse.couriers[0]?.total || 0
+    const lowestFee = ratesResponse.couriers.reduce(
+      (min, courier) => (courier.total < min ? courier.total : min),
+      ratesResponse.couriers[0]?.total || 0,
     );
 
     this.logger.log(`Shipbubble lowest delivery fee: ${lowestFee}`);
@@ -945,9 +1401,10 @@ export class OrderService {
     vendor: any,
     deliveryAddress: any,
     cartItems: any[],
-    subtotal: number
-  ): Promise<{lowestFee: number, quotes: any[]}> {
-    const uberService = this.deliveryService['providerFactory'].getUberProvider();
+    subtotal: number,
+  ): Promise<{ lowestFee: number; quotes: any[] }> {
+    const uberService =
+      this.deliveryService['providerFactory'].getUberProvider();
 
     // Prepare Uber Direct quote request
     const quoteRequest = {
@@ -969,9 +1426,13 @@ export class OrderService {
       dropoff_phone_number: '+1234567890', // We'll need to get customer phone
       manifest_total_value: Math.round(subtotal * 100), // Convert to cents
       pickup_ready_dt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes from now
-      pickup_deadline_dt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
+      pickup_deadline_dt: new Date(
+        Date.now() + 2 * 60 * 60 * 1000,
+      ).toISOString(), // 2 hours from now
       dropoff_ready_dt: new Date(Date.now() + 45 * 60 * 1000).toISOString(), // 45 minutes from now
-      dropoff_deadline_dt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
+      dropoff_deadline_dt: new Date(
+        Date.now() + 3 * 60 * 60 * 1000,
+      ).toISOString(), // 3 hours from now
     };
 
     // Create quote with Uber Direct
@@ -991,12 +1452,19 @@ export class OrderService {
   /**
    * Calculate package dimensions based on cart items
    */
-  private calculatePackageDimensions(cartItems: any[]): {length: number, width: number, height: number} {
-    const totalQuantity = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    
+  private calculatePackageDimensions(cartItems: any[]): {
+    length: number;
+    width: number;
+    height: number;
+  } {
+    const totalQuantity = cartItems.reduce(
+      (sum, item) => sum + item.quantity,
+      0,
+    );
+
     // Base dimensions for food delivery
     let length = 30; // cm
-    let width = 30;  // cm
+    let width = 30; // cm
     let height = 15; // cm
 
     // Scale dimensions based on quantity
@@ -1023,7 +1491,7 @@ export class OrderService {
   private async calculateActualDeliveryFee(
     provider: DeliveryProvider,
     originAddress: any,
-    destinationAddress: any
+    destinationAddress: any,
   ): Promise<number> {
     if (!originAddress || !destinationAddress) {
       throw new Error('Origin and destination addresses are required');
@@ -1056,18 +1524,18 @@ export class OrderService {
       },
     };
 
-    const rates = await this.deliveryService.getDeliveryRates( rateRequest);
-    
+    const rates = await this.deliveryService.getDeliveryRates(rateRequest);
+
     if (!rates || rates.length === 0) {
       throw new Error('No delivery rates available');
     }
 
     // Return the cheapest rate
-    const cheapestRate = rates.reduce((min, rate) => 
-      rate.amount < min.amount ? rate : min
+    const cheapestRate = rates.reduce((min, rate) =>
+      rate.amount < min.amount ? rate : min,
     );
 
     // Convert to kobo (assuming rates are in naira)
     return Math.round(cheapestRate.amount * 100);
   }
-} 
+}

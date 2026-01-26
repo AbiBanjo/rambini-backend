@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OrderStatus, OrderType, PaymentMethod, PaymentStatus, Currency, PaymentTransactionStatus } from 'src/entities';
+import { OrderStatus, OrderType, PaymentMethod, PaymentStatus, Currency, PaymentTransactionStatus, Vendor } from 'src/entities';
 
 export class OrderItemResponseDto {
   @ApiProperty({ description: 'Order item ID' })
@@ -48,6 +48,9 @@ export class OrderResponseDto {
 
   @ApiProperty({ description: 'Service fee' })
   service_fee: number;
+
+  @ApiProperty({ description: 'Vendor full details if available', nullable: true })
+  vendor?: Vendor;
 
   @ApiPropertyOptional({ description: 'Vendor phone number' })
   vendor_phone?: string;

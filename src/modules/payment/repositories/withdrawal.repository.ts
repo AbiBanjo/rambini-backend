@@ -30,6 +30,16 @@ export class WithdrawalRepository {
     });
   }
 
+  /**
+   * Get all withdrawals with user relations
+   */
+  async findAll(): Promise<Withdrawal[]> {
+    return await this.withdrawalRepository.find({
+      relations: ['user'],
+      order: { created_at: 'DESC' },
+    });
+  }
+
   async findPendingByUserId(userId: string): Promise<Withdrawal | null> {
     return await this.withdrawalRepository.findOne({
       where: {
