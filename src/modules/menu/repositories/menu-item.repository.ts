@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { MenuItem, Vendor, Category } from 'src/entities';
 import { SearchMenuItemsDto } from '../dto/search-menu-items.dto';
 import { MenuItemWithDistanceDto } from '../dto/menu-item-response.dto';
+import { fetchPage } from '@/utils/pagination.utils';
 
 @Injectable()
 export class MenuItemRepository {
@@ -44,90 +45,61 @@ export class MenuItemRepository {
     });
   }
 
-  async search(searchDto: SearchMenuItemsDto): Promise<{ items: MenuItemWithDistanceDto[]; total: number }> {
-    // Create separate query builders for count and data
-    const countQueryBuilder = this.createCountQueryBuilder(searchDto);
-    const dataQueryBuilder = this.createSearchQueryBuilder(searchDto);
-    
-    // Get total count using a simplified count query
-    const total = await countQueryBuilder.getCount();
-    
-    
-    // Apply sorting - prioritize distance-based sorting when coordinates are provided
+  async search(searchDto: SearchMenuItemsDto) {
+    const page = searchDto.page ?? 1;
+    const limit = searchDto.limit ?? 20;
+
+    const countQB = this.createCountQueryBuilder(searchDto);
+    const total = await countQB.getCount();
+
+    const dataQB = this.createSearchQueryBuilder(searchDto);
+
+    // -------- SORTING LOGIC (keeps your rules) --------
     if (searchDto.latitude && searchDto.longitude) {
-      // When coordinates are provided, always sort by distance first
-      // Use a CASE statement to handle vendors without coordinates (put them last)
-      dataQueryBuilder.orderBy(
-        `CASE 
-          WHEN vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL 
-          THEN (
-            6371 * acos(
-              cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
-              cos(radians(vendor_address.longitude) - radians(:lon)) +
-              sin(radians(:lat)) * sin(radians(vendor_address.longitude))
-            )
-          )
-          ELSE 999999
-        END`,
-        'ASC'
-      );
-      dataQueryBuilder.setParameter('lon', searchDto.longitude);
-      dataQueryBuilder.setParameter('lat', searchDto.latitude);
-      
-      // If additional sorting is specified, apply it as secondary sort
+      dataQB.orderBy(`calculated_distance`, 'ASC');
+
       if (searchDto.sort_by && searchDto.sort_by !== 'distance') {
         const sortOrder = searchDto.sort_order || 'ASC';
-        dataQueryBuilder.addOrderBy(`menu_item.${searchDto.sort_by}`, sortOrder as 'ASC' | 'DESC');
+        dataQB.addOrderBy(
+          `menu_item.${searchDto.sort_by}`,
+          sortOrder as 'ASC' | 'DESC',
+        );
       }
     } else if (searchDto.sort_by) {
-      // Fall back to regular sorting when no coordinates or distance prioritization is disabled
       const sortOrder = searchDto.sort_order || 'DESC';
-      dataQueryBuilder.orderBy(`menu_item.${searchDto.sort_by}`, sortOrder as 'ASC' | 'DESC');
-    } else {
-      dataQueryBuilder.orderBy('menu_item.created_at', 'DESC');
-    }
-    
-    // If coordinates are provided, select the calculated distance as a field
-    if (searchDto.latitude && searchDto.longitude) {
-      dataQueryBuilder.addSelect(
-        `CASE 
-          WHEN vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL 
-          THEN ROUND(
-            (
-              6371 * acos(
-                cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
-                cos(radians(vendor_address.longitude) - radians(:lon)) +
-                sin(radians(:lat)) * sin(radians(vendor_address.longitude))
-              )
-            ) * 100
-          ) / 100
-          ELSE NULL
-        END`,
-        'calculated_distance'
+      dataQB.orderBy(
+        `menu_item.${searchDto.sort_by}`,
+        sortOrder as 'ASC' | 'DESC',
       );
-      dataQueryBuilder.setParameter('lon', searchDto.longitude);
-      dataQueryBuilder.setParameter('lat', searchDto.latitude);
+    } else {
+      dataQB.orderBy('menu_item.created_at', 'DESC');
     }
-    
-    const rawItems = await dataQueryBuilder.getRawAndEntities();
-    
-    // Map raw results to entities with distance information
-    const items = rawItems.entities.map((entity, index) => {
-      const rawItem = rawItems.raw[index];
-      
-      if (searchDto.latitude && searchDto.longitude) {
-        // Use the database-calculated distance
-        const distance = rawItem.calculated_distance;
-        (entity as MenuItemWithDistanceDto).distance = distance;
-      }
-      
-      return entity;
+
+    // -------- APPLY PAGINATION --------
+    const result = await fetchPage(dataQB, {
+      page,
+      count: limit,
     });
-    
-    return { items, total };
+
+    // Attach distance back to each item
+    if (searchDto.latitude && searchDto.longitude) {
+      result.documents = result.documents.map((item: any) => {
+        (item as any).distance = (item as any).calculated_distance;
+        return item;
+      });
+    }
+
+    return {
+      items: result.documents,
+      meta: result.meta,
+      total,
+    };
   }
 
-  async update(id: string, updateData: Partial<MenuItem>): Promise<MenuItem | null> {
+  async update(
+    id: string,
+    updateData: Partial<MenuItem>,
+  ): Promise<MenuItem | null> {
     await this.menuItemRepository.update(id, updateData);
     return await this.findById(id);
   }
@@ -139,18 +111,22 @@ export class MenuItemRepository {
   async toggleAvailability(id: string): Promise<MenuItem | null> {
     const menuItem = await this.findById(id);
     if (!menuItem) return null;
-    
+
     menuItem.is_available = !menuItem.is_available;
     return await this.menuItemRepository.save(menuItem);
   }
 
   async bulkToggleAvailability(ids: string[], value: boolean): Promise<number> {
-    const result = await this.menuItemRepository.update(ids, { is_available: value });
+    const result = await this.menuItemRepository.update(ids, {
+      is_available: value,
+    });
     return result.affected || 0;
   }
 
   async bulkUpdateCategory(ids: string[], categoryId: string): Promise<number> {
-    const result = await this.menuItemRepository.update(ids, { category_id: categoryId });
+    const result = await this.menuItemRepository.update(ids, {
+      category_id: categoryId,
+    });
     return result.affected || 0;
   }
 
@@ -159,170 +135,158 @@ export class MenuItemRepository {
     return result.affected || 0;
   }
 
-  private createCountQueryBuilder(searchDto: SearchMenuItemsDto): SelectQueryBuilder<MenuItem> {
-    const queryBuilder = this.menuItemRepository
-      .createQueryBuilder('menu_item')
-      .leftJoin('menu_item.vendor', 'vendor')
-      .leftJoin('vendor.address', 'vendor_address')
-      .where('menu_item.is_available = :isAvailable', { isAvailable: true });
+  createCountQueryBuilder(searchDto: SearchMenuItemsDto) {
+    const qb = this.menuItemRepository.createQueryBuilder('menu_item');
 
-    // Apply search query
-    if (searchDto.query) {
-      queryBuilder.andWhere(
-        '(menu_item.name ILIKE :query OR menu_item.description ILIKE :query)',
-        { query: `%${searchDto.query}%` }
-      );
-    }
-
-    // Apply category filter
-    if (searchDto.category_id) {
-      queryBuilder.andWhere('menu_item.category_id = :categoryId', { categoryId: searchDto.category_id });
-    }
-
-    // Apply vendor filter
+    // Same fast filters (NO joins unless needed)
     if (searchDto.vendor_id) {
-      queryBuilder.andWhere('menu_item.vendor_id = :vendorId', { vendorId: searchDto.vendor_id });
+      qb.andWhere('menu_item.vendor_id = :vendorId', {
+        vendorId: searchDto.vendor_id,
+      });
     }
 
-    // Apply price filters
-    if (searchDto.min_price !== undefined) {
-      queryBuilder.andWhere('menu_item.price >= :minPrice', { minPrice: searchDto.min_price });
-    }
-    if (searchDto.max_price !== undefined) {
-      queryBuilder.andWhere('menu_item.price <= :maxPrice', { maxPrice: searchDto.max_price });
+    if (searchDto.category_id) {
+      qb.andWhere('menu_item.category_id = :categoryId', {
+        categoryId: searchDto.category_id,
+      });
     }
 
-    // Apply availability filter
     if (searchDto.is_available !== undefined) {
-      queryBuilder.andWhere('menu_item.is_available = :isAvailable', { isAvailable: searchDto.is_available });
+      qb.andWhere('menu_item.is_available = :available', {
+        available: searchDto.is_available,
+      });
     }
 
-    // Apply proximity filtering if coordinates and max distance provided
-    if (searchDto.latitude && searchDto.longitude && searchDto.max_distance) {
-      // Filter vendors within the specified distance using standard coordinates
-      queryBuilder.andWhere(
-        'vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL'
-      );
-      
-      // Use Haversine formula for distance calculation in SQL
-      const maxDistanceKm = searchDto.max_distance;
-      queryBuilder.andWhere(
-        `(
-          6371 * acos(
-            cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
-            cos(radians(vendor_address.longitude) - radians(:lon)) +
-            sin(radians(:lat)) * sin(radians(vendor_address.latitude))
-          )
-        ) <= :maxDistance`,
-        {
-          lat: searchDto.latitude,
-          lon: searchDto.longitude,
-          maxDistance: maxDistanceKm
-        }
-      );
-    } else if (searchDto.latitude && searchDto.longitude) {
-      // For count query without max_distance, only check if coordinates exist
-      queryBuilder.andWhere(
-        'vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL'
+    if (searchDto.min_price !== undefined) {
+      qb.andWhere('menu_item.price >= :minPrice', {
+        minPrice: searchDto.min_price,
+      });
+    }
+
+    if (searchDto.max_price !== undefined) {
+      qb.andWhere('menu_item.price <= :maxPrice', {
+        maxPrice: searchDto.max_price,
+      });
+    }
+
+    if (searchDto.query) {
+      qb.andWhere(
+        `(LOWER(menu_item.name) LIKE LOWER(:q) 
+        OR LOWER(menu_item.description) LIKE LOWER(:q))`,
+        { q: `%${searchDto.query}%` },
       );
     }
 
-    return queryBuilder;
+    // Cheap bounding box only (NO distance math)
+    if (searchDto.latitude && searchDto.longitude) {
+      const maxDistanceKm = searchDto.max_distance ?? 10;
+
+      const lat = searchDto.latitude;
+      const lon = searchDto.longitude;
+
+      const latBuffer = maxDistanceKm / 111;
+      const lonBuffer = maxDistanceKm / 111;
+
+      qb.innerJoin('menu_item.vendor', 'vendor')
+        .innerJoin('vendor.address', 'vendor_address')
+        .andWhere(
+          `vendor_address.latitude BETWEEN :minLat AND :maxLat
+         AND vendor_address.longitude BETWEEN :minLon AND :maxLon`,
+          {
+            minLat: lat - latBuffer,
+            maxLat: lat + latBuffer,
+            minLon: lon - lonBuffer,
+            maxLon: lon + lonBuffer,
+          },
+        );
+    }
+
+    return qb;
   }
 
-  private createSearchQueryBuilder(searchDto: SearchMenuItemsDto): SelectQueryBuilder<MenuItem> {
-    const queryBuilder = this.menuItemRepository
+  createSearchQueryBuilder(searchDto: SearchMenuItemsDto) {
+    const qb = this.menuItemRepository
       .createQueryBuilder('menu_item')
       .leftJoinAndSelect('menu_item.vendor', 'vendor')
-      .leftJoinAndSelect('menu_item.category', 'category')
       .leftJoinAndSelect('vendor.address', 'vendor_address')
-      .where('menu_item.is_available = :isAvailable', { isAvailable: true });
+      .leftJoinAndSelect('menu_item.category', 'category');
 
-    // Apply search query
-    if (searchDto.query) {
-      queryBuilder.andWhere(
-        '(menu_item.name ILIKE :query OR menu_item.description ILIKE :query)',
-        { query: `%${searchDto.query}%` }
-      );
-    }
-
-    // Apply category filter
-    if (searchDto.category_id) {
-      queryBuilder.andWhere('menu_item.category_id = :categoryId', { categoryId: searchDto.category_id });
-    }
-
-    // Apply vendor filter
+    // -------- FAST FILTERS FIRST --------
     if (searchDto.vendor_id) {
-      queryBuilder.andWhere('menu_item.vendor_id = :vendorId', { vendorId: searchDto.vendor_id });
+      qb.andWhere('menu_item.vendor_id = :vendorId', {
+        vendorId: searchDto.vendor_id,
+      });
     }
 
-    // Apply price filters
-    if (searchDto.min_price !== undefined) {
-      queryBuilder.andWhere('menu_item.price >= :minPrice', { minPrice: searchDto.min_price });
-    }
-    if (searchDto.max_price !== undefined) {
-      queryBuilder.andWhere('menu_item.price <= :maxPrice', { maxPrice: searchDto.max_price });
+    if (searchDto.category_id) {
+      qb.andWhere('menu_item.category_id = :categoryId', {
+        categoryId: searchDto.category_id,
+      });
     }
 
-    // Apply availability filter
     if (searchDto.is_available !== undefined) {
-      queryBuilder.andWhere('menu_item.is_available = :isAvailable', { isAvailable: searchDto.is_available });
+      qb.andWhere('menu_item.is_available = :available', {
+        available: searchDto.is_available,
+      });
     }
 
-    // Apply proximity filtering if coordinates and max distance provided
-    if (searchDto.latitude && searchDto.longitude && searchDto.max_distance) {
-      // Filter vendors within the specified distance using standard coordinates
-      queryBuilder.andWhere(
-        'vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL'
+    if (searchDto.min_price !== undefined) {
+      qb.andWhere('menu_item.price >= :minPrice', {
+        minPrice: searchDto.min_price,
+      });
+    }
+
+    if (searchDto.max_price !== undefined) {
+      qb.andWhere('menu_item.price <= :maxPrice', {
+        maxPrice: searchDto.max_price,
+      });
+    }
+
+    if (searchDto.query) {
+      qb.andWhere(
+        `(LOWER(menu_item.name) LIKE LOWER(:q) 
+        OR LOWER(menu_item.description) LIKE LOWER(:q))`,
+        { q: `%${searchDto.query}%` },
       );
-      
-      // Use Haversine formula for distance calculation in SQL
-      // This is more compatible than PostGIS spatial functions
-      const maxDistanceKm = searchDto.max_distance;
-      queryBuilder.andWhere(
-        `(
-          6371 * acos(
-            cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
-            cos(radians(vendor_address.longitude) - radians(:lon)) +
-            sin(radians(:lat)) * sin(radians(vendor_address.latitude))
-          )
-        ) <= :maxDistance`,
+    }
+
+    // -------- LOCATION FILTER (FAST BOUNDING BOX FIRST) --------
+    if (searchDto.latitude && searchDto.longitude) {
+      const maxDistanceKm = searchDto.max_distance ?? 10;
+
+      const lat = searchDto.latitude;
+      const lon = searchDto.longitude;
+
+      const latBuffer = maxDistanceKm / 111;
+      const lonBuffer = maxDistanceKm / 111;
+
+      qb.andWhere(
+        `vendor_address.latitude BETWEEN :minLat AND :maxLat
+       AND vendor_address.longitude BETWEEN :minLon AND :maxLon`,
         {
-          lat: searchDto.latitude,
-          lon: searchDto.longitude,
-          maxDistance: maxDistanceKm
-        }
+          minLat: lat - latBuffer,
+          maxLat: lat + latBuffer,
+          minLon: lon - lonBuffer,
+          maxLon: lon + lonBuffer,
+        },
       );
+
+      // -------- ADD REAL DISTANCE CALCULATION --------
+      qb.addSelect(
+        `(
+        6371 * acos(
+          cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
+          cos(radians(vendor_address.longitude) - radians(:lon)) +
+          sin(radians(:lat)) * sin(radians(vendor_address.latitude))
+        )
+      )`,
+        'calculated_distance',
+      );
+
+      qb.setParameter('lat', lat);
+      qb.setParameter('lon', lon);
     }
 
-    // Apply delivery-only filter when coordinates are provided
-    if (searchDto.latitude && searchDto.longitude && searchDto.delivery_only !== false) {
-      // Ensure vendor has a valid address for delivery
-      queryBuilder.andWhere(
-        'vendor_address.latitude IS NOT NULL AND vendor_address.longitude IS NOT NULL'
-      );
-      
-      // Filter out vendors that might be too far for practical delivery
-      // This is a fallback when max_distance is not specified
-      if (!searchDto.max_distance) {
-        const defaultMaxDistance = 15; // Default 15km for practical delivery
-        queryBuilder.andWhere(
-          `(
-            6371 * acos(
-              cos(radians(:lat)) * cos(radians(vendor_address.latitude)) *
-              cos(radians(vendor_address.longitude) - radians(:lon)) +
-              sin(radians(:lat)) * sin(radians(vendor_address.latitude))
-            )
-          ) <= :defaultMaxDistance`,
-          {
-            lat: searchDto.latitude,
-            lon: searchDto.longitude,
-            defaultMaxDistance: defaultMaxDistance
-          }
-        );
-      }
-    }
-
-    return queryBuilder;
+    return qb;
   }
-} 
+}
