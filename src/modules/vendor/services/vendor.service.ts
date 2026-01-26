@@ -16,12 +16,14 @@ import { UserService } from '../../user/services/user.service';
 import { EmailNotificationService } from '../../notification/services/email-notification.service';
 import { NotificationService } from '../../notification/notification.service';
 import { AddressFormatter } from '../../../utils/address-formatter';
+import { fetchPage } from '@/utils/pagination.utils';
 
 @Injectable()
 export class VendorService {
   private readonly logger = new Logger(VendorService.name);
   // Enable verbose logging only in development
-  private readonly enableAddressLogging = process.env.NODE_ENV === 'development';
+  private readonly enableAddressLogging =
+    process.env.NODE_ENV === 'development';
 
   constructor(
     @InjectRepository(Vendor)
@@ -107,7 +109,7 @@ export class VendorService {
   async getVendorById(vendorId: string): Promise<Vendor | null> {
     const vendor = await this.vendorRepository.findOne({
       where: { id: vendorId },
-      relations: ['address', 'user'],
+      relations: ['address', 'user', 'menu'],
     });
 
     return vendor ? this.enrichVendorWithAddressDetails(vendor) : null;
@@ -122,14 +124,14 @@ export class VendorService {
     return vendor ? this.enrichVendorWithAddressDetails(vendor) : null;
   }
 
-  async getAllVendors(): Promise<Vendor[]> {
-    const vendors = await this.vendorRepository.find({
-      relations: ['address', 'user'],
-      order: { created_at: 'DESC' },
-    });
+  // async getAllVendors(): Promise<Vendor[]> {
+  //   const vendors = await this.vendorRepository.find({
+  //     relations: ['address', 'user'],
+  //     order: { created_at: 'DESC' },
+  //   });
 
-    return vendors.map(vendor => this.enrichVendorWithAddressDetails(vendor));
-  }
+  //   return vendors.map(vendor => this.enrichVendorWithAddressDetails(vendor));
+  // }
 
   async getActiveVendors(): Promise<Vendor[]> {
     const vendors = await this.vendorRepository.find({
@@ -161,26 +163,27 @@ export class VendorService {
       {
         enableLogging: this.enableAddressLogging,
         logger: this.logger,
-      }
+      },
     );
 
     (vendor as any).fullAddress = fullAddress;
 
     // Add formatted address with line breaks for display
-    (vendor as any).formattedAddress = AddressFormatter.formatAddressWithLineBreaks(
-      {
-        address_line_1: vendor.address.address_line_1,
-        address_line_2: vendor.address.address_line_2,
-        city: vendor.address.city,
-        state: vendor.address.state,
-        postal_code: vendor.address.postal_code,
-        country: vendor.address.country,
-      },
-      {
-        enableLogging: this.enableAddressLogging,
-        logger: this.logger,
-      }
-    );
+    (vendor as any).formattedAddress =
+      AddressFormatter.formatAddressWithLineBreaks(
+        {
+          address_line_1: vendor.address.address_line_1,
+          address_line_2: vendor.address.address_line_2,
+          city: vendor.address.city,
+          state: vendor.address.state,
+          postal_code: vendor.address.postal_code,
+          country: vendor.address.country,
+        },
+        {
+          enableLogging: this.enableAddressLogging,
+          logger: this.logger,
+        },
+      );
 
     // Add individual address components (cleaned automatically)
     const addressComponents = AddressFormatter.extractAddressComponents(
@@ -197,7 +200,7 @@ export class VendorService {
       {
         enableLogging: this.enableAddressLogging,
         logger: this.logger,
-      }
+      },
     );
 
     (vendor as any).addressComponents = addressComponents;
@@ -228,7 +231,7 @@ export class VendorService {
       address.address_line_2,
       address.city,
       address.state,
-      address.country
+      address.country,
     );
 
     // If cleanAddressLine2 returned null but address_line_2 exists, it's corrupted
@@ -236,7 +239,7 @@ export class VendorService {
 
     if (isCorrupted) {
       this.logger.log(
-        `Cleaning corrupted address_line_2 for vendor ${vendorId}: "${address.address_line_2}"`
+        `Cleaning corrupted address_line_2 for vendor ${vendorId}: "${address.address_line_2}"`,
       );
 
       // Clear the corrupted address_line_2
@@ -252,13 +255,13 @@ export class VendorService {
    * Clean all vendor addresses (run once to fix database)
    * Returns summary of cleaning operation
    */
-  async cleanAllVendorAddresses(): Promise<{ 
-    cleaned: number; 
+  async cleanAllVendorAddresses(): Promise<{
+    cleaned: number;
     total: number;
     corrupted: string[];
   }> {
     this.logger.log('Starting address cleanup for all vendors...');
-    
+
     const vendors = await this.vendorRepository.find({
       relations: ['address'],
     });
@@ -274,7 +277,7 @@ export class VendorService {
           vendor.address.address_line_2,
           vendor.address.city,
           vendor.address.state,
-          vendor.address.country
+          vendor.address.country,
         );
 
         const isCorrupted = !cleanedLine2;
@@ -282,7 +285,7 @@ export class VendorService {
         if (isCorrupted) {
           try {
             corruptedAddresses.push(
-              `${vendor.business_name}: "${vendor.address.address_line_2}"`
+              `${vendor.business_name}: "${vendor.address.address_line_2}"`,
             );
             await this.cleanVendorAddress(vendor.id);
             cleaned++;
@@ -297,13 +300,13 @@ export class VendorService {
     }
 
     this.logger.log(
-      `✅ Address cleanup complete: ${cleaned}/${vendors.length} addresses cleaned`
+      `✅ Address cleanup complete: ${cleaned}/${vendors.length} addresses cleaned`,
     );
 
-    return { 
-      cleaned, 
+    return {
+      cleaned,
       total: vendors.length,
-      corrupted: corruptedAddresses
+      corrupted: corruptedAddresses,
     };
   }
 
@@ -393,8 +396,59 @@ export class VendorService {
     }
 
     vendor.is_active = false;
-    const savedVendor = await this.vendorRepository.save(vendor);
+    return await this.vendorRepository.save(vendor);
+  }
 
-    return this.enrichVendorWithAddressDetails(savedVendor);
+  // Admin methods for vendor management
+  // async getAllVendors(): Promise<Vendor[]> {
+  //   return await this.vendorRepository.find({
+  //     relations: ['address'], // Include address details
+  //     order: { created_at: 'DESC' }
+  //   });
+  // }
+
+  async getAllVendors(page = 1, limit = 10) {
+    const qb = this.vendorRepository
+      .createQueryBuilder('vendor')
+      .leftJoinAndSelect('vendor.address', 'address')
+      .where('vendor.deleted_at IS NULL')
+      .orderBy('vendor.created_at', 'DESC');
+    return await fetchPage(qb, {
+      page,
+      count: limit,
+    });
+  }
+
+  // // i should add where orderId is null here
+  // async getVendorById(vendorId: string): Promise<Vendor | null> {
+  //   return await this.vendorRepository.findOne({
+  //     where: { id: vendorId },
+  //     relations: ['address', 'user', 'menu'], // Include address details
+  //   });
+  // }
+
+  // async getVendorByIdForDelivery(vendorId: string): Promise<Vendor | null> {
+  //   return await this.vendorRepository.findOne({
+  //     where: { id: vendorId },
+  //     relations: ['address', 'user'], // Include address details
+  //   });
+  // }
+
+  async getVerificationStats(): Promise<{
+    total: number;
+    active: number;
+    inactive: number;
+  }> {
+    const [total, active, inactive] = await Promise.all([
+      this.vendorRepository.count(),
+      this.vendorRepository.count({ where: { is_active: true } }),
+      this.vendorRepository.count({ where: { is_active: false } }),
+    ]);
+
+    return {
+      total,
+      active,
+      inactive,
+    };
   }
 }
