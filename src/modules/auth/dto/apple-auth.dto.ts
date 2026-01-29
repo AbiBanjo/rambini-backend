@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsString, IsNotEmpty, IsOptional, IsEmail } from 'class-validator';
 
 export class AppleAuthDto {
   @IsString()
@@ -18,7 +19,9 @@ export class AppleAuthDto {
   lastName?: string;
 
   @IsString()
+  @IsEmail()
   @IsOptional()
+  @Transform(({ value }) => value?.toLowerCase().trim())
   email?: string;
 }
 
