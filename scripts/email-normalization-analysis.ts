@@ -5,8 +5,8 @@ import { Wallet } from '../src/entities/wallet.entity';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-// Load environment variables
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Load environment variables from .env.production
+dotenv.config({ path: path.resolve(__dirname, '../.env.production') });
 
 interface EmailAnalysis {
   originalEmail: string;
@@ -121,7 +121,7 @@ async function analyzeEmails() {
     await AppDataSource.destroy();
     console.log('\n✅ Analysis complete. Database connection closed.');
 
-  } catch (error) {
+ } catch (error) {
     if (error instanceof Error) {
       console.error('❌ Analysis failed:', error.message);
     } else {
