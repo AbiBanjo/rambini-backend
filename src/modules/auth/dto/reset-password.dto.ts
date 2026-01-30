@@ -1,5 +1,6 @@
 import { IsString, IsNotEmpty, IsEmail, MinLength, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 export class ResetPasswordDto {
   @ApiProperty({
@@ -9,6 +10,7 @@ export class ResetPasswordDto {
   @IsString()
   @IsNotEmpty()
   @IsEmail()
+  @Transform(({ value }) => value?.toLowerCase().trim()) // ✅ ADD THIS LINE
   email: string;
 
   @ApiProperty({
