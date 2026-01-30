@@ -22,9 +22,6 @@
     "migration:revert": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm-ts-node-commonjs/dist/cli.js migration:revert -d src/database/typeorm-cli.config.ts",
     "schema:sync": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm-ts-node-commonjs/dist/cli.js schema:sync -d src/database/typeorm-cli.config.ts",
     "db:seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seeder.ts",
-    "script:analyze-emails": "ts-node -r tsconfig-paths/register scripts/email-normalization-analysis.ts",
-    "script:normalize-emails-dry-run": "ts-node -r tsconfig-paths/register scripts/email-normalization-dry-run.ts",
-    "script:normalize-emails": "ts-node -r tsconfig-paths/register scripts/normalize-and-deduplicate-emails.ts",
     "db:clear": "ts-node -r tsconfig-paths/register scripts/clear-database.ts",
     "db:fix-null-emails": "ts-node -r tsconfig-paths/register run-fix-null-emails.ts",
     "fix-duplicates": "ts-node -r tsconfig-paths/register fix-duplicates.ts"
