@@ -399,25 +399,25 @@ export class VendorService {
     return await this.vendorRepository.save(vendor);
   }
 
-  // Admin methods for vendor management
-  // async getAllVendors(): Promise<Vendor[]> {
-  //   return await this.vendorRepository.find({
-  //     relations: ['address'], // Include address details
-  //     order: { created_at: 'DESC' }
-  //   });
-  // }
-
-  async getAllVendors(page = 1, limit = 10) {
-    const qb = this.vendorRepository
-      .createQueryBuilder('vendor')
-      .leftJoinAndSelect('vendor.address', 'address')
-      .where('vendor.deleted_at IS NULL')
-      .orderBy('vendor.created_at', 'DESC');
-    return await fetchPage(qb, {
-      page,
-      count: limit,
+  //Admin methods for vendor management
+  async getAllVendors(): Promise<Vendor[]> {
+    return await this.vendorRepository.find({
+      relations: ['address'], // Include address details
+      order: { created_at: 'DESC' },
     });
   }
+
+  // async getAllVendors(page = 1, limit = 10) {
+  //   const qb = this.vendorRepository
+  //     .createQueryBuilder('vendor')
+  //     .leftJoinAndSelect('vendor.address', 'address')
+  //     .where('vendor.deleted_at IS NULL')
+  //     .orderBy('vendor.created_at', 'DESC');
+  //   return await fetchPage(qb, {
+  //     page,
+  //     count: limit,
+  //   });
+  // }
 
   // // i should add where orderId is null here
   // async getVendorById(vendorId: string): Promise<Vendor | null> {

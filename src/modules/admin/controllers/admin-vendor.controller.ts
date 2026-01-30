@@ -28,7 +28,7 @@ import { Ipagination } from '@/utils/pagination.utils';
 
 @ApiTags('Admin - Vendors')
 @Controller('admin/vendors')
-@UseGuards(JwtAuthGuard, AdminAuthGuard)
+//@UseGuards(JwtAuthGuard, AdminAuthGuard)
 @ApiBearerAuth()
 export class AdminVendorController {
   constructor(
@@ -96,13 +96,11 @@ export class AdminVendorController {
     },
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getAllVendors(
-    @Query('page') page: number,
-    @Query('limit') limit: number,
-  ) {
+  async getAllVendors() // @Query('limit') limit: number, // @Query('page') page: number,
+  {
     // VendorService.getAllVendors() now returns enriched vendors
     // No need for manual transformation
-    return await this.vendorService.getAllVendors(page, limit);
+    return await this.vendorService.getAllVendors();
   }
 
   @Get(':vendorId')
