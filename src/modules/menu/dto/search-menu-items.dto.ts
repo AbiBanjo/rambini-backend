@@ -50,6 +50,17 @@ export class SearchMenuItemsDto {
   @Transform(({ value }) => value === 'true' || value === true)
   is_available?: boolean;
 
+  // ✅ NEW: Include inactive vendors (for admin only)
+  @ApiPropertyOptional({ 
+    description: 'Include inactive vendors in results. When false or not set, only active vendors are returned. Typically used by admin endpoints.',
+    default: false,
+    example: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  include_inactive?: boolean;
+
   @ApiPropertyOptional({ 
     description: 'Sort by field. Note: When coordinates are provided, distance sorting takes priority',
     enum: SortBy
@@ -141,4 +152,4 @@ export class SearchMenuItemsDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   delivery_only?: boolean;
-} 
+}

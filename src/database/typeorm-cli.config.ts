@@ -21,8 +21,9 @@ import {
   DeliveryTracking,
   Withdrawal,
   Bank,
-  Coupon,        // ADD THIS
-  CouponUsage    // ADD THIS
+  Coupon,
+  CouponUsage,
+  MenuLike
 } from '../entities';
 
 // Load environment variables
@@ -56,8 +57,9 @@ export default new DataSource({
     DeliveryTracking,
     Withdrawal,
     Bank,
-    Coupon,        // ADD THIS
-    CouponUsage    // ADD THIS
+    Coupon,
+    CouponUsage,
+    MenuLike  // ✅ ADD THIS
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,

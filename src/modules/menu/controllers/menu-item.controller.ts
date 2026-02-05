@@ -15,6 +15,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   ValidationPipe,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -120,19 +121,18 @@ export class MenuItemController {
       createDto,
       file,
     );
-    // return this.mapToResponseDto(menuItem);
   }
 
   @Get('')
   @ApiOperation({
     summary: 'Search and filter menu items',
     description:
-      'Search menu items with optional proximity-based sorting and filtering. When coordinates are provided (either directly via latitude/longitude or via address_id), results include distance information and are sorted by proximity. Address ID can be used as an alternative to providing coordinates directly.',
+      'Search menu items with optional proximity-based sorting and filtering. When coordinates are provided (either directly via latitude/longitude or via address_id), results include distance information and are sorted by proximity. If authenticated, includes like information (like_count and is_liked_by_user).',
   })
   @ApiResponse({
     status: 200,
     description:
-      'Menu items retrieved successfully with optional distance information',
+      'Menu items retrieved successfully with optional distance and like information',
     type: SearchMenuItemsResponseDto,
   })
   @ApiQuery({
@@ -212,8 +212,11 @@ export class MenuItemController {
   async searchMenuItems(
     @Query(new ValidationPipe({ transform: true }))
     searchDto: SearchMenuItemsDto,
+    @Req() req: any, // ✅ Add Request to get user
   ): Promise<SearchMenuItemsResponseDto> {
-    return await this.menuItemService.searchMenuItems(searchDto);
+    // ✅ Extract userId if authenticated (undefined if not)
+    const userId = req.user?.userId;
+    return await this.menuItemService.searchMenuItems(searchDto, userId);
   }
 
   @Get('vendor')
@@ -222,45 +225,48 @@ export class MenuItemController {
   @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
   @ApiResponse({
     status: 200,
-    description: 'Vendor menu items retrieved successfully',
+    description: 'Vendor menu items retrieved successfully with like information',
     type: [MenuItemWithDistanceDto],
   })
-  async getVendorMenu(@GetUser() user: User) {
-    const items = await this.menuItemService.getVendorMenu(user.id);
-    // return items.map(item => this.mapToResponseDto(item));
-    return items;
+  async getVendorMenu(@GetUser() user: User, @Req() req: any) {
+    // ✅ Pass requesting user ID for like info
+    const requestingUserId = req.user?.userId;
+    return await this.menuItemService.getVendorMenu(user.id, requestingUserId);
   }
 
   @Get('category/:categoryId')
-  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get menu items by category' })
   @ApiParam({ name: 'categoryId', description: 'Category ID' })
   @ApiResponse({
     status: 200,
-    description: 'Category menu items retrieved successfully',
+    description: 'Category menu items retrieved successfully with like information',
     type: [MenuItemWithDistanceDto],
   })
-  async getCategoryMenu(@Param('categoryId') categoryId: string) {
-    const items = await this.menuItemService.getCategoryMenu(categoryId);
-    // return items.map(item => this.mapToResponseDto(item));
-    return items;
+  async getCategoryMenu(
+    @Param('categoryId') categoryId: string,
+    @Req() req: any, // ✅ Add Request
+  ) {
+    // ✅ Extract userId if authenticated
+    const userId = req.user?.userId;
+    return await this.menuItemService.getCategoryMenu(categoryId, userId);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get menu item by ID' })
+  @ApiOperation({ summary: 'Get menu item by ID with like information' })
   @ApiParam({ name: 'id', description: 'Menu item ID' })
   @ApiResponse({
     status: 200,
-    description: 'Menu item retrieved successfully',
+    description: 'Menu item retrieved successfully with like information',
     type: MenuItemWithDistanceDto,
   })
   @ApiResponse({ status: 404, description: 'Menu item not found' })
   async getMenuItemById(
     @Param('id') id: string,
+    @Req() req: any, // ✅ Add Request
   ): Promise<MenuItemWithDistanceDto> {
-    const menuItem = await this.menuItemService.getMenuItemById(id);
-    // return this.mapToResponseDto(menuItem);
-    return menuItem;
+    // ✅ Extract userId if authenticated
+    const userId = req.user?.userId;
+    return await this.menuItemService.getMenuItemById(id, userId);
   }
 
   @Put(':id')
@@ -331,7 +337,6 @@ export class MenuItemController {
       updateDto,
       file,
     );
-    // return this.mapToResponseDto(menuItem);
     return menuItem;
   }
 
@@ -382,7 +387,6 @@ export class MenuItemController {
       id,
       user.id,
     );
-    // return this.mapToResponseDto(menuItem);
     return menuItem;
   }
 
@@ -439,7 +443,7 @@ export class MenuItemController {
     )
     file: Express.Multer.File,
   ) {
-    const menuItem = await this.menuItemService.getMenuItemById(id);
+    const menuItem = await this.menuItemService.getMenuItemById(id, req.user?.userId);
     if (menuItem.vendor_id !== req.user.vendor_id) {
       throw new Error('You can only upload images for your own menu items');
     }

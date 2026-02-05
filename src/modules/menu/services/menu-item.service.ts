@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { MenuItemRepository } from '../repositories/menu-item.repository';
 import { CategoryRepository } from '../repositories/category.repository';
+import { MenuLikeService } from './menu-like.service';
 import {
   CreateMenuItemDto,
   UpdateMenuItemDto,
@@ -16,6 +17,7 @@ import {
   SearchMenuItemsResponseDto,
   MenuItemWithDistanceDto,
 } from 'src/modules/menu/dto';
+import { MenuItemWithLikeDto } from '../dto/menu-like.dto';
 import { MenuItem } from 'src/entities';
 import { VendorService } from 'src/modules/vendor/services/vendor.service';
 import { AddressService } from 'src/modules/user/services/address.service';
@@ -30,6 +32,7 @@ export class MenuItemService {
     private readonly vendorService: VendorService,
     private readonly addressService: AddressService,
     private readonly configService: ConfigService,
+    private readonly menuLikeService: MenuLikeService, // ✅ Inject MenuLikeService
   ) {}
 
   async createMenuItem(
@@ -135,32 +138,64 @@ export class MenuItemService {
     return menuItem;
   }
 
-  async getMenuItemById(id: string): Promise<MenuItem> {
+  async getMenuItemById(
+    id: string,
+    userId?: string,
+  ): Promise<MenuItemWithLikeDto> {
     const menuItem = await this.menuItemRepository.findById(id);
     if (!menuItem) {
       throw new NotFoundException(`Menu item with ID ${id} not found`);
     }
-    return menuItem;
+
+    // ✅ Enrich with like information
+    const enrichedItems = await this.menuLikeService.enrichMenuItemsWithLikes(
+      [menuItem],
+      userId,
+    );
+
+    return enrichedItems[0];
   }
 
-  async getVendorMenu(userId: string): Promise<MenuItem[]> {
-    //
+  async getVendorMenu(
+    userId: string,
+    requestingUserId?: string,
+  ): Promise<MenuItemWithLikeDto[]> {
     const vendor = await this.vendorService.getVendorByUserId(userId);
     if (!vendor) {
       throw new NotFoundException(`Vendor with ID ${userId} not found`);
     }
     const vendorId = vendor.id;
     this.logger.log(`Fetching menu for vendor ${vendorId}`);
-    return await this.menuItemRepository.findByVendorId(vendorId);
+
+    const menuItems = await this.menuItemRepository.findByVendorId(vendorId);
+
+    // ✅ Enrich with like information
+    return await this.menuLikeService.enrichMenuItemsWithLikes(
+      menuItems,
+      requestingUserId,
+    );
   }
 
-  async getCategoryMenu(categoryId: string): Promise<MenuItem[]> {
+  async getCategoryMenu(
+    categoryId: string,
+    userId?: string,
+  ): Promise<MenuItemWithLikeDto[]> {
     this.logger.log(`Fetching menu items for category ${categoryId}`);
-    return await this.menuItemRepository.findByCategoryId(categoryId);
+
+    const menuItems = await this.menuItemRepository.findByCategoryId(
+      categoryId,
+    );
+
+    // ✅ Enrich with like information
+    return await this.menuLikeService.enrichMenuItemsWithLikes(
+      menuItems,
+      userId,
+    );
   }
 
   async searchMenuItems(
     searchDto: SearchMenuItemsDto,
+    userId?: string,
   ): Promise<SearchMenuItemsResponseDto> {
     this.logger.log(
       `Searching menu items with query: ${searchDto.query || 'all'}`,
@@ -247,7 +282,16 @@ export class MenuItemService {
 
     const result = await this.menuItemRepository.search(resolvedSearchDto);
 
-    return result;
+    // ✅ Enrich items with like information
+    const enrichedItems = await this.menuLikeService.enrichMenuItemsWithLikes(
+      result.items,
+      userId,
+    );
+
+    return {
+      ...result,
+      items: enrichedItems,
+    };
   }
 
   async updateMenuItem(
@@ -257,7 +301,10 @@ export class MenuItemService {
   ): Promise<MenuItem> {
     this.logger.log(`Updating menu item ${id} for vendor ${vendorId}`);
 
-    const menuItem = await this.getMenuItemById(id);
+    const menuItem = await this.menuItemRepository.findById(id);
+    if (!menuItem) {
+      throw new NotFoundException(`Menu item with ID ${id} not found`);
+    }
 
     // Verify ownership
     if (menuItem.vendor_id !== vendorId) {
@@ -297,7 +344,7 @@ export class MenuItemService {
       throw new NotFoundException(`Vendor with ID ${userId} not found`);
     }
 
-    const menuItem = await this.getMenuItemById(id);
+    const menuItem = await this.menuItemRepository.findById(id);
     // if menu does not exist
     if (!menuItem) {
       throw new NotFoundException('Menu item not found');
@@ -356,7 +403,10 @@ export class MenuItemService {
   async deleteMenuItem(id: string, userId: string): Promise<void> {
     this.logger.log(`Deleting menu item ${id} for vendor ${userId}`);
 
-    const menuItem = await this.getMenuItemById(id);
+    const menuItem = await this.menuItemRepository.findById(id);
+    if (!menuItem) {
+      throw new NotFoundException(`Menu item with ID ${id} not found`);
+    }
 
     // get vendor id from user id
     const vendor = await this.vendorService.getVendorByUserId(userId);
@@ -376,7 +426,10 @@ export class MenuItemService {
   async toggleItemAvailability(id: string, userId: string): Promise<MenuItem> {
     this.logger.log(`Toggling availability for menu item ${id}`);
 
-    const menuItem = await this.getMenuItemById(id);
+    const menuItem = await this.menuItemRepository.findById(id);
+    if (!menuItem) {
+      throw new NotFoundException(`Menu item with ID ${id} not found`);
+    }
 
     // get vendor id from user id
     const vendor = await this.vendorService.getVendorByUserId(userId);
@@ -414,7 +467,10 @@ export class MenuItemService {
 
     // Verify all menu items belong to the vendor
     for (const itemId of bulkDto.menu_item_ids) {
-      const menuItem = await this.getMenuItemById(itemId);
+      const menuItem = await this.menuItemRepository.findById(itemId);
+      if (!menuItem) {
+        throw new NotFoundException(`Menu item ${itemId} not found`);
+      }
       if (menuItem.vendor_id !== vendorId) {
         throw new ForbiddenException(
           `Menu item ${itemId} does not belong to your vendor account`,
@@ -480,7 +536,10 @@ export class MenuItemService {
     vendorId: string,
   ): Promise<boolean> {
     try {
-      const menuItem = await this.getMenuItemById(menuItemId);
+      const menuItem = await this.menuItemRepository.findById(menuItemId);
+      if (!menuItem) {
+        return false;
+      }
       return menuItem.vendor_id === vendorId;
     } catch {
       return false;

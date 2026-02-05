@@ -56,6 +56,23 @@ export class Vendor extends BaseEntity {
   @JoinColumn({ name: 'address_id' })
   address?: Address;
 
+  // ✅ Virtual properties to expose user contact info
+  get phone_number(): string | null {
+    return this.user?.phone_number || null;
+  }
+
+  get email(): string | null {
+    return this.user?.email || null;
+  }
+
+  get profile_image_url(): string | null {
+    return this.user?.image_url || null;  
+  }
+
+  get full_name(): string | null {
+    return this.user?.full_name || null;
+  }
+
   // Methods
   approve(): void {
     this.is_active = true;

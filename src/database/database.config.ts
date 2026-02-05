@@ -6,6 +6,7 @@ import {
   Vendor, 
   Wallet, 
   MenuItem, 
+  MenuLike,      // ✅ ADD THIS
   Category, 
   CartItem,
   Notification, 
@@ -22,8 +23,8 @@ import {
   Withdrawal,
   Bank,
   SavedCard,
-  Coupon,        // ADD THIS
-  CouponUsage    // ADD THIS
+  Coupon,
+  CouponUsage
 } from 'src/entities';
 
 export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOptions => ({
@@ -39,6 +40,7 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
     Vendor, 
     Wallet, 
     MenuItem, 
+    MenuLike,      // ✅ ADD THIS
     Category, 
     CartItem,
     Notification, 
@@ -55,8 +57,8 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
     Withdrawal,
     Bank,
     SavedCard,
-    Coupon,        // ADD THIS
-    CouponUsage    // ADD THIS
+    Coupon,
+    CouponUsage
   ],
   migrations: configService.get('DB_USE_MIGRATIONS') === 'true' 
     ? [__dirname + '/migrations/*{.ts,.js}'] 

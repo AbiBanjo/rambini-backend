@@ -25,24 +25,38 @@ export class MenuItemRepository {
   async findById(id: string): Promise<MenuItem | null> {
     return await this.menuItemRepository.findOne({
       where: { id },
-      relations: ['vendor', 'category'],
+      relations: ['vendor', 'vendor.user', 'vendor.address', 'category'],
     });
   }
 
   async findByVendorId(vendorId: string): Promise<MenuItem[]> {
     return await this.menuItemRepository.find({
-      where: { vendor_id: vendorId },
-      relations: ['category'],
+      where: { 
+        vendor_id: vendorId,
+        // Note: Don't filter by vendor.is_active here because this is used by vendors to see their own menu
+      },
+      relations: ['category', 'vendor', 'vendor.user'],
       order: { name: 'ASC' },
     });
   }
 
   async findByCategoryId(categoryId: string): Promise<MenuItem[]> {
-    return await this.menuItemRepository.find({
-      where: { category_id: categoryId, is_available: true },
-      relations: ['vendor'],
-      order: { name: 'ASC' },
-    });
+    // ✅ Use query builder to filter by active vendors and available items
+    return await this.menuItemRepository
+      .createQueryBuilder('menu_item')
+      .leftJoinAndSelect('menu_item.vendor', 'vendor')
+      .leftJoinAndSelect('vendor.user', 'user')
+      .leftJoinAndSelect('vendor.address', 'address')
+      .leftJoinAndSelect('menu_item.category', 'category')
+      .where('menu_item.category_id = :categoryId', { categoryId })
+      // ✅ Filter by active vendors
+      .andWhere('vendor.is_active = :isActive', { isActive: true })
+      .andWhere('vendor.deleted_at IS NULL')
+      // ✅ Filter by available items
+      .andWhere('menu_item.is_available = :isAvailable', { isAvailable: true })
+      .andWhere('menu_item.deleted_at IS NULL')
+      .orderBy('menu_item.name', 'ASC')
+      .getMany();
   }
 
   async search(searchDto: SearchMenuItemsDto) {
@@ -138,7 +152,31 @@ export class MenuItemRepository {
   createCountQueryBuilder(searchDto: SearchMenuItemsDto) {
     const qb = this.menuItemRepository.createQueryBuilder('menu_item');
 
-    // Same fast filters (NO joins unless needed)
+    // ✅ ALWAYS join vendor to filter by is_active
+    qb.innerJoin('menu_item.vendor', 'vendor');
+
+    // ✅ CRITICAL: Filter by active vendors ONLY (unless include_inactive is true)
+    if (!searchDto.include_inactive) {
+      qb.andWhere('vendor.is_active = :vendorActive', { vendorActive: true });
+    }
+    
+    // Always filter out soft-deleted records
+    qb.andWhere('vendor.deleted_at IS NULL');
+    qb.andWhere('menu_item.deleted_at IS NULL');
+
+    // ✅ Default to showing only available items unless explicitly specified
+    if (searchDto.is_available !== undefined) {
+      qb.andWhere('menu_item.is_available = :available', {
+        available: searchDto.is_available,
+      });
+    } else {
+      // Default behavior: show only available items
+      qb.andWhere('menu_item.is_available = :available', {
+        available: true,
+      });
+    }
+
+    // Existing filters
     if (searchDto.vendor_id) {
       qb.andWhere('menu_item.vendor_id = :vendorId', {
         vendorId: searchDto.vendor_id,
@@ -148,12 +186,6 @@ export class MenuItemRepository {
     if (searchDto.category_id) {
       qb.andWhere('menu_item.category_id = :categoryId', {
         categoryId: searchDto.category_id,
-      });
-    }
-
-    if (searchDto.is_available !== undefined) {
-      qb.andWhere('menu_item.is_available = :available', {
-        available: searchDto.is_available,
       });
     }
 
@@ -187,8 +219,7 @@ export class MenuItemRepository {
       const latBuffer = maxDistanceKm / 111;
       const lonBuffer = maxDistanceKm / 111;
 
-      qb.innerJoin('menu_item.vendor', 'vendor')
-        .innerJoin('vendor.address', 'vendor_address')
+      qb.innerJoin('vendor.address', 'vendor_address')
         .andWhere(
           `vendor_address.latitude BETWEEN :minLat AND :maxLat
          AND vendor_address.longitude BETWEEN :minLon AND :maxLon`,
@@ -208,8 +239,30 @@ export class MenuItemRepository {
     const qb = this.menuItemRepository
       .createQueryBuilder('menu_item')
       .leftJoinAndSelect('menu_item.vendor', 'vendor')
+      .leftJoinAndSelect('vendor.user', 'user')  // ✅ Include user for phone, email, image_url
       .leftJoinAndSelect('vendor.address', 'vendor_address')
       .leftJoinAndSelect('menu_item.category', 'category');
+
+    // ✅ CRITICAL: Filter by active vendors ONLY (unless include_inactive is true)
+    if (!searchDto.include_inactive) {
+      qb.andWhere('vendor.is_active = :vendorActive', { vendorActive: true });
+    }
+    
+    // Always filter out soft-deleted records
+    qb.andWhere('vendor.deleted_at IS NULL');
+    qb.andWhere('menu_item.deleted_at IS NULL');
+
+    // ✅ Default to showing only available items unless explicitly specified
+    if (searchDto.is_available !== undefined) {
+      qb.andWhere('menu_item.is_available = :available', {
+        available: searchDto.is_available,
+      });
+    } else {
+      // Default behavior: show only available items
+      qb.andWhere('menu_item.is_available = :available', {
+        available: true,
+      });
+    }
 
     // -------- FAST FILTERS FIRST --------
     if (searchDto.vendor_id) {
@@ -221,12 +274,6 @@ export class MenuItemRepository {
     if (searchDto.category_id) {
       qb.andWhere('menu_item.category_id = :categoryId', {
         categoryId: searchDto.category_id,
-      });
-    }
-
-    if (searchDto.is_available !== undefined) {
-      qb.andWhere('menu_item.is_available = :available', {
-        available: searchDto.is_available,
       });
     }
 

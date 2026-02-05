@@ -45,6 +45,7 @@ export class AdminMenuController {
   @Get()
   @ApiOperation({
     summary: '[ADMIN ONLY]: Search and get all menu items',
+    description: 'Returns all menu items including those from inactive vendors by default. Use include_inactive=false to filter to active vendors only.',
   })
   @ApiResponse({
     status: 200,
@@ -58,6 +59,13 @@ export class AdminMenuController {
   @ApiQuery({ name: 'min_price', required: false, description: 'Minimum price' })
   @ApiQuery({ name: 'max_price', required: false, description: 'Maximum price' })
   @ApiQuery({ name: 'is_available', required: false, description: 'Availability filter' })
+  @ApiQuery({ 
+    name: 'include_inactive', 
+    required: false, 
+    description: 'Include inactive vendors (default: true for admin)',
+    type: Boolean,
+    example: true
+  })
   @ApiQuery({ name: 'sort_by', required: false, description: 'Sort field' })
   @ApiQuery({ name: 'sort_order', required: false, description: 'Sort order' })
   @ApiQuery({ name: 'page', required: false, description: 'Page number' })
@@ -65,6 +73,12 @@ export class AdminMenuController {
   async getAllMenuItems(
     @Query() searchDto: SearchMenuItemsDto,
   ): Promise<SearchMenuItemsResponseDto> {
+    // ✅ Admin gets all vendors by default (including inactive)
+    // If not explicitly set, default to true for admin
+    if (searchDto.include_inactive === undefined) {
+      searchDto.include_inactive = true;
+    }
+    
     return await this.menuItemService.searchMenuItems(searchDto);
   }
 
