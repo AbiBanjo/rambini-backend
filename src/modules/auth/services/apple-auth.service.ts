@@ -45,7 +45,7 @@ export class AppleAuthService {
   }
 
   /**
-   * Get Apple's public key for token verification
+   * Get Apple's public key for token verification from JWKS
    */
   private async getApplePublicKey(kid: string): Promise<string> {
     return new Promise((resolve, reject) => {
