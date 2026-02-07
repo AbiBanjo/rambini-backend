@@ -18,18 +18,24 @@ export interface AppleUserInfo {
 @Injectable()
 export class AppleAuthService {
   private readonly logger = new Logger(AppleAuthService.name);
-  private readonly clientId: string;
+  private readonly clientIds: string[]; // Changed to array
   private readonly jwksClient: JwksClient;
 
   constructor(private readonly configService: ConfigService) {
-    this.clientId = this.configService.get<string>('APPLE_CLIENT_ID');
+    const clientIdConfig = this.configService.get<string>('APPLE_CLIENT_ID');
+    
+    // Split by comma to support multiple client IDs
+    this.clientIds = clientIdConfig 
+      ? clientIdConfig.split(',').map(id => id.trim())
+      : [];
 
-    if (!this.clientId) {
+    if (this.clientIds.length === 0) {
       this.logger.warn('APPLE_CLIENT_ID is not configured');
+    } else {
+      this.logger.log(`Configured Apple Client IDs: ${this.clientIds.join(', ')}`);
     }
 
     // Initialize JWKS client for Apple's public keys
-    // jwks-rsa exports a default function, but TypeScript needs explicit handling
     const createJwksClient = (jwksRsa as any).default || jwksRsa;
     this.jwksClient = createJwksClient({
       jwksUri: 'https://appleid.apple.com/auth/keys',
@@ -70,31 +76,36 @@ export class AppleAuthService {
 
       // Get Apple's public key
       const publicKey = await this.getApplePublicKey(decoded.header.kid);
-      this.logger.log(publicKey)
+      this.logger.log(publicKey);
+      
       // Verify the token
       const payload = jwt.verify(identityToken, publicKey, {
         algorithms: ['RS256'],
       }) as jwt.JwtPayload;
 
-      this.logger.log(payload)
-      // Verify the audience (client_id)
-      // Apple tokens can have audience in different formats depending on configuration
-      // Handle both cases: clientId with or without 'com.' prefix
+      this.logger.log(payload);
+      
+      // Verify the audience (client_id) - now checking against multiple client IDs
       const tokenAudience = payload.aud as string;
       
-      // Normalize both values for comparison
-      const normalizeAudience = (aud: string) => {
-        // Remove 'com.' prefix if present for comparison
-        return aud.startsWith('com.') ? aud.substring(4) : aud;
-      };
+      // Check if token audience matches any of our configured client IDs
+      const isValidAudience = this.clientIds.some(clientId => {
+        // Exact match first
+        if (tokenAudience === clientId) {
+          return true;
+        }
+        
+        // Fallback: normalize and compare (handles edge cases)
+        const normalizeAudience = (aud: string) => {
+          return aud.startsWith('com.') ? aud.substring(4) : aud;
+        };
+        
+        return normalizeAudience(tokenAudience) === normalizeAudience(clientId);
+      });
 
-      const tokenAudienceNormalized = normalizeAudience(tokenAudience);
-      const clientIdNormalized = normalizeAudience(this.clientId);
-
-      // Check if audiences match (ignoring 'com.' prefix)
-      if (tokenAudienceNormalized !== clientIdNormalized) {
+      if (!isValidAudience) {
         this.logger.error(
-          `Token audience mismatch. Token audience: ${tokenAudience}, Expected: ${this.clientId}`,
+          `Token audience mismatch. Token audience: ${tokenAudience}, Expected one of: ${this.clientIds.join(', ')}`,
         );
         throw new UnauthorizedException('Token audience mismatch');
       }
@@ -146,4 +157,3 @@ export class AppleAuthService {
     throw new UnauthorizedException('Authorization code verification not implemented');
   }
 }
-
