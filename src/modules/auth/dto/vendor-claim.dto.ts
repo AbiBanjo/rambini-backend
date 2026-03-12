@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 export class VerifyVendorClaimDto {
   @ApiProperty({ description: 'Vendor claim token from magic link' })
