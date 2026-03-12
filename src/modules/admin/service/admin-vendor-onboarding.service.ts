@@ -66,9 +66,25 @@ export class AdminVendorOnboardingService {
 
     const existingUser = await this.userRepository.findOne({ where: { email: dto.email } });
     if (existingUser && existingUser.id !== vendor.user_id) {
-      throw new ConflictException('Email is already taken by another user');
+      if (existingUser.user_type === UserType.ADMIN) {
+        throw new ConflictException('Email is already taken by an admin account');
+      }
+
+      const existingVendorProfile = await this.vendorRepository.findOne({
+        where: { user_id: existingUser.id },
+      });
+
+      if (existingVendorProfile && existingVendorProfile.id !== vendor.id) {
+        throw new ConflictException('Email is already taken by another vendor');
+      }
+
+      // Link this vendor to the existing user (customer or vendor without another vendor profile)
+      vendor.user_id = existingUser.id;
+      await this.vendorRepository.save(vendor);
+      return await this.vendorRepository.findOne({ where: { id: vendor.id }, relations: ['user'] });
     }
 
+    // No conflict: update vendor's current user email
     vendor.user.email = dto.email;
     vendor.user.email_verified_at = null;
     await this.userRepository.save(vendor.user);

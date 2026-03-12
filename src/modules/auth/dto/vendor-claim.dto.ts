@@ -12,8 +12,9 @@ export class CompleteVendorClaimDto {
   @IsString()
   token: string;
 
-  @ApiProperty({ description: 'New password for the vendor account' })
+  @ApiProperty({ description: 'New password for the vendor account (required if account has no password yet)' })
+  @IsOptional()
   @IsString()
   @MinLength(8)
-  password: string;
+  password?: string;
 }

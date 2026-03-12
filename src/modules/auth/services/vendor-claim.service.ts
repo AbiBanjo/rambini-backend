@@ -65,21 +65,24 @@ export class VendorClaimService {
     return { claimUrl };
   }
 
-  async verifyClaimToken(token: string): Promise<{ vendorId: string; email: string; businessName: string }> {
+  async verifyClaimToken(token: string): Promise<{ vendorId: string; email: string; businessName: string; hasPassword: boolean }> {
     const payload = await this.getClaimPayload(token);
     const vendor = await this.vendorRepository.findOne({ where: { id: payload.vendorId }, relations: ['user'] });
     if (!vendor) {
       throw new NotFoundException('Vendor not found');
     }
 
+    const user = vendor.user;
+
     return {
       vendorId: vendor.id,
       email: payload.email,
       businessName: vendor.business_name,
+      hasPassword: !!user?.password,
     };
   }
 
-  async completeClaim(token: string, password: string): Promise<{ message: string }> {
+  async completeClaim(token: string, password?: string): Promise<{ message: string }> {
     const payload = await this.getClaimPayload(token);
 
     const user = await this.userRepository.findOne({ where: { id: payload.userId } });
@@ -93,13 +96,15 @@ export class VendorClaimService {
     }
 
     if (user.password) {
-      throw new BadRequestException('Account already claimed');
+      // Existing password: allow claim without resetting password
+    } else {
+      if (!password) {
+        throw new BadRequestException('Password is required to claim this account');
+      }
+      const saltRounds = this.configService.get<number>('security.bcryptRounds') || 12;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      user.password = hashedPassword;
     }
-
-    const saltRounds = this.configService.get<number>('security.bcryptRounds') || 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    user.password = hashedPassword;
     user.status = UserStatus.ACTIVE;
     user.user_type = UserType.VENDOR;
     user.email_verified_at = new Date();
