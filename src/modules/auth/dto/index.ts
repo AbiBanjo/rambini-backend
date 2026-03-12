@@ -14,3 +14,4 @@ export * from './resend-forgot-password.dto';
 export * from './google-auth.dto';
 export * from './apple-auth.dto';
 export * from './verify-profile-otp.dto';
+export * from './vendor-claim.dto';

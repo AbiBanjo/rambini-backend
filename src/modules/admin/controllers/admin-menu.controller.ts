@@ -33,6 +33,7 @@ import {
   SearchMenuItemsResponseDto,
   MenuItemWithDistanceDto,
   UpdateMenuItemDto,
+  CreateMenuItemDto,
 } from '../../menu/dto';
 
 @ApiTags('Admin - Menu Items')
@@ -41,6 +42,48 @@ import {
 @ApiBearerAuth()
 export class AdminMenuController {
   constructor(private readonly menuItemService: MenuItemService) {}
+
+  @Post('vendor/:vendorId')
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiOperation({ summary: '[ADMIN ONLY]: Create menu item for vendor (draft allowed)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        category_id: { type: 'string' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        price: { type: 'number' },
+        preparation_time_minutes: { type: 'number' },
+        is_available: { type: 'boolean' },
+        image: { type: 'string', format: 'binary' },
+      },
+      required: ['category_id', 'name', 'price'],
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Menu item created successfully',
+    type: MenuItemWithDistanceDto,
+  })
+  async createMenuItemForVendor(
+    @Param('vendorId') vendorId: string,
+    @Body() createDto: CreateMenuItemDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /image\/.*$/ }),
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    file?: Express.Multer.File,
+  ): Promise<MenuItemWithDistanceDto> {
+    return await this.menuItemService.adminCreateMenuItem(vendorId, createDto, file);
+  }
 
   @Get()
   @ApiOperation({

@@ -40,4 +40,27 @@ export class EmailTemplates {
       </div>
     `;
   }
+
+  static vendorClaim(claimUrl: string, businessName?: string): string {
+    const safeBusinessName = businessName || 'your business';
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+          <h2 style="color: #333; margin-bottom: 20px;">Claim Your Vendor Account</h2>
+          <p>Your vendor account for <strong>${safeBusinessName}</strong> is ready.</p>
+          <p>Click the button below to set your password and activate your vendor account.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${claimUrl}" style="background-color: #007bff; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block;">
+              Claim Account
+            </a>
+          </div>
+          <p>If the button doesn’t work, copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #555;">${claimUrl}</p>
+          <p style="margin-top: 30px; font-size: 12px; color: #666;">
+            This link will expire. If you didn’t request this, please ignore this email.
+          </p>
+        </div>
+      </div>
+    `;
+  }
 }

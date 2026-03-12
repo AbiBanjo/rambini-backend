@@ -26,6 +26,7 @@ import { AuthController } from './controllers/auth.controller';
 import { EmailAuthController } from './controllers/email-auth.controller';
 import { PasswordController } from './controllers/password.controller';
 import { SocialAuthController } from './controllers/social-auth.controller';
+import { VendorClaimController } from './controllers/vendor-claim.controller';
 
 // Guards
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -42,6 +43,7 @@ import { UserModule } from '../user/user.module';
 
 // Notification services
 import { NotificationModule } from '../notification/notification.module';
+import { VendorClaimService } from './services/vendor-claim.service';
 
 @Module({
   imports: [
@@ -66,6 +68,7 @@ import { NotificationModule } from '../notification/notification.module';
     EmailAuthController,      // ✅ ADD THIS
     PasswordController,        // ✅ ADD THIS
     SocialAuthController,      // ✅ ADD THIS
+    VendorClaimController,
   ],
   providers: [
     AuthService,
@@ -84,6 +87,7 @@ import { NotificationModule } from '../notification/notification.module';
     RedisService,
     AddressService,
     AuthResponseBuilder,
+    VendorClaimService,
   ],
   exports: [
     AuthService, 
@@ -94,6 +98,7 @@ import { NotificationModule } from '../notification/notification.module';
     TwilioVerifyService,
     EmailAuthService,
     PasswordService,
+    VendorClaimService,
   ],
 })
 export class AuthModule {}

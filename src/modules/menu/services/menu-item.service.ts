@@ -138,6 +138,55 @@ export class MenuItemService {
     return menuItem;
   }
 
+  async adminCreateMenuItem(
+    vendorId: string,
+    createDto: CreateMenuItemDto,
+    file?: Express.Multer.File,
+  ): Promise<MenuItem> {
+    this.logger.log(`Admin creating menu item for vendor ${vendorId}: ${createDto.name}`);
+
+    const vendor = await this.vendorService.getVendorById(vendorId);
+    if (!vendor) {
+      throw new NotFoundException(`Vendor with ID ${vendorId} not found`);
+    }
+
+    const category = await this.categoryRepository.findById(createDto.category_id);
+    if (!category) {
+      throw new NotFoundException(`Category with ID ${createDto.category_id} not found`);
+    }
+
+    const menuItemData: any = {
+      ...createDto,
+      vendor_id: vendor.id,
+      category_id: createDto.category_id,
+    };
+
+    // If vendor is inactive, force items to be unavailable
+    if (!vendor.is_active) {
+      menuItemData.is_available = false;
+    }
+
+    if (file) {
+      const { FileStorageService } = await import(
+        'src/modules/file-storage/services/file-storage.service'
+      );
+      const fileStorageService = new FileStorageService(this.configService);
+
+      const uploadedFile = await fileStorageService.uploadImage(file, {
+        quality: 85,
+        createThumbnail: true,
+        thumbnailSize: 300,
+      });
+
+      menuItemData.image_url = uploadedFile.url;
+      this.logger.log(`Image uploaded successfully: ${uploadedFile.url}`);
+    }
+
+    const menuItem = await this.menuItemRepository.create(menuItemData);
+    this.logger.log(`Admin menu item created successfully: ${menuItem.id}`);
+    return menuItem;
+  }
+
   async getMenuItemById(
     id: string,
     userId?: string,

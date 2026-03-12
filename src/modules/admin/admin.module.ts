@@ -9,6 +9,7 @@ import { AdminProfileService } from './service/admin-profile.service';
 import { AdminOrderService } from './service/admin-order.service';
 import { FixCustomerRefundsService } from './service/fix-customer-refunds.service';
 import { RevertCancellationService } from './service/revert-cancellation.service'; // NEW
+import { AdminVendorOnboardingService } from './service/admin-vendor-onboarding.service';
 
 // Controllers
 import { AdminOrderController } from './controllers/admin-order.controller';
@@ -73,6 +74,7 @@ import { RedisService } from '../../database/redis.service';
   ],
   providers: [
     AdminService,
+    AdminVendorOnboardingService,
     OtpMonitoringService,
     AdminProfileService,
     AdminOrderService, // Admin order operations (cancellation, refunds)
@@ -82,6 +84,7 @@ import { RedisService } from '../../database/redis.service';
   ],
   exports: [
     AdminService,
+    AdminVendorOnboardingService,
     OtpMonitoringService,
     AdminProfileService,
     AdminOrderService,

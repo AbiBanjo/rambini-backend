@@ -1,5 +1,6 @@
 // src/modules/admin/controllers/admin-vendor.controller.ts
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -10,6 +11,7 @@ import {
   UseGuards,
   NotFoundException,
   Query,
+  Patch,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -25,6 +27,12 @@ import { VendorService } from '../../vendor/services/vendor.service';
 import { UserService } from '../../user/services/user.service';
 import { Vendor } from '../../../entities';
 import { Ipagination } from '@/utils/pagination.utils';
+import { AdminVendorOnboardingService } from '../service/admin-vendor-onboarding.service';
+import {
+  AdminCreateVendorShellDto,
+  AdminSendVendorInviteDto,
+  AdminUpdateVendorContactDto,
+} from '../dto/admin-vendor-onboarding.dto';
 
 @ApiTags('Admin - Vendors')
 @Controller('admin/vendors')
@@ -35,6 +43,7 @@ export class AdminVendorController {
     private readonly adminService: AdminService,
     private readonly vendorService: VendorService,
     private readonly userService: UserService,
+    private readonly adminVendorOnboardingService: AdminVendorOnboardingService,
   ) {}
 
   @Get('stats')
@@ -103,6 +112,20 @@ export class AdminVendorController {
     return await this.vendorService.getAllVendors();
   }
 
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create vendor shell (Admin only)',
+    description: 'Creates a vendor account without login credentials. Email can be added later.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Vendor shell created successfully',
+  })
+  async createVendorShell(@Body() dto: AdminCreateVendorShellDto): Promise<Vendor> {
+    return await this.adminVendorOnboardingService.createVendorShell(dto);
+  }
+
   @Get(':vendorId')
   @ApiOperation({
     summary: 'Get vendor by ID (Admin only)',
@@ -148,6 +171,36 @@ export class AdminVendorController {
     // VendorService.getVendorById() now returns enriched vendor
     // No need for manual transformation
     return vendor;
+  }
+
+  @Patch(':vendorId/contact')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update vendor contact (Admin only)',
+    description: 'Sets the vendor email (no OTP required for admin).',
+  })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({ status: 200, description: 'Vendor contact updated successfully' })
+  async updateVendorContact(
+    @Param('vendorId') vendorId: string,
+    @Body() dto: AdminUpdateVendorContactDto,
+  ): Promise<Vendor> {
+    return await this.adminVendorOnboardingService.updateVendorContact(vendorId, dto);
+  }
+
+  @Post(':vendorId/invite')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Send vendor claim invite (Admin only)',
+    description: 'Sends a magic link to claim the vendor account.',
+  })
+  @ApiParam({ name: 'vendorId', description: 'Vendor ID' })
+  @ApiResponse({ status: 200, description: 'Vendor invite sent successfully' })
+  async sendVendorInvite(
+    @Param('vendorId') vendorId: string,
+    @Body() dto: AdminSendVendorInviteDto,
+  ): Promise<{ claimUrl: string }> {
+    return await this.adminVendorOnboardingService.sendVendorInvite(vendorId, dto?.email);
   }
 
   @Post(':vendorId/activate')
