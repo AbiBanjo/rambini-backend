@@ -93,9 +93,18 @@ export class AdminVendorOnboardingService {
   }
 
   async sendVendorInvite(vendorId: string, overrideEmail?: string): Promise<{ claimUrl: string }> {
-    const vendor = await this.vendorRepository.findOne({ where: { id: vendorId }, relations: ['user'] });
+    let vendor = await this.vendorRepository.findOne({ where: { id: vendorId }, relations: ['user'] });
     if (!vendor) {
       throw new NotFoundException('Vendor not found');
+    }
+
+    // If email override provided, ensure vendor is linked to the correct user
+    if (overrideEmail && overrideEmail !== vendor.user?.email) {
+      await this.updateVendorContact(vendorId, { email: overrideEmail });
+      vendor = await this.vendorRepository.findOne({ where: { id: vendorId }, relations: ['user'] });
+      if (!vendor) {
+        throw new NotFoundException('Vendor not found');
+      }
     }
 
     const email = overrideEmail || vendor.user?.email;

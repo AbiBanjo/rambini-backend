@@ -95,6 +95,11 @@ export class VendorClaimService {
       throw new NotFoundException('Vendor not found');
     }
 
+    if (vendor.user_id !== user.id) {
+      vendor.user_id = user.id;
+      await this.vendorRepository.save(vendor);
+    }
+
     if (user.password) {
       // Existing password: allow claim without resetting password
     } else {
