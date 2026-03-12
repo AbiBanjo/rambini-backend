@@ -10,6 +10,11 @@ export class AdminCreateVendorShellDto {
   @IsOptional()
   @IsString()
   certificate_number?: string;
+
+  @ApiPropertyOptional({ description: 'Country code (ISO 3166-1 alpha-2). Used to set vendor currency.' })
+  @IsOptional()
+  @IsString()
+  country?: string;
 }
 
 export class AdminUpdateVendorContactDto {

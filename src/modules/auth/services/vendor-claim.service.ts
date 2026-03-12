@@ -47,11 +47,7 @@ export class VendorClaimService {
     const key = this.getClaimKey(token);
     await this.redisService.setex(key, ttlSeconds, JSON.stringify(payload));
 
-    const baseUrl =
-      this.configService.get<string>('VENDOR_CLAIM_URL') ||
-      this.configService.get<string>('APP_URL') ||
-      this.configService.get<string>('FRONTEND_URL') ||
-      'https://rambini.com';
+    const baseUrl = 'https://rambini-admin-portal.vercel.app';
 
     const claimUrl = `${baseUrl.replace(/\/$/, '')}/vendor-claim?token=${token}`;
 
