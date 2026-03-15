@@ -2,7 +2,7 @@
 
 import { IsOptional, IsString, IsPhoneNumber, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { AddressType } from 'src/entities';
+import { AddressType, Currency } from 'src/entities';
 
 /**
  * DTO for admin to update user phone number
@@ -154,6 +154,28 @@ export class AdminUpdateVendorDto {
   @ApiProperty({
     description: 'Reason for admin vendor update',
     example: 'Correcting business registration details',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+/**
+ * DTO for admin to update user wallet currency
+ */
+export class AdminUpdateWalletCurrencyDto {
+  @ApiProperty({
+    description: 'New wallet currency',
+    enum: Currency,
+    example: Currency.NGN,
+  })
+  @IsEnum(Currency)
+  currency: Currency;
+
+  @ApiProperty({
+    description: 'Reason for admin wallet currency update',
+    example: 'User created account with wrong country/currency',
     required: false,
   })
   @IsOptional()

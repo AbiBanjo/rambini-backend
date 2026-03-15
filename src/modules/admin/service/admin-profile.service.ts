@@ -9,12 +9,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User, Address, Vendor } from 'src/entities';
+import { User, Address, Vendor, Wallet } from 'src/entities';
 import { AddressService } from '../../user/services/address.service';
 import {
   AdminUpdatePhoneDto,
   AdminUpdateAddressDto,
   AdminUpdateVendorDto,
+  AdminUpdateWalletCurrencyDto,
   AdminActionResponseDto,
 } from '../dto/admin-update-profile.dto';
 
@@ -27,6 +28,8 @@ export class AdminProfileService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Vendor)
     private readonly vendorRepository: Repository<Vendor>,
+    @InjectRepository(Wallet)
+    private readonly walletRepository: Repository<Wallet>,
     private readonly addressService: AddressService,
   ) {}
 
@@ -523,6 +526,57 @@ export class AdminProfileService {
           business_name: vendor.business_name,
           certificate_number: vendor.certificate_number,
         },
+      },
+    };
+  }
+
+  /**
+   * Admin: Update user wallet currency
+   */
+  async updateUserWalletCurrency(
+    adminUser: User,
+    userId: string,
+    updateDto: AdminUpdateWalletCurrencyDto,
+  ): Promise<AdminActionResponseDto> {
+    this.logger.log(
+      `[ADMIN] ${adminUser.email} updating wallet currency for user ${userId}`,
+    );
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const wallet = await this.walletRepository.findOne({
+      where: { user_id: userId },
+    });
+
+    if (!wallet) {
+      throw new NotFoundException('Wallet not found');
+    }
+
+    const oldCurrency = wallet.currency;
+    wallet.currency = updateDto.currency;
+    await this.walletRepository.save(wallet);
+
+    this.logger.log(
+      `[ADMIN] Wallet currency updated for user ${userId}: ${oldCurrency} → ${updateDto.currency}. Admin: ${adminUser.email}`,
+    );
+
+    return {
+      success: true,
+      message: 'Wallet currency updated successfully',
+      admin_email: adminUser.email,
+      performed_at: new Date(),
+      reason: updateDto.reason,
+      data: {
+        user_id: userId,
+        wallet_id: wallet.id,
+        old_currency: oldCurrency,
+        new_currency: wallet.currency,
       },
     };
   }

@@ -26,6 +26,7 @@ import { User, Address } from 'src/entities';
 import {
   AdminUpdatePhoneDto,
   AdminUpdateAddressDto,
+  AdminUpdateWalletCurrencyDto,
   AdminActionResponseDto,
 } from '../dto/admin-update-profile.dto';
 import { AdminProfileService } from '../service/admin-profile.service';
@@ -61,6 +62,35 @@ export class AdminUserProfileController {
     @Body() updateDto: AdminUpdatePhoneDto,
   ): Promise<AdminActionResponseDto> {
     return await this.adminProfileService.updateUserPhone(admin, userId, updateDto);
+  }
+
+  /**
+   * ==================== Wallet Currency Management ====================
+   */
+
+  @Put(':userId/wallet-currency')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Admin: Update user wallet currency',
+    description: 'Allows admin to update a user wallet currency.',
+  })
+  @ApiParam({ name: 'userId', description: 'User ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Wallet currency updated successfully',
+    type: AdminActionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'User or wallet not found' })
+  async updateUserWalletCurrency(
+    @GetUser() admin: User,
+    @Param('userId') userId: string,
+    @Body() updateDto: AdminUpdateWalletCurrencyDto,
+  ): Promise<AdminActionResponseDto> {
+    return await this.adminProfileService.updateUserWalletCurrency(
+      admin,
+      userId,
+      updateDto,
+    );
   }
 
   /**
